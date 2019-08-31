@@ -3,6 +3,7 @@
 """This code is from the IDL Astronomy Users Library"""
 
 import numpy as np
+import pdb
 
 def mmm( sky_vector, 
          highbad = False,
@@ -118,7 +119,7 @@ def mmm( sky_vector,
 
     sky = np.sort(sky_vector)    #Sort SKY in ascending values
 
-    skymid = 0.5*sky[(nsky-1)/2] + 0.5*sky[nsky/2]  #Median value of all sky values
+    skymid = 0.5*sky[(nsky-1)//2] + 0.5*sky[nsky//2]  #Median value of all sky values
        
     cut1 = np.min( [skymid-sky[0],sky[nsky-1] - skymid] ) 
     if highbad: 
@@ -146,7 +147,7 @@ def mmm( sky_vector,
 
     # Compute mean and sigma (from the first pass).
 
-    skymed = 0.5*sky[(minimm+maximm+1)/2] + 0.5*sky[(minimm+maximm)/2 + 1] #median 
+    skymed = 0.5*sky[(minimm+maximm+1)//2] + 0.5*sky[(minimm+maximm)//2 + 1] #median 
     skymn = sum/(maximm-minimm)                            #mean       
     sigma = np.sqrt(sumsq/(maximm-minimm)-skymn**2)             #sigma          
     skymn = skymn + skymid         #Add median which was subtracted off earlier 
@@ -270,8 +271,8 @@ def mmm( sky_vector,
     
         center = (minimm + 1 + maximm)/2.
         side = np.round(0.2*(maximm-minimm))/2.  + 0.25
-        j = np.round(center-side)
-        k = np.round(center+side)
+        j = np.int(np.round(center-side))
+        k = np.int(np.round(center+side))
 
         #  In case  the data has a large number of of the same (quantized) 
         #  intensity, expand the range until both limiting values differ from the 
