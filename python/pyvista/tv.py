@@ -148,7 +148,7 @@ class TV:
                 #self.aximage.set_cmap(cm)
                 plt.draw()
                 try:
-                    x,y= autopy.mouse.get_pos()
+                    x,y= autopy.mouse.location()
                     autopy.mouse.move(x,y)
                 except: pass
 
@@ -165,7 +165,7 @@ class TV:
                 px-=n
                 py-=n
                 try:
-                    x,y= autopy.mouse.get_pos()
+                    x,y= autopy.mouse.location()
                     xs,ys = scale()
                     autopy.mouse.move(int(x+px*xs),int(y-py*ys))
                 except: pass
@@ -189,7 +189,7 @@ class TV:
             elif event.key == 'left' and subPlotNr == 0 :
                 xs,ys = scale()
                 try:
-                    x,y= autopy.mouse.get_pos()
+                    x,y= autopy.mouse.location()
                     if xs < 1. :
                         autopy.mouse.move(x-1,y)
                     else :
@@ -199,7 +199,7 @@ class TV:
             elif event.key == 'right' and subPlotNr == 0 :
                 xs,ys = scale()
                 try:
-                    x,y= autopy.mouse.get_pos()
+                    x,y= autopy.mouse.location()
                     if xs < 1. :
                         autopy.mouse.move(x+1,y)
                     else :
@@ -209,7 +209,7 @@ class TV:
             elif event.key == 'up' and subPlotNr == 0 :
                 xs,ys = scale()
                 try:
-                    x,y= autopy.mouse.get_pos()
+                    x,y= autopy.mouse.location()
                     if ys < 1. :
                         autopy.mouse.move(x,y-1)
                     else :
@@ -219,7 +219,7 @@ class TV:
             elif event.key == 'down' and subPlotNr == 0 :
                 xs,ys = scale()
                 try:
-                    x,y = autopy.mouse.get_pos()
+                    x,y = autopy.mouse.location()
                     if ys < 1. :
                         autopy.mouse.move(x,y+1)
                     else :
@@ -345,9 +345,9 @@ class TV:
         starts blocking for keypress event
         """
         self.blocking = 1
-        self.fig.canvas.start_event_loop(-1)
+        self.fig.canvas.start_event_loop(1000)
 
-    def tv(self,img,min=None,max=None,cmap=None) :
+    def tv(self,data,min=None,max=None,cmap=None) :
         """
         main display routine: displays image with optional scaling
 
@@ -357,7 +357,7 @@ class TV:
         Keyword args:
           min=, max= : optional scaling arguments
         """
-
+        img=data
         # load data array depending on input type
         if isinstance(img, (np.ndarray)) :
             data = img
@@ -443,6 +443,20 @@ class TV:
         # plt.draw()
 
             
+    def tvcirc(self,x,y,rad=3,color='m') :
+        """
+        displays a circle on an image
+
+        Args:
+          x,y : center position of patch
+
+        Keyword args :
+          size= :  patch size
+          color= :  patch color
+        """
+        self.ax.add_patch(patches.Circle((x,y),rad,fill=False,color=color))
+        plt.draw()
+
     def tvbox(self,x,y,box=None,size=3,color='m') :
         """
         displays a patch (box by default) on an image
@@ -490,6 +504,8 @@ class TV:
           key pressed, x data position, y data position
         """
         self.__startBlock()
+        reserved=['r','p','v','left','right','up','down'] 
+        if self.event.key in reserved : self.tvmark()
         return self.event.key, self.event.xdata, self.event.ydata
 
     def fill(self) :
