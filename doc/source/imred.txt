@@ -5,7 +5,7 @@ imred is a module that implements data reduction routines
 
 imred functions:
 
-.. automodule:: holtz.pyvista.imred
+.. automodule:: pyvista.imred
    :members:
    :member-order: bysource
 

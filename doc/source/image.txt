@@ -5,7 +5,7 @@ image is the pyvista module that implements basic image arithmetic, VISTA-style
 
 image functions:
 
-.. automodule:: holtz.pyvista.image
+.. automodule:: pyvista.image
    :members:
    :member-order: bysource
 
