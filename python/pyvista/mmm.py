@@ -312,4 +312,4 @@ def mmm( sky_vector,
                   '    Number of iterations: ',  str(niter))
         print('% MMM: Mode, Sigma, Skew of sky vector:', skymod, sigma, skew   )
 
-    return(skymod,sigma,skew)
+    return(skymod,sigma,skew,nsky)
