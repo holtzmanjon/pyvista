@@ -135,7 +135,7 @@ def gfit(data,x0,y0,size=5,fwhm=3,sub=True,plot=None,fig=1,scale=1,pafixed=False
         return out
     return g
 
-def tvstar(tv,plot,size=5,fwhm=3,scale=1,pafixed=False) :
+def tvstar(tv,plot,size=11,fwhm=5,scale=1,pafixed=False) :
     key=''
     print('Hit key near star center, "q" to quit')
     while key != 'q' :
