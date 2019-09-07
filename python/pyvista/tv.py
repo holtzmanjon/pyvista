@@ -39,6 +39,7 @@ class TV:
         ax.axis('off')
         self.axis = False
         self.aspect = aspect
+        self.doflip = False
 
         # set up initial img and header lists
         self.current = -1
@@ -149,7 +150,7 @@ class TV:
                 plt.draw()
                 try:
                     x,y= autopy.mouse.location()
-                    autopy.mouse.move(x,y)
+                    autopy.mouse.move(int(x),int(y))
                 except: pass
 
             elif (event.key == 'p' or event.key == 'v') and subPlotNr == 0 :
@@ -174,7 +175,8 @@ class TV:
                 dim=np.shape(self.img)
                 size=np.max([dim[0],dim[1]])
                 self.ax.set_xlim(dim[1]/2.-size/2.,dim[1]/2.+size/2.)
-                self.ax.set_ylim(dim[0]/2.-size/2.,dim[0]/2.+size/2.)
+                if self.doflip :self.ax.set_ylim(dim[0]/2.+size/2.,dim[0]/2.-size/2.)
+                else :self.ax.set_ylim(dim[0]/2.-size/2.,dim[0]/2.+size/2.)
                 #self.ax.set_xlim(-0.5,dim[1]-0.5)
                 #self.ax.set_ylim(-0.5,dim[0]-0.5)
                 plt.draw()
@@ -191,9 +193,9 @@ class TV:
                 try:
                     x,y= autopy.mouse.location()
                     if xs < 1. :
-                        autopy.mouse.move(x-1,y)
+                        autopy.mouse.move(int(x-1),int(y))
                     else :
-                        autopy.mouse.move(int(x-xs),y)
+                        autopy.mouse.move(int(x-xs),int(y))
                 except: pass
 
             elif event.key == 'right' and subPlotNr == 0 :
@@ -201,9 +203,9 @@ class TV:
                 try:
                     x,y= autopy.mouse.location()
                     if xs < 1. :
-                        autopy.mouse.move(x+1,y)
+                        autopy.mouse.move(int(x+1),int(y))
                     else :
-                        autopy.mouse.move(int(x+xs),y)
+                        autopy.mouse.move(int(x+xs),int(y))
                 except: pass
 
             elif event.key == 'up' and subPlotNr == 0 :
@@ -211,9 +213,9 @@ class TV:
                 try:
                     x,y= autopy.mouse.location()
                     if ys < 1. :
-                        autopy.mouse.move(x,y-1)
+                        autopy.mouse.move(int(x),int(y-1))
                     else :
-                        autopy.mouse.move(x,int(y-ys))
+                        autopy.mouse.move(int(x),int(y-ys))
                 except: pass
 
             elif event.key == 'down' and subPlotNr == 0 :
@@ -221,9 +223,9 @@ class TV:
                 try:
                     x,y = autopy.mouse.location()
                     if ys < 1. :
-                        autopy.mouse.move(x,y+1)
+                        autopy.mouse.move(int(x),int(y+1))
                     else :
-                        autopy.mouse.move(x,int(y+ys))
+                        autopy.mouse.move(int(x),int(y+ys))
                 except: pass
 
             elif event.key == 'a' and subPlotNr == 0 :
@@ -273,13 +275,15 @@ class TV:
                     ysize = ylim[1]-ylim[0]
                 size=max([xsize,ysize])
                 self.ax.set_xlim(event.xdata-size/2.,event.xdata+size/2.)
-                self.ax.set_ylim(event.ydata-size/2.,event.ydata+size/2.)
+                if self.doflip:self.ax.set_ylim(event.ydata+size/2.,event.ydata-size/2.)
+                else : self.ax.set_ylim(event.ydata-size/2.,event.ydata+size/2.)
                 plt.draw()
             elif subPlotNr == 1 :
                 # flag button press in colorbar
                 self.button = True
                 disp = self.fig.axes[1].transData.transform([event.ydata,event.xdata])
-                xstart,xend = self.fig.axes[1].transAxes.inverted().transform(disp)
+                #xstart,xend = self.fig.axes[1].transAxes.inverted().transform(disp)
+                ystart,xstart = self.fig.axes[1].transAxes.inverted().transform(disp)
                 #self.xstart = event.xdata
                 self.xstart = xstart
 
@@ -290,7 +294,7 @@ class TV:
             # if motion in colorbar with key pressed in colorbar, adjust colorbar
             if subPlotNr == 1 :
                 disp = self.fig.axes[1].transData.transform([event.ydata,event.xdata])
-                xstart,xend = self.fig.axes[1].transAxes.inverted().transform(disp)
+                yend,xend = self.fig.axes[1].transAxes.inverted().transform(disp)
                 if event.button == 2 :
                     diff = (xend - self.xstart)
                     self.top = self.top + diff
@@ -346,6 +350,15 @@ class TV:
         """
         self.blocking = 1
         self.fig.canvas.start_event_loop(1000)
+
+    def flip(self) :
+        """ toggle display flip
+        """
+        self.doflip = not self.doflip
+        ylim = self.ax.get_ylim()
+        if self.doflip : self.ax.set_ylim(ylim[1],ylim[0])
+        else : self.ax.set_ylim(ylim[0],ylim[1])
+        plt.draw()
 
     def tv(self,data,min=None,max=None,cmap=None) :
         """
@@ -414,12 +427,14 @@ class TV:
         dim=np.shape(self.img)
         size=np.max([dim[0],dim[1]])
         self.ax.set_xlim(dim[1]/2.-size/2.,dim[1]/2.+size/2.)
-        self.ax.set_ylim(dim[0]/2.-size/2.,dim[0]/2.+size/2.)
-        #self.ax.set_xlim(-0.5,dim[1]-0.5)
-        #self.ax.set_ylim(-0.5,dim[0]-0.5)
-        #print('aspect: ', self.aspect,' xlim: ', self.ax.get_xlim(),' ylim: ',self.ax.get_ylim(), data.shape)
-        self.aximage = self.ax.imshow(data,vmin=min,vmax=max,cmap=self.cmap,interpolation='nearest',aspect=self.aspect)
+        if self.doflip : self.ax.set_ylim(dim[0]/2.+size/2.,dim[0]/2.-size/2.)
+        else : self.ax.set_ylim(dim[0]/2.-size/2.,dim[0]/2.+size/2.)
+
+        self.aximage = self.ax.imshow(data,vmin=min,vmax=max,cmap=self.cmap, 
+                                      interpolation='nearest',aspect=self.aspect)
         old=self.axlist.pop(current)
+        self.tvclear()
+
         # if we had a previous image, reload the data with a single value
         # so we don't continually accumulate memory (matplotlib doesn't
         # describe how memory can be released
