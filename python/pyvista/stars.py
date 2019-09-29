@@ -10,6 +10,9 @@ from astropy.table import Column
 from astropy.nddata import support_nddata
 from astropy.time import Time
 from pyvista import mmm
+from astropy.stats import sigma_clipped_stats
+from photutils import CircularAperture, CircularAnnulus
+from photutils import aperture_photometry
 
 def mark(tv,stars=None,rad=3,auto=False,color='m',exit=False):
     """ Interactive mark stars on TV, or recenter current list 
@@ -85,7 +88,7 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',exit=False):
 
 
 @support_nddata
-def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,tv=None,gain=1,rn=0,mag=True) :
+def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,tv=None,gain=1,rn=0,mag=True,utils=True) :
     """ Aperture photometry of input image with current star list
     """
 
@@ -94,9 +97,11 @@ def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,tv=None,gain=1,rn=0,m
    
     # uncertainty either specified in array, or use gain/rn, but not both
     if uncertainty is not None :
-        print('Using input uncertainty array, not gain and readout noise!')
         if type(uncertainty) is not astropy.nddata.nduncertainty.StdDevUncertainty :
            raise Exception('uncertainty must be StdDevUncertainty ')
+        uncertainty_data = uncertainty.array
+    else :
+        uncertainty_data = np.sqrt(data/gain + rn**2)
         
     # Add new output columns to table, removing them first if they exist already
     emptycol = Column( np.empty(len(stars))*np.nan )
@@ -133,17 +138,33 @@ def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,tv=None,gain=1,rn=0,m
 
         # get sky if requested
         if skyrad is not None :
-            gd = np.where((dist2 > skyrad[0]**2) & 
-                          (dist2 < skyrad[1]**2) ) 
-            sky,skysig,skyskew,nsky = mmm.mmm(data[gd[0],gd[1]].flatten())
-            sigsq=skysig**2/nsky
+            if utils :
+                sky_aperture = CircularAnnulus((star['x'],star['y']),r_in=skyrad[0], r_out=skyrad[1]) 
+                sky_mask = sky_aperture.to_mask(method='center')
+                mask=sky_mask.data
+                skymean, skymedian, skysig = sigma_clipped_stats(sky_mask.multiply(data)[mask>0])
+                sky=skymean
+                sigsq=skysig**2
+            else :
+                gd = np.where((dist2 > skyrad[0]**2) & 
+                              (dist2 < skyrad[1]**2) ) 
+                sky,skysig,skyskew,nsky = mmm.mmm(data[gd[0],gd[1]].flatten())
+                sigsq=skysig**2/nsky
+            print(sky,skysig)
             if tv is not None :
                 tv.tvcirc(star['x'],star['y'],skyrad[0],color='g')
                 tv.tvcirc(star['x'],star['y'],skyrad[1],color='g')
-        else : sky =0
+        else : 
+            sky =0.
+            skysig= 0.
+            sigsq =0.
+
+        # photutils aperture photometry handles pixels on the edges
+        apertures = [ CircularAperture((star['x'],star['y']),r) for r in rad ]
+        aptab = aperture_photometry(data,apertures,error=uncertainty_data)
 
         # loop over apertures
-        for r in rad :
+        for irad,r in enumerate(rad) :
             #column names for sum and uncertainty
             if type(r) is int : fmt='{:d}'
             else : fmt='{:.1f}'
@@ -151,22 +172,23 @@ def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,tv=None,gain=1,rn=0,m
             ename=('aper'+fmt+'err').format(r)
 
             # pixels within aperture
-            gd = np.where(dist2 < r**2)
-
-            # sum counts, subtract sky
-            tot =data[gd[0],gd[1]].sum()
             area = np.pi*r**2
 
-            # uncertainty
-            if uncertainty is not None :
-                unc = np.sqrt(
-                      (uncertainty.array[gd[0],gd[1]]**2).sum()+
-                      sigsq*area)
+            if utils :
+                tot = aptab['aperture_sum_{:d}'.format(irad)]
+                unc = aptab['aperture_sum_err_{:d}'.format(irad)]
+
             else :
-                unc = np.sqrt( tot/gain + np.pi*r**2*rn**2/gain**2 +
+                # here include pixel only if center is within aperture (not so good)
+                gd = np.where(dist2 < r**2)
+                # sum counts, subtract sky
+                tot =data[gd[0],gd[1]].sum()
+                # uncertainty
+                unc = np.sqrt(
+                      (uncertainty_data[gd[0],gd[1]]**2).sum()+
                       sigsq*area)
 
-            # load columns
+            # subtract sky, load columns
             stars[istar][name] = tot - sky*area
             stars[istar][ename] = unc
 
@@ -205,10 +227,14 @@ def centroid(data,x,y,r) :
     iter=0
     while iter<10 :
         dist2 = (xpix-round(x))**2 + (ypix-round(y))**2
+        # get pixels to use for background, and get background
+        gd = np.where((dist2 < r**2) & (dist2 > (r-1)**2))
+        back = np.median(data[gd[0],gd[1]])
+        # get the centroid
         gd = np.where(dist2 < r**2)
-        norm=np.sum(data[gd[0],gd[1]])
-        x = np.sum(data[gd[0],gd[1]]*xpix[gd[0],gd[1]]) / norm
-        y = np.sum(data[gd[0],gd[1]]*ypix[gd[0],gd[1]]) / norm
+        norm=np.sum(data[gd[0],gd[1]]-back)
+        x = np.sum((data[gd[0],gd[1]]-back)*xpix[gd[0],gd[1]]) / norm
+        y = np.sum((data[gd[0],gd[1]]-back)*ypix[gd[0],gd[1]]) / norm
         if round(x) == xold and round(y) == yold : break
         xold = round(x)
         yold = round(y)
