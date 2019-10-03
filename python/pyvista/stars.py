@@ -30,10 +30,12 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',exit=False):
     tv.tvclear()
     try: dateobs=Time(tv.hdr['DATE-OBS'],format='fits')
     except: dateobs=None
-    try: exptime=tv.hdr['EXPTIME']
-    except: exptime=None
-    try: filt=tv.hdr['FILTER']
-    except: filt=None
+    #try: exptime=tv.hdr['EXPTIME']
+    #except: exptime=None
+    #try: filt=tv.hdr['FILTER']
+    #except: filt=None
+    cards=['EXPTIME','FILTER','AIRMASS']
+    types=['f4','S','f4']
     if stars == None :
         stars = Table(names=('id','x', 'y'), dtype=('i4','f4', 'f4'))
         stars['x'].info.format = '.2f'
@@ -41,10 +43,13 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',exit=False):
         if dateobs is not None :
             stars.add_column(Column([],name='MJD',dtype=('f8')))
             stars['MJD'].info.format = '.6f'
-        if exptime is not None :
-            stars.add_column(Column([],name='EXPTIME',dtype=('f4')))
-        if filt is not None :
-            stars.add_column(Column([],name='FILTER',dtype=('S')))
+        #if exptime is not None :
+        #    stars.add_column(Column([],name='EXPTIME',dtype=('f4')))
+        #if filt is not None :
+        #    stars.add_column(Column([],name='FILTER',dtype=('S')))
+        for icard,card in enumerate(cards) :
+            try: stars.add_column(Column([],name=card,dtype=(types[icard])))
+            except: pass
     else :
         if auto :
             # with auto option, recentroid and update from current header
@@ -53,8 +58,11 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',exit=False):
                 star['x'] = x
                 star['y'] = y
                 if dateobs is not None : star['MJD'] = dateobs.mjd
-                if exptime is not None : star['EXPTIME'] = exptime
-                if filt is not None : star['FILTER'] = filt
+                #if exptime is not None : star['EXPTIME'] = exptime
+                #if filt is not None : star['FILTER'] = filt
+                for icard,card in enumerate(cards) :
+                    try: star[card] = tv.hdr[card]
+                    except: pass
         # display stars
         for star in stars : tv.tvcirc(star['x'],star['y'],rad,color=color)
         if exit : return stars
@@ -79,10 +87,13 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',exit=False):
         tv.tvcirc(x,y,rad,color=color)
         if dateobs is not None :
             stars[len(stars)-1]['MJD'] = dateobs.mjd
-        if exptime is not None :
-            stars[len(stars)-1]['EXPTIME'] = exptime
-        if filt is not None :
-            stars[len(stars)-1]['FILTER'] = filt
+        for icard,card in enumerate(cards) :
+            try: stars[len(stars)-1][card] = tv.hdr[card]
+            except: pass
+        #if exptime is not None :
+        #    stars[len(stars)-1]['EXPTIME'] = exptime
+        #if filt is not None :
+        #    stars[len(stars)-1]['FILTER'] = filt
         istar+=1
     return stars
 
