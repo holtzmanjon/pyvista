@@ -121,7 +121,7 @@ def gfit(data,x0,y0,size=5,fwhm=3,sub=True,plot=None,fig=1,scale=1,pafixed=False
     if plot is not None:
         r = np.sqrt((y-ycen)**2 + (x-xcen)**2)
         plots.plotp(plot,r,z,xt='R(pixels)',yt='Intensity')
-        r = np.arange(0.,5*fwhm/2.354/scale)
+        r = np.arange(0.,5*fwhm/2.354/scale,0.1)
         peak=g[0].amplitude
         plot.plot(r,peak*np.exp(-np.power(r, 2.) / (2 * np.power(g[0].x_stddev, 2.)))+g[1].amplitude)
         plot.plot(r,peak*np.exp(-np.power(r, 2.) / (2 * np.power(g[0].y_stddev, 2.)))+g[1].amplitude)
@@ -135,8 +135,11 @@ def gfit(data,x0,y0,size=5,fwhm=3,sub=True,plot=None,fig=1,scale=1,pafixed=False
         return out
     return g
 
-def tvstar(tv,plot,size=11,fwhm=5,scale=1,pafixed=False) :
+def tvstar(tv,plot=None,size=11,fwhm=5,scale=1,pafixed=False) :
+    """ Fit gaussian and show radial profile of stars marked interactively
+    """
     key=''
+    if plot is None : plot=plots.multi(1,1)
     print('Hit key near star center, "q" to quit')
     while key != 'q' :
         key,x,y=tv.tvmark()
