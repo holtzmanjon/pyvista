@@ -57,7 +57,7 @@ class BOX() :
 
     def show(self):
         print('    SC    NC    SR    NR  Exp       Date     Name')
-        print(' {:6d} {:6d} {:6d} {:6d} '.format(self.xmin,self.ncol(),self.ymin,self.nrow()))
+        print('{:6d}{:6d}{:6d}{:6d} '.format(self.xmin,self.ncol(),self.ymin,self.nrow()))
 
     def mean(self,data):
         if self.nrow() <= 0 or self.ncol() <= 0 : return 0.
