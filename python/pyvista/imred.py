@@ -1,112 +1,226 @@
 import numpy as np
 import astropy
+from astropy.nddata import CCDData
+from astropy.nddata import NDData
 from astropy.io import fits
 from astropy.io import ascii
 from astropy.modeling import models, fitting
 from astropy.convolution import convolve, Box1DKernel
+
+import warnings
+from astropy.utils.exceptions import AstropyWarning
+warnings.simplefilter('ignore', category=AstropyWarning)
+
 import matplotlib.pyplot as plt
 import glob
 import bz2
 import os
 import pdb
-import image
+from pyvista import image
 try: 
     import pyds9
 except:
     print('pyds9 is not available, proceeding')
 
-def setup(name='*',dir='./',idet=1) :
-    """ 
-    Sets up global root, indir, and detector iD
+class Reader() :
+    """ Class for reading images with shorthand input, e.g., image number 
 
-    Args:
-      name (str) : root file name
+        Will use glob to search for files with name '{:s}/{:s}.{:s}.fits'.format(dir,root,formstr)
+    """
+
+    def __init__(self,dir='./',root='*',formstr='{:04d}',gain=1.,rn=0.,inst=None,verbose=True) :
+        """ set format strings
+        """
+        self.dir=dir
+        self.root=root
+        self.verbose=verbose
+        if type(gain) is list : self.gain=gain
+        else : self.gain = [gain]
+        if type(rn) is list : self.rn=rn
+        else : self.rn = [rn]
+        self.formstr=[formstr]
+        if inst == 'DIS' :
+            self.formstr=['{:04d}b','{:04d}r']
+            self.gain=[1.68,1.88]
+            self.rn=[4.9,4.6]
+        elif inst == 'ARCES' :
+            self.formstr=['{:04d}']
+            self.gain=[3.8]
+            self.rn=[7]
+        elif inst == 'ARCTIC' :
+            self.formstr=['{:04d}']
+            self.gain=[2.0]
+            self.rn=[3.7]
+        self.nchip = len(self.formstr)
+        if self.verbose :
+            for form in self.formstr :
+                print('will use format:  {:s}/{:s}.{:s}.fits'.format(self.dir,self.root,form))
+            print('         gain:  {}    rn: {}'.format(self.gain,self.rn))
+
+    def rd(self,num, ext=0) :
+        """ 
+        Read an image
+        Args :
+            num (str or int) : name or number of image to read
+        Returns :
+            image (CCDData ) : CCDData object
+        """
+        out=[]
+        for form,gain,rn in zip(self.formstr,self.gain,self.rn) :
+            file=glob.glob(self.dir+'/'+self.root+form.format(num)+'.fits*')
+            if len(file) > 1 : 
+                if self.verbose : print('more than one match found, using first!',file)
+            file=file[0]
+            if self.verbose : print('Reading file: ', file)
+            im=CCDData.read(file,hdu=ext,unit='adu')
+            im.uncertainty = np.sqrt( im.data/gain + (rn/gain)**2 )
+            out.append(im)
+        if len(out) == 1 : return out[0]
+        else : return out
+        
+
+class Reduce() :
+    """ Class for reducing images of a given instrument
+    """
+    def __init__(self,inst=None,verbose=True) :
+        """  Initialize reducer with information about how to reduce
+        """
+        self.verbose= verbose
+        if inst == 'DIS' :
+            self.biastype = 0
+            self.biasbox = [ image.BOX(xr=[2050,2096],yr=[0,2047]) ,
+                             image.BOX(xr=[2050,2096],yr=[0,2047]) ]
+            self.trimbox = [ image.BOX(xr=[0,2047],yr=[0,1023]) ,
+                             image.BOX(xr=[0,2047],yr=[0,1023]) ]
+            self.normbox = [ image.BOX(xr=[1000,1050],yr=[500,600]) ,
+                             image.BOX(xr=[1000,1050],yr=[500,600]) ]
+        elif inst == 'ARCES' :
+            self.biastype = 0
+            self.biasbox = [image.BOX(xr=[2052,2057],yr=[20,2028])]
+            self.trimbox = [image.BOX(xr=[200,1850],yr=[0,2047])]
+            self.normbox = [ image.BOX(xr=[1000,1050],yr=[1000,1050]) ]
+            
+        elif inst == 'ARCTIC' :
+            self.biastype = 0
+            self.biasbox = [image.BOX(xr=[2052,2057],yr=[20,2028])]
+            self.trimbox = [image.BOX(xr=[200,1850],yr=[0,2047])]
+        if self.verbose :
+            print('Biastype : {:d}'.format(self.biastype))
+            print('Bias box: ')
+            for box in self.biasbox :
+                box.show()
+            
+    def overscan(self,im) :
+         """ Overscan subtration
+         """
+         if type(im) is not list : ims=[im]
+         else : ims = im
+         if self.biastype == 0 :    
+            out=[]
+            for im,biasbox in zip(ims,self.biasbox) :
+                b=biasbox.mean(im.data)
+                if self.verbose: print('subtracting overscan: ', b)
+                im.data = im.data.astype(float)-b
+                im.header.add_comment('subtracted overscan: {:f}'.format(b))
+                out.append(im)
+            
+         #elif det.biastype == 1 :
+         #    over=np.median(hdu[ext].data[:,det.biasbox.xmin:det.biasbox.xmax],axis=1)
+         #    boxcar = Box1DKernel(10)
+         #    over=convolve(over,boxcar,boundary='extend')
+         #    over=image.stretch(over,ncol=hdu[ext].data.shape[1])
+         #    hdu[ext].data -= over
     
-    Keyword args:
-      dir (str) : input directory name [default='./']
+    def bias(self,im,superbias) :
+         if type(im) is not list : ims=[im]
+         else : ims = im
+         if type(superbias) is not list : superbiases=[superbias]
+         else : superbiases = superbias
+         for im,bias in zip(ims,superbiases) :
+             im.data -= bias.data
+             im.uncertainty = np.sqrt(im.uncertainty.array**2 + bias.uncertainty.array**2)
+             im.header.add_comment('subtracted superbias')
 
-    Returns:
-      nothing
+    def flat(self,im,superflat) :
+         if type(im) is not list : ims=[im]
+         else : ims = im
+         if type(superflats) is not list : superflats=[superflat]
+         else : superflats = superflat
+         for im,flat in zip(ims,superflats) :
+             im.uncertainty =  (im.uncertainty.array**2 / im.data**2 + flat.uncertainty.array**2 / flat.data**2 ) 
+             im.data /= flat.data
+             im.uncertainty *=  im.data**2
+             im.header.add_comment('divided by superflat')
+
+class Combine() :
+    """ Class for combining calibration data frames
     """
-    global root, indir, det
-    root = name
-    indir = dir+'/'
-    det = getdet(idet)
+    def __init__(self,reader=None,reducer=None,verbose=True) :
+        self.reader = reader
+        self.reducer = reducer
+        self.verbose = verbose
 
-def read(num,ext=0,bias=True,verbose=False, formstr=None) :
-    """ 
-    Reads image by name or number, by default subtracts bias using overscan
+    def combine(self,ims, superbias=None, normalize=False) :
+        """ Combine images from list of images 
+        """
 
-    Args:
-      num (int or str) : number or name of image to read
+        # create list of images, reading and overscan subtracting
+        allcube = []
+        for im in ims :
+            if self.verbose: print('im: ',im)
+            data = self.reader.rd(im)
+            self.reducer.overscan(data)
+            if superbias is not None :
+                self.reducer.bias(data,superbias)
+            allcube.append(data)
+        nframe = len(allcube)
 
-    Keyword args:
-      ext (int) : extension to read (default=0)
-      bias (bool) : subtract overscan? (default=True)
-      verbose (bool) : use verbose mode? (default=False)
+        # Need to handle multichip instruments separately because they have an extra list dimension
+        if self.reader.nchip == 1 :
+            # load up cubes of data and variance
+            datacube = []
+            varcube = []
+            for im in range(nframe) :
+                if normalize :
+                    norm=self.reducer.normbox[0].mean(allcube[im].data)
+                    allcube[im].data /= norm
+                    allcube[im].uncertainty.array /= norm
+                datacube.append(allcube[im].data)
+                varcube.append(allcube[im].uncertainty.array**2)
 
-    Returns:
-      HDU : HDU of image
-    """
+            # do the combination
+            if self.verbose: print('median combining data....')
+            med = np.median(np.array(datacube),axis=0)
+            if self.verbose: print('calculating uncertainty....')
+            sig = 1.253 * np.sqrt(np.mean(varcube,axis=0)/nframe)
+            out = [NDData(med,uncertainty=sig)]
+        else :
+            # same for multichip
+            out=[] 
+            for chip in range(self.reader.nchip) :
+                datacube = []
+                varcube = []
+                for im in range(nframe) :
+                    if normalize :
+                        norm=self.reducer.normbox[chip].mean(allcube[im][chip].data)
+                        allcube[im][chip].data /= norm
+                        allcube[im][chip].uncertainty.array /= norm
+                    datacube.append(allcube[im][chip].data)
+                    varcube.append(allcube[im][chip].uncertainty.array**2)
+                if self.verbose: print('median combining data....')
+                med = np.median(np.array(datacube),axis=0)
+                if self.verbose: print('calculating uncertainty....')
+                sig = 1.253 * np.sqrt(np.mean(varcube,axis=0)/nframe)
+                out.append(NDData(med,uncertainty=sig))
 
-    if type(num) == str :
-        file=num
-    else :
-        if formstr is None : formstr=det.formstr
-        file=glob.glob(indir+'/'+root+formstr.format(num)+'.fits*')
-        if len(file) > 0 : file=file[0]
-    if verbose: 
-        print('root: ', root)
-        print('Reading: ', file)
-    if '.bz2' in file :
-        hdu=fits.open(bz2.BZ2File(file),ignore=True,ignore_missing_end=True)
-    else :
-        hdu=fits.open(file,ignore=True,ignore_missing_end=True)
+        if len(out) == 1 : return out[0]
+        else : return out
 
-    if 'object' in hdu[0].header.cards and hdu[0].header['object'] == '' : 
-        hdu[0].header['object'] = os.path.basename(file)
-    if bias :
-        if det.biastype == 0 :
-            b=det.biasbox.mean(hdu[ext].data)
-            if verbose: print('subtracting overscan: ', b)
-            hdu[ext].data = hdu[ext].data.astype(float)-b
-        elif det.biastype == 1 :
-            over=np.median(hdu[ext].data[:,det.biasbox.xmin:det.biasbox.xmax],axis=1)
-            boxcar = Box1DKernel(10)
-            over=convolve(over,boxcar,boundary='extend')
-            over=image.stretch(over,ncol=hdu[ext].data.shape[1])
-            hdu[ext].data -= over
-    return hdu[ext]
+    def superbias(self,ims) :
+        return self.combine(ims)
 
-def reduce(num,bias=None,flat=None,trim=False,verbose=False) :
-    """ 
-    Reads with overscan subtraction, subtracts bias and divides by flat as specified
- 
-    Args:
-      num (int or str) : number or name of image to reduce
-
-    Keyword args:
-      bias (numpy array) : bias frame to subtract
-      flat (numpy array) : flat frame to divide
-      trim (bool) : trim frame? (default=False)
-      verbose (bool) : be verbose? (default=False)
-
-    Returns:
-      HDU : hdu of reduced image
-    """
-    if verbose: print('reading: ', num)
-    hdu=read(num,verbose=verbose)
-    if bias is not None :
-        if verbose: print('subtracting bias')
-        hdu.data -= bias
-    if flat is not None :
-        if verbose: print('dividing by flat')
-        hdu.data /= flat
-    if trim :
-        out= window(hdu,det.trimbox)
-    else :
-        out= hdu  
-    return out
+    def superflat(self,ims,superbias=None) :
+        return self.combine(ims,superbias=superbias,normalize=True)
 
 def combine(ims,norm=False,bias=None,flat=None,trim=False,verbose=False,
             disp=None,min=None,max=None,div=False) :
@@ -151,7 +265,6 @@ def combine(ims,norm=False,bias=None,flat=None,trim=False,verbose=False,
                 disp.tv(h.data/comb,min=min,max=max)
             else :
                 disp.tv(h.data-comb,min=min,max=max)
-            pdb.set_trace()
         disp.tv(comb,min=min,max=max)
         pdb.set_trace()
     return comb
@@ -192,70 +305,36 @@ class DET() :
     """ 
     Defines detector class 
     """
-    def __init__(self) :
-        self.gain = 0.
-        self.rn = 0.
-        self.biastype = 0
-        self.biasbox = image.BOX()
-        self.normbox = image.BOX()
-        self.trimbox = image.BOX()
-        self.formstr = ".{:04d}"
-
-def getdet(idet) :
-    """ 
-    returns detector object given input detector index
-    """
-    d=DET()
-    if idet == 11 :
-       # APO SPICAM
-       d.gain=3.8
-       d.rn=6
-       d.biasbox.set(1040,1070,10,1000)
-       d.normbox.set(400,600,400,600)
-    elif idet == 16 :
-       # APO ARCES
-       d.gain=3.8
-       d.rn=7
-       d.biasbox.set(2052,2057,20,2028)
-       d.trimbox.set(200,1850,0,2047)
-    elif idet == 17 :
-       # APO 1m APOGEE
-       d.gain=3.8
-       d.rn=6
-       d.biastype=0
-       d.biasbox.set(520,540,10,500)
-       d.normbox.set(400,600,400,600)
-       d.formstr = ".{:03d}"
-    elif idet == 32 :
-       # APO 1m Leach
-       d.gain=1
-       d.rn=7
-       d.biastype=0
-       d.biasbox.set(2060,2090,10,2000)
-       d.normbox.set(900,1200,900,1200)
-       d.formstr = ".{:03d}"
-    elif idet == 36 :
-       # APO ARCTIC
-       d.gain=3.8
-       d.rn=6
-       d.biastype=1
-       d.biasbox.set(2060,2090,10,2040)
-       d.normbox.set(900,1100,900,1100)
-    elif idet == 44 :
-       # DIS blue
-       d.gain=1.71
-       d.rn=3.9
-       d.biasbox.set(1030,1050,0,2047)
-       d.trimbox.set(0,2047,0,1023)
-       d.formstr='.{:04d}b'
-    elif idet == 45 :
-       # DIS red
-       d.gain=1.71
-       d.rn=3.9
-       d.biasbox.set(1030,1050,0,2047)
-       d.trimbox.set(0,2047,0,1023)
-       d.formstr='.{:04d}r'
-    return d
+    def __init__(self,inst=None,gain=0.,rn=0.,biastype=0,biasbox=None,normbox=None,trimbox=None,formstr='{:04d}') :
+        self.gain = gain
+        self.rn = rn
+        self.biastype = biastype
+        if biasbox is None : self.biasbox = image.BOX()
+        else : self.biasbox = biasbox
+        if normbox is None : self.normbox = image.BOX()
+        else : self.normbox = normbox
+        if trimbox is None : self.trimbox = image.BOX()
+        else : self.trimbox = trimbox
+        self.formstr = formstr
+        if inst == 'ARCES' :
+            # APO ARCES
+            self.gain=3.8
+            self.rn=7
+            self.biasbox.set(2052,2057,20,2028)
+            self.trimbox.set(200,1850,0,2047)
+            self.biasbox = [ image.BOX(xr=[1030,1050],yr=[0,2047]) ,
+                             image.BOX(xr=[1030,1050],yr=[0,2047]) ]
+            self.trimbox = [ image.BOX(xr=[0,2047],yr=[0,1023]) ,
+                             image.BOX(xr=[1030,1050],yr=[0,2047]) ]
+        elif inst == 'DIS' :
+            # DIS blue
+            self.gain=[1.71,1.71]
+            self.rn=[3.9,3.9]
+            self.biasbox = [ image.BOX(xr=[1030,1050],yr=[0,2047]) ,
+                             image.BOX(xr=[1030,1050],yr=[0,2047]) ]
+            self.trimbox = [ image.BOX(xr=[0,2047],yr=[0,1023]) ,
+                             image.BOX(xr=[1030,1050],yr=[0,2047]) ]
+            self.formstr=['{:04d}b','{:04d}r']
 
 def look(tv,pause=True,files=None,list=None,min=None, max=None) :
     """ 
