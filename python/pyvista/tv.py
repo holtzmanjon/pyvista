@@ -68,10 +68,10 @@ class TV:
         self.top = 1.
 
         # plot windows
-        rect = 0.75, 0.55, 0.25, 0.4
+        rect = 0.75, 0.6, 0.25, 0.4
         plotax = tv.add_axes(rect)
         self.plotax1 = plotax
-        rect = 0.75, 0.10, 0.25, 0.4
+        rect = 0.75, 0.15, 0.25, 0.4
         plotax = tv.add_axes(rect)
         self.plotax2 = plotax
 
@@ -203,15 +203,17 @@ class TV:
                 xdata=int(round(event.xdata))
                 ydata=int(round(event.ydata))
                 self.plotax1.cla()
-                self.plotax1.plot(self.img[:,xdata])
+                self.plotax1.plot(self.img[ydata,:])
                 self.plotax1.set_xlabel('X',color='c')
                 self.plotax1.tick_params(axis='x',colors='c')
                 self.plotax1.tick_params(axis='y',colors='c')
+                self.plotax1.set_xlim(self.ax.get_xlim())
                 self.plotax2.cla()
-                self.plotax2.plot(self.img[ydata,:])
+                self.plotax2.plot(self.img[:,xdata])
                 self.plotax2.set_xlabel('Y',color='c')
                 self.plotax2.tick_params(axis='x',colors='c')
                 self.plotax2.tick_params(axis='y',colors='c')
+                self.plotax2.set_xlim(self.ax.get_ylim())
                 plt.draw()
 
             elif event.key == 'left' and subPlotNr == 0 :
