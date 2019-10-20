@@ -91,7 +91,7 @@ class Reader() :
         else : return out
         
 
-class Reduce() :
+class Reducer() :
     """ Class for reducing images of a given instrument
     """
     def __init__(self,inst=None,verbose=True) :
@@ -189,7 +189,7 @@ class Reduce() :
         self.bias(im,superbias=superbias)
         self.flat(im,superflat=superflat)
 
-class Combine() :
+class Combiner() :
     """ Class for combining calibration data frames
     """
     def __init__(self,reader=None,reducer=None,verbose=True) :
@@ -200,7 +200,6 @@ class Combine() :
     def combine(self,ims, superbias=None, normalize=False,display=None,div=True) :
         """ Combine images from list of images 
         """
-
         # create list of images, reading and overscan subtracting
         allcube = []
         for im in ims :
@@ -211,61 +210,37 @@ class Combine() :
                 self.reducer.bias(data,superbias)
             allcube.append(data)
         nframe = len(allcube)
-
-        # Need to handle multichip instruments separately because they have an extra list dimension
+        # if just one frame, put in 2D list anyway so we can use same code, allcube[nframe][nchip]
         if self.reader.nchip == 1 :
-            # load up cubes of data and variance
+            allcube=[list(i) for i in zip(*[allcube])]
+
+        # same for multichip
+        out=[] 
+        for chip in range(self.reader.nchip) :
             datacube = []
             varcube = []
             for im in range(nframe) :
                 if normalize :
-                    norm=self.reducer.normbox[0].mean(allcube[im].data)
-                    allcube[im].data /= norm
-                    allcube[im].uncertainty.array /= norm
-                datacube.append(allcube[im].data)
-                varcube.append(allcube[im].uncertainty.array**2)
-
-            # do the combination
+                    norm=self.reducer.normbox[chip].mean(allcube[im][chip].data)
+                    allcube[im][chip].data /= norm
+                    allcube[im][chip].uncertainty.array /= norm
+                datacube.append(allcube[im][chip].data)
+                varcube.append(allcube[im][chip].uncertainty.array**2)
             if self.verbose: print('median combining data....')
             med = np.median(np.array(datacube),axis=0)
             if self.verbose: print('calculating uncertainty....')
             sig = 1.253 * np.sqrt(np.mean(varcube,axis=0)/nframe)
-            out = [NDData(med,uncertainty=sig)]
+            out.append(NDData(med,uncertainty=sig))
             if display :
                 for im in range(nframe) :
                     if div :
-                        display.tv(allcube[im].data/med,min=0.95,max=1.05)
+                        display.tv(allcube[im][chip].data/med)
                     else :
-                        display.tv(allcube[im].data-med,min=-20,max=20)
+                        display.tv(allcube[im][chip].data-med)
                     print('image: ',im) 
                     pdb.set_trace()
-        else :
-            # same for multichip
-            out=[] 
-            for chip in range(self.reader.nchip) :
-                datacube = []
-                varcube = []
-                for im in range(nframe) :
-                    if normalize :
-                        norm=self.reducer.normbox[chip].mean(allcube[im][chip].data)
-                        allcube[im][chip].data /= norm
-                        allcube[im][chip].uncertainty.array /= norm
-                    datacube.append(allcube[im][chip].data)
-                    varcube.append(allcube[im][chip].uncertainty.array**2)
-                if self.verbose: print('median combining data....')
-                med = np.median(np.array(datacube),axis=0)
-                if self.verbose: print('calculating uncertainty....')
-                sig = 1.253 * np.sqrt(np.mean(varcube,axis=0)/nframe)
-                out.append(NDData(med,uncertainty=sig))
-                if display :
-                    for im in range(nframe) :
-                        if div :
-                            display.tv(allcube[im][chip].data/med)
-                        else :
-                            display.tv(allcube[im][chip].data-med)
-                        print('image: ',im) 
-                        pdb.set_trace()
 
+        # return the frame
         if len(out) == 1 : return out[0]
         else : return out
 
