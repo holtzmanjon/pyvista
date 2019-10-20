@@ -5,31 +5,48 @@ import numpy as np
 from astropy.modeling import models, fitting
 from astropy.io import ascii
 
-def mash(hd,sp=None) :
+def mash(hd,sp=None,bks=None) :
     """
     Mash image into spectra using requested window
     """
     if sp is None :
         sp=[0,hd.data.shape[0]]
-    return hd.data[sp[0]:sp[1]].sum(axis=0)
+    obj = hd.data[sp[0]:sp[1]].sum(axis=0)
+    obj = hd.data[sp[0]:sp[1]].sum(axis=0)
+
+    if bks is not None :
+        back=[]
+        for bk in bks :
+           tmp=np.median(data[bk[0]:bk[1]],axis=0)
+           back.append(tmp)
+        obj-= np.mean(back,axis=0)
+
+    return obj
 
 def wavecal(hd,file=None,wref=None,disp=None,wid=[3],rad=5,snr=3,degree=2):
     """
     Get wavelength solution for single 1D spectrum
     """
+
+    # choose middle row
     sz=hd.data.shape
-    spec=hd.data[sz[0]/2,:]
+    spec=hd.data[int(sz[0]/2),:]
     fig=plt.figure()
     plt.subplot(211)
     plt.plot(spec)
+
+    # get wavelength guess from header cards if not given wref
     if wref is None :
         w0=hd.header['DISPWC']
         pix0=sz[1]/2 
     else :
         w0=wref[0]
         pix0=wref[1]
+    # get dispersion guess from header cards if not giveby in disp
     if disp is None:
         disp=hd.header['DISPDW']
+
+    # open file with wavelengths and read
     f=open(file,'r')
     lines=[]
     for line in f :
@@ -41,25 +58,32 @@ def wavecal(hd,file=None,wref=None,disp=None,wid=[3],rad=5,snr=3,degree=2):
             plt.text(pix,0.,'{:7.1f}'.format(w),rotation='vertical',va='top',ha='center')
             lines.append(w)
     lines=np.array(lines)
+    f.close()
 
+    # find peaks
     peaks=scipy.signal.find_peaks_cwt(spec,np.array(wid),min_snr=snr)
     cents=[]
+
+    # get centroid around peaks using window of width rad
     for peak in peaks :
         if peak > rad and peak < sz[1]-rad :
             cents.append((spec[peak-rad:peak+rad]*np.arange(peak-rad,peak+rad)).sum()/spec[peak-rad:peak+rad].sum())
     cents=np.array(cents)
     print('cents:', cents)
+
     waves=[]
     weight=[]
+    print('Centroid  W0  Wave')
     for cent in cents :
         w=(cent-pix0)*disp+w0
         plt.plot([cent,cent],[0,10000],'k')
-        print(cent, w, lines[np.abs(w-lines).argmin()])
+        print('{:8.2f}{:8.2f}{:8.2f}'.format(cent, w, lines[np.abs(w-lines).argmin()]))
         waves.append(lines[np.abs(w-lines).argmin()])
         weight.append(1.)
     waves=np.array(waves)
     weight=np.array(weight)
-    
+
+    # do polynomial fit    
     done = False
     fit=fitting.LinearLSQFitter()
     mod=models.Polynomial1D(degree=degree)
@@ -74,7 +98,7 @@ def wavecal(hd,file=None,wref=None,disp=None,wid=[3],rad=5,snr=3,degree=2):
         diff=p(cents[gd])-waves[gd]
         plt.ylim(diff.min()-1,diff.max()+1)
         for i in range(len(cents)) :
-            print(cents[i],p(cents[i])-waves[i],'{:2d}'.format(i))
+            print('{:8.2f}{:8.2f}{:2d}'.format(cents[i],p(cents[i])-waves[i],i))
             plt.subplot(212)
             plt.text(cents[i],p(cents[i])-waves[i],'{:2d}'.format(i),va='top',ha='center')
             plt.subplot(211)
@@ -84,8 +108,8 @@ def wavecal(hd,file=None,wref=None,disp=None,wid=[3],rad=5,snr=3,degree=2):
               plt.plot([cents[i],cents[i]],[0,10000],'r')
         plt.draw()
         for i in range(len(cents)) :
-            print(i, cents[i], p(cents[i]), waves[i], waves[i]-p(cents[i]))
-        i = raw_input('enter ID of line to remove (-n for all lines<n, +n for all lines>n, return to continue): ')
+            print('{:3d}{:8.2f}{:8.2f}{:8.2f}'.format(i, cents[i], p(cents[i]), waves[i], waves[i]-p(cents[i])))
+        i = input('enter ID of line to remove (-n for all lines<n, +n for all lines>n, return to continue): ')
         if i is '' :
             done = True
         elif '+' in i :
@@ -96,6 +120,8 @@ def wavecal(hd,file=None,wref=None,disp=None,wid=[3],rad=5,snr=3,degree=2):
             weight[int(i)] = 0.
         else :
             print('invalid input')
+
+    print('rms: ', diff.std())
 
     return p
 
