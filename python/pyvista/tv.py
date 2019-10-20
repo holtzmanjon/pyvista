@@ -27,16 +27,19 @@ class TV:
         """
     
         # create new figure,set title, margins, and facecolor
-        tv = plt.figure(figsize=(10,8.5))
+        #tv = plt.figure(figsize=(10,8.5))
+        tv = plt.figure(figsize=(12,8.5))
         self.fig = tv
         tv.canvas.set_window_title('Image display window')
         tv.set_facecolor('darkred')
         #ax = plt.axes()
         #ax = tv.add_subplot(111)
-        rect = 0., 0.05, 1., 0.95
+        #rect = 0., 0.05, 1., 0.95
+        rect = 0., 0.05, 0.7, 0.95
         ax = tv.add_axes(rect)
         self.ax = ax
         ax.axis('off')
+        self.ax = ax
         self.axis = False
         self.aspect = aspect
         self.doflip = False
@@ -63,6 +66,14 @@ class TV:
         #tv.subplots_adjust(left=-0.15,right=1.15,bottom=-0.10,top=1.00)
         self.bottom = 0.
         self.top = 1.
+
+        # plot windows
+        rect = 0.75, 0.55, 0.25, 0.4
+        plotax = tv.add_axes(rect)
+        self.plotax1 = plotax
+        rect = 0.75, 0.10, 0.25, 0.4
+        plotax = tv.add_axes(rect)
+        self.plotax2 = plotax
 
         # function to show image values, etc.
         def format_coord(x, y):
@@ -188,6 +199,21 @@ class TV:
                 self.aximage.set_cmap(cm)
                 plt.draw()
 
+            elif event.key == 'x' and subPlotNr == 0 :
+                xdata=int(round(event.xdata))
+                ydata=int(round(event.ydata))
+                self.plotax1.cla()
+                self.plotax1.plot(self.img[:,xdata])
+                self.plotax1.set_xlabel('X',color='c')
+                self.plotax1.tick_params(axis='x',colors='c')
+                self.plotax1.tick_params(axis='y',colors='c')
+                self.plotax2.cla()
+                self.plotax2.plot(self.img[ydata,:])
+                self.plotax2.set_xlabel('Y',color='c')
+                self.plotax2.tick_params(axis='x',colors='c')
+                self.plotax2.tick_params(axis='y',colors='c')
+                plt.draw()
+
             elif event.key == 'left' and subPlotNr == 0 :
                 xs,ys = scale()
                 try:
@@ -291,10 +317,11 @@ class TV:
             self.button = False
 
         elif event.name == 'motion_notify_event'  and self.button :
+            disp = self.fig.axes[subPlotNr].transData.transform([event.ydata,event.xdata])
+            yend,xend = self.fig.axes[subPlotNr].transAxes.inverted().transform(disp)
+            print(subPlotNr,xend,yend)
             # if motion in colorbar with key pressed in colorbar, adjust colorbar
             if subPlotNr == 1 :
-                disp = self.fig.axes[1].transData.transform([event.ydata,event.xdata])
-                yend,xend = self.fig.axes[1].transAxes.inverted().transform(disp)
                 if event.button == 2 :
                     diff = (xend - self.xstart)
                     self.top = self.top + diff
