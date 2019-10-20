@@ -29,17 +29,22 @@ class Reader() :
     """
 
     def __init__(self,dir='./',root='*',formstr='{:04d}',gain=1.,rn=0.,inst=None,verbose=True) :
-        """ set format strings
+        """ set default directory and format strings for reading with shorthand number ID if desired
+            set gain and readout noise to add uncertainty array upon reading
         """
         self.dir=dir
         self.root=root
         self.verbose=verbose
+
+        # we will allow for instruments to have multiple channels, so everything goes in lists
         if type(gain) is list : self.gain=gain
         else : self.gain = [gain]
         if type(rn) is list : self.rn=rn
         else : self.rn = [rn]
-        self.formstr=[formstr]
+        if type(formstr) is list : self.formstr=formstr
+        else : self.formstr=[formstr]
         if inst == 'DIS' :
+            # DIS has two channels so we we read both
             self.formstr=['{:04d}b','{:04d}r']
             self.gain=[1.68,1.88]
             self.rn=[4.9,4.6]
@@ -66,15 +71,22 @@ class Reader() :
             image (CCDData ) : CCDData object
         """
         out=[]
+        # loop over different channels (if any)
         for form,gain,rn in zip(self.formstr,self.gain,self.rn) :
+            # find the files that match the directory/format
             file=glob.glob(self.dir+'/'+self.root+form.format(num)+'.fits*')
             if len(file) > 1 : 
                 if self.verbose : print('more than one match found, using first!',file)
             file=file[0]
+
+            # read the file into a CCDData object
             if self.verbose : print('Reading file: ', file)
             im=CCDData.read(file,hdu=ext,unit='adu')
+            # Add uncertainty
             im.uncertainty = np.sqrt( im.data/gain + (rn/gain)**2 )
             out.append(im)
+
+        # return the data
         if len(out) == 1 : return out[0]
         else : return out
         
@@ -87,6 +99,7 @@ class Reduce() :
         """
         self.verbose= verbose
         if inst == 'DIS' :
+            # DIS has two channels
             self.biastype = 0
             self.biasbox = [ image.BOX(xr=[2050,2096],yr=[0,2047]) ,
                              image.BOX(xr=[2050,2096],yr=[0,2047]) ]
@@ -102,8 +115,10 @@ class Reduce() :
             
         elif inst == 'ARCTIC' :
             self.biastype = 0
-            self.biasbox = [image.BOX(xr=[2052,2057],yr=[20,2028])]
-            self.trimbox = [image.BOX(xr=[200,1850],yr=[0,2047])]
+            self.biasbox = [image.BOX(xr=[2052,2090],yr=[20,2028])]
+            self.trimbox = [image.BOX(xr=[0,2048],yr=[0,2048])]
+            self.normbox = [ image.BOX(xr=[800,1200],yr=[800,1200]) ]
+
         if self.verbose :
             print('Biastype : {:d}'.format(self.biastype))
             print('Bias box: ')
@@ -131,26 +146,48 @@ class Reduce() :
          #    over=image.stretch(over,ncol=hdu[ext].data.shape[1])
          #    hdu[ext].data -= over
     
-    def bias(self,im,superbias) :
+    def bias(self,im,superbias=None) :
+         """ Superbias subtraction
+         """
+         # only subtract if we are given a superbias!
+         if superbias is None : return
+
+         # work with lists so that we can handle multi-channel instruments
          if type(im) is not list : ims=[im]
          else : ims = im
          if type(superbias) is not list : superbiases=[superbias]
          else : superbiases = superbias
          for im,bias in zip(ims,superbiases) :
+             if self.verbose : print('subracting superbias...')
+             # subtract superbias
              im.data -= bias.data
+             # adjust uncertainty
              im.uncertainty = np.sqrt(im.uncertainty.array**2 + bias.uncertainty.array**2)
              im.header.add_comment('subtracted superbias')
 
-    def flat(self,im,superflat) :
+    def flat(self,im,superflat=None) :
+         """ Flat fielding
+         """
+         # only flatfield if we are given a superflat!
+         if superflat is None : return
+
          if type(im) is not list : ims=[im]
          else : ims = im
-         if type(superflats) is not list : superflats=[superflat]
+         if type(superflat) is not list : superflats=[superflat]
          else : superflats = superflat
          for im,flat in zip(ims,superflats) :
-             im.uncertainty =  (im.uncertainty.array**2 / im.data**2 + flat.uncertainty.array**2 / flat.data**2 ) 
+             if self.verbose : print('flat fielding...')
+             im.uncertainty.array =  (im.uncertainty.array**2 / im.data**2 + flat.uncertainty.array**2 / flat.data**2 ) 
              im.data /= flat.data
-             im.uncertainty *=  im.data**2
+             im.uncertainty.array *=  im.data**2
              im.header.add_comment('divided by superflat')
+
+    def reduce(self,im,superbias=None,superflat=None) :
+        """ Full reduction
+        """
+        self.overscan(im)
+        self.bias(im,superbias=superbias)
+        self.flat(im,superflat=superflat)
 
 class Combine() :
     """ Class for combining calibration data frames
@@ -160,7 +197,7 @@ class Combine() :
         self.reducer = reducer
         self.verbose = verbose
 
-    def combine(self,ims, superbias=None, normalize=False) :
+    def combine(self,ims, superbias=None, normalize=False,display=None,div=True) :
         """ Combine images from list of images 
         """
 
@@ -194,6 +231,14 @@ class Combine() :
             if self.verbose: print('calculating uncertainty....')
             sig = 1.253 * np.sqrt(np.mean(varcube,axis=0)/nframe)
             out = [NDData(med,uncertainty=sig)]
+            if display :
+                for im in range(nframe) :
+                    if div :
+                        display.tv(allcube[im].data/med,min=0.95,max=1.05)
+                    else :
+                        display.tv(allcube[im].data-med,min=-20,max=20)
+                    print('image: ',im) 
+                    pdb.set_trace()
         else :
             # same for multichip
             out=[] 
@@ -212,16 +257,44 @@ class Combine() :
                 if self.verbose: print('calculating uncertainty....')
                 sig = 1.253 * np.sqrt(np.mean(varcube,axis=0)/nframe)
                 out.append(NDData(med,uncertainty=sig))
+                if display :
+                    for im in range(nframe) :
+                        if div :
+                            display.tv(allcube[im][chip].data/med)
+                        else :
+                            display.tv(allcube[im][chip].data-med)
+                        print('image: ',im) 
+                        pdb.set_trace()
 
         if len(out) == 1 : return out[0]
         else : return out
 
-    def superbias(self,ims) :
-        return self.combine(ims)
+    def superbias(self,ims,display=None) :
+        """ Driver for superbias combination (no superbias subraction no normalization)
+        """
+        return self.combine(ims,display=display,div=False)
 
-    def superflat(self,ims,superbias=None) :
-        return self.combine(ims,superbias=superbias,normalize=True)
+    def superflat(self,ims,superbias=None,display=None) :
+        """ Driver for superflat combination (with superbias if specified, normalize to normbox
+        """
+        return self.combine(ims,superbias=superbias,normalize=True,display=display)
 
+    def specflat(self,ims,superbias=None,wid=100,display=None) :
+        """ Spectral flat takes out variation along wavelength direction
+        """
+        flats = self.combine(ims,superbias=superbias,normalize=True,display=display)
+        boxcar = Box1DKernel(wid)
+        for iflat,flat in enumerate(flats) : 
+            nrows=flats[iflat].data.shape[0]
+            c=convolve(flats[iflat].data[int(nrows/2)-50:int(nrows/2)+50,:].sum(axis=0),boxcar,boundary='extend')
+            for row in range(flats[iflat].data.shape[0]) :
+                flats[iflat].data[row,:] /= (c/wid)
+                flats[iflat].uncertainty.array[row,:] /= (c/wid)
+
+        return flats
+
+
+# old combine routine
 def combine(ims,norm=False,bias=None,flat=None,trim=False,verbose=False,
             disp=None,min=None,max=None,div=False) :
     """ 
