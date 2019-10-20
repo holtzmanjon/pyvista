@@ -139,12 +139,11 @@ def tvstar(tv,plot=None,size=11,fwhm=5,scale=1,pafixed=False) :
     """ Fit gaussian and show radial profile of stars marked interactively
     """
     key=''
-    if plot is None : plot=plots.multi(1,1)
     print('Hit key near star center, "q" to quit')
     while key != 'q' :
         key,x,y=tv.tvmark()
-        plot[1].cla()
-        gfit(tv.img,x,y,size=size,fwhm=fwhm,scale=scale,plot=plot[1],fig=plot[0].number,sub=False,pafixed=pafixed)
+        tv.plotax1.cla()
+        gfit(tv.img,x,y,size=size,fwhm=fwhm,scale=scale,plot=tv.plotax1,sub=False,pafixed=pafixed)
 
 def window(hdu,box) :
     """
