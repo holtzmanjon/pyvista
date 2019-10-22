@@ -125,12 +125,12 @@ class Reducer() :
             for box in self.biasbox :
                 box.show()
             
-    def overscan(self,im) :
-         """ Overscan subtration
-         """
-         if type(im) is not list : ims=[im]
-         else : ims = im
-         if self.biastype == 0 :    
+    def overscan(self,im,trim=False) :
+        """ Overscan subtration
+        """
+        if type(im) is not list : ims=[im]
+        else : ims = im
+        if self.biastype == 0 :    
             out=[]
             for im,biasbox in zip(ims,self.biasbox) :
                 b=biasbox.mean(im.data)
@@ -139,12 +139,19 @@ class Reducer() :
                 im.header.add_comment('subtracted overscan: {:f}'.format(b))
                 out.append(im)
             
-         #elif det.biastype == 1 :
-         #    over=np.median(hdu[ext].data[:,det.biasbox.xmin:det.biasbox.xmax],axis=1)
-         #    boxcar = Box1DKernel(10)
-         #    over=convolve(over,boxcar,boundary='extend')
-         #    over=image.stretch(over,ncol=hdu[ext].data.shape[1])
-         #    hdu[ext].data -= over
+        #elif det.biastype == 1 :
+        #    over=np.median(hdu[ext].data[:,det.biasbox.xmin:det.biasbox.xmax],axis=1)
+        #    boxcar = Box1DKernel(10)
+        #    over=convolve(over,boxcar,boundary='extend')
+        #    over=image.stretch(over,ncol=hdu[ext].data.shape[1])
+        #    hdu[ext].data -= over
+        if trim :
+            for im,trimbox in zip(ims,self.trimbox) :
+                pdb.set_trace()
+                im.data = im.data[trimbox.ymin:trimbox.ymin+trimbox.nrow(),
+                                  trimbox.xmin:trimbox.xmin+trimbox.ncol()]
+                im.uncertainty.array = im.uncertainty.array[trimbox.ymin:trimbox.ymin+trimbox.nrow(),
+                                                            trimbox.xmin:trimbox.xmin+trimbox.ncol()]
     
     def bias(self,im,superbias=None) :
          """ Superbias subtraction
