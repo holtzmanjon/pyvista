@@ -4,6 +4,7 @@ from astropy.io import fits
 from astropy.io import ascii
 from astropy.modeling import models, fitting
 from astropy.convolution import convolve, Box1DKernel
+from scipy import signal
 import matplotlib.pyplot as plt
 import glob
 import bz2
@@ -427,4 +428,23 @@ def getdata(hd) :
     else :
         print('Unrecognized data type: ',type(hd))
     return(data)
+
+def xcorr(a,b,lags,medfilt=0) :
+    """ Cross correlation function between two arrays, calculated at lags
+    """
+
+    out=np.zeros(len(lags))
+    xs = -lags[0]
+    xe = len(a)-lags[-1]
+    print(xs,xe)
+    if medfilt>0 :
+        atmp=a-signal.medfilt(a,kernel_size=medfilt)
+        btmp=b-signal.medfilt(b,kernel_size=medfilt)
+    else :
+        atmp=a
+        btmp=b
+    for i,lag in enumerate(lags) :
+        out[i]=np.sum(atmp[xs:xe]*btmp[xs+lag:xe+lag])
+
+    return np.array(out)
  
