@@ -321,7 +321,6 @@ class TV:
         elif event.name == 'motion_notify_event'  and self.button :
             disp = self.fig.axes[subPlotNr].transData.transform([event.ydata,event.xdata])
             yend,xend = self.fig.axes[subPlotNr].transAxes.inverted().transform(disp)
-            print(subPlotNr,xend,yend)
             # if motion in colorbar with key pressed in colorbar, adjust colorbar
             if subPlotNr == 1 :
                 if event.button == 2 :
@@ -521,9 +520,9 @@ class TV:
             xsize=(x1-x0)
             ysize=(y1-y0)
         else :
-            x0=x-size/2-0.5
+            x0=x-size/2
             xsize=size
-            y0=y-size/2-0.5
+            y0=y-size/2
             ysize=size
         self.ax.add_patch(patches.Rectangle((x0,y0),xsize,ysize,fill=False,color=color))
         plt.draw()
