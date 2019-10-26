@@ -56,6 +56,10 @@ class Reader() :
             self.formstr=['{:04d}']
             self.gain=[2.0]
             self.rn=[3.7]
+        elif inst == 'TSPEC' :
+            self.formstr=['{:04d}']
+            self.gain=[3.5]
+            self.rn=[18]
         self.nchip = len(self.formstr)
         if self.verbose :
             for form in self.formstr :
@@ -75,7 +79,10 @@ class Reader() :
         for form,gain,rn in zip(self.formstr,self.gain,self.rn) :
             # find the files that match the directory/format
             file=glob.glob(self.dir+'/'+self.root+form.format(num)+'.fits*')
-            if len(file) > 1 : 
+            if len(file) == 0 : 
+                print(('cannot find file matching: {:s}/{s}'+form+'.fits').format(self.dir,self.root,num))
+                return
+            elif len(file) > 1 : 
                 if self.verbose : print('more than one match found, using first!',file)
             file=file[0]
 
@@ -115,6 +122,12 @@ class Reducer() :
             
         elif inst == 'ARCTIC' :
             self.biastype = 0
+            self.biasbox = [image.BOX(xr=[2052,2090],yr=[20,2028])]
+            self.trimbox = [image.BOX(xr=[0,2048],yr=[0,2048])]
+            self.normbox = [ image.BOX(xr=[800,1200],yr=[800,1200]) ]
+
+        elif inst == 'TSPEC' :
+            self.biastype = -1
             self.biasbox = [image.BOX(xr=[2052,2090],yr=[20,2028])]
             self.trimbox = [image.BOX(xr=[0,2048],yr=[0,2048])]
             self.normbox = [ image.BOX(xr=[800,1200],yr=[800,1200]) ]
@@ -204,8 +217,8 @@ class Combiner() :
         self.reducer = reducer
         self.verbose = verbose
 
-    def combine(self,ims, superbias=None, normalize=False,display=None,div=True) :
-        """ Combine images from list of images 
+    def getcube(self,ims, superbias=None) :
+        """ Read images into data cube
         """
         # create list of images, reading and overscan subtracting
         allcube = []
@@ -216,12 +229,42 @@ class Combiner() :
             if superbias is not None :
                 self.reducer.bias(data,superbias)
             allcube.append(data)
-        nframe = len(allcube)
+
         # if just one frame, put in 2D list anyway so we can use same code, allcube[nframe][nchip]
         if self.reader.nchip == 1 :
             allcube=[list(i) for i in zip(*[allcube])]
 
-        # same for multichip
+        return allcube
+
+    def sum(self,ims,superbias=None) :
+        """ Coadd input images
+        """
+        allcube = self.getcube(ims,superbias=superbias)
+        nframe = len(allcube)
+        
+        out=[]
+        for chip in range(self.reader.nchip) :
+            datacube = []
+            varcube = []
+            for im in range(nframe) :
+                datacube.append(allcube[im][chip].data)
+                varcube.append(allcube[im][chip].uncertainty.array**2)
+            sum = np.sum(np.array(datacube),axis=0)
+            sig = np.sum(np.array(varcube),axis=0)
+            out.append(NDData(sum,uncertainty=sig))
+        
+        # return the frame
+        if len(out) == 1 : return out[0]
+        else : return out
+
+    def median(self,ims, superbias=None, normalize=False,display=None,div=True) :
+        """ Combine images from list of images 
+        """
+        # create list of images, reading and overscan subtracting
+        allcube = self.getcube(ims,superbias=superbias)
+        nframe = len(allcube)
+
+        # do the combination
         out=[] 
         for chip in range(self.reader.nchip) :
             datacube = []
@@ -236,7 +279,7 @@ class Combiner() :
             if self.verbose: print('median combining data....')
             med = np.median(np.array(datacube),axis=0)
             if self.verbose: print('calculating uncertainty....')
-            sig = 1.253 * np.sqrt(np.mean(varcube,axis=0)/nframe)
+            sig = 1.253 * np.sqrt(np.mean(np.array(varcube),axis=0)/nframe)
             out.append(NDData(med,uncertainty=sig))
             if display :
                 for im in range(nframe) :
@@ -254,17 +297,17 @@ class Combiner() :
     def superbias(self,ims,display=None) :
         """ Driver for superbias combination (no superbias subraction no normalization)
         """
-        return self.combine(ims,display=display,div=False)
+        return self.median(ims,display=display,div=False)
 
     def superflat(self,ims,superbias=None,display=None) :
         """ Driver for superflat combination (with superbias if specified, normalize to normbox
         """
-        return self.combine(ims,superbias=superbias,normalize=True,display=display)
+        return self.median(ims,superbias=superbias,normalize=True,display=display)
 
     def specflat(self,ims,superbias=None,wid=100,display=None) :
         """ Spectral flat takes out variation along wavelength direction
         """
-        flats = self.combine(ims,superbias=superbias,normalize=True,display=display)
+        flats = self.median(ims,superbias=superbias,normalize=True,display=display)
         boxcar = Box1DKernel(wid)
         for iflat,flat in enumerate(flats) : 
             nrows=flats[iflat].data.shape[0]
