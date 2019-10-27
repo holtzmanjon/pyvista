@@ -66,6 +66,82 @@ class Reader() :
                 print('will use format:  {:s}/{:s}.{:s}.fits'.format(self.dir,self.root,form))
             print('         gain:  {}    rn: {}'.format(self.gain,self.rn))
 
+
+class Reducer() :
+    """ Class for reducing images of a given instrument
+    """
+    def __init__(self,inst=None,dir='./',root='*',formstr='{04d}',gain=1,rn=0.,verbose=True) :
+        """  Initialize reducer with information about how to reduce
+        """
+        self.dir=dir
+        self.root=root
+        self.verbose=verbose
+
+        # we will allow for instruments to have multiple channels, so everything goes in lists
+        if type(gain) is list : self.gain=gain
+        else : self.gain = [gain]
+        if type(rn) is list : self.rn=rn
+        else : self.rn = [rn]
+        if type(formstr) is list : self.formstr=formstr
+        else : self.formstr=[formstr]
+        
+        if inst == 'DIS' :
+            # DIS has two channels so we we read both
+            self.formstr=['{:04d}b','{:04d}r']
+            self.gain=[1.68,1.88]
+            self.rn=[4.9,4.6]
+            self.biastype = 0
+            self.biasbox = [ image.BOX(xr=[2050,2096],yr=[0,2047]) ,
+                             image.BOX(xr=[2050,2096],yr=[0,2047]) ]
+            self.trimbox = [ image.BOX(xr=[0,2047],yr=[0,1023]) ,
+                             image.BOX(xr=[0,2047],yr=[0,1023]) ]
+            self.normbox = [ image.BOX(xr=[1000,1050],yr=[500,600]) ,
+                             image.BOX(xr=[1000,1050],yr=[500,600]) ]
+        elif inst == 'ARCES' :
+            self.formstr=['{:04d}']
+            self.gain=[3.8]
+            self.rn=[7]
+            self.biastype = 0
+            self.biasbox = [image.BOX(xr=[2052,2057],yr=[20,2028])]
+            self.trimbox = [image.BOX(xr=[200,1850],yr=[0,2047])]
+            self.normbox = [ image.BOX(xr=[1000,1050],yr=[1000,1050]) ]
+            
+        elif inst == 'ARCTIC' :
+            self.formstr=['{:04d}']
+            self.gain=[2.0]
+            self.rn=[3.7]
+            self.biastype = 0
+            self.biasbox = [image.BOX(xr=[2052,2090],yr=[20,2028])]
+            self.trimbox = [image.BOX(xr=[0,2048],yr=[0,2048])]
+            self.normbox = [ image.BOX(xr=[800,1200],yr=[800,1200]) ]
+
+        elif inst == 'TSPEC' :
+            self.formstr=['{:04d}']
+            self.gain=[3.5]
+            self.rn=[18]
+            self.biastype = -1
+            self.biasbox = [image.BOX(xr=[2052,2090],yr=[20,2028])]
+            self.trimbox = [image.BOX(xr=[0,2048],yr=[0,2048])]
+            self.normbox = [ image.BOX(xr=[800,1200],yr=[800,1200]) ]
+
+        # save number of chips for convenience
+        self.nchip = len(self.formstr)
+
+        if self.verbose :
+            for form in self.formstr :
+                print('will use format:  {:s}/{:s}.{:s}.fits'.format(self.dir,self.root,form))
+            print('         gain:  {}    rn: {}'.format(self.gain,self.rn))
+            print('Biastype : {:d}'.format(self.biastype))
+            print('Bias box: ')
+            for box in self.biasbox :
+                box.show()
+            print('Trim box: ')
+            for box in self.trimbox :
+                box.show()
+            print('Norm box: ')
+            for box in self.normbox :
+                box.show()
+
     def rd(self,num, ext=0) :
         """ 
         Read an image
@@ -78,9 +154,16 @@ class Reader() :
         # loop over different channels (if any)
         for form,gain,rn in zip(self.formstr,self.gain,self.rn) :
             # find the files that match the directory/format
-            file=glob.glob(self.dir+'/'+self.root+form.format(num)+'.fits*')
+            if type(num) is int :
+                search=self.dir+'/'+self.root+form.format(num)+'.fits*'
+            elif type(num) is str :
+                if num.find('/') >= 0 :
+                    search='*'+num+'*'
+                else :
+                    search=self.dir+'/*'+num+'*'
+            file=glob.glob(search)
             if len(file) == 0 : 
-                print(('cannot find file matching: {:s}/{s}'+form+'.fits').format(self.dir,self.root,num))
+                print('cannot find file matching: '+search)
                 return
             elif len(file) > 1 : 
                 if self.verbose : print('more than one match found, using first!',file)
@@ -89,83 +172,41 @@ class Reader() :
             # read the file into a CCDData object
             if self.verbose : print('Reading file: ', file)
             im=CCDData.read(file,hdu=ext,unit='adu')
-            # Add uncertainty
-            im.uncertainty = np.sqrt( im.data/gain + (rn/gain)**2 )
             out.append(im)
 
         # return the data
         if len(out) == 1 : return out[0]
         else : return out
-        
-
-class Reducer() :
-    """ Class for reducing images of a given instrument
-    """
-    def __init__(self,inst=None,verbose=True) :
-        """  Initialize reducer with information about how to reduce
-        """
-        self.verbose= verbose
-        if inst == 'DIS' :
-            # DIS has two channels
-            self.biastype = 0
-            self.biasbox = [ image.BOX(xr=[2050,2096],yr=[0,2047]) ,
-                             image.BOX(xr=[2050,2096],yr=[0,2047]) ]
-            self.trimbox = [ image.BOX(xr=[0,2047],yr=[0,1023]) ,
-                             image.BOX(xr=[0,2047],yr=[0,1023]) ]
-            self.normbox = [ image.BOX(xr=[1000,1050],yr=[500,600]) ,
-                             image.BOX(xr=[1000,1050],yr=[500,600]) ]
-        elif inst == 'ARCES' :
-            self.biastype = 0
-            self.biasbox = [image.BOX(xr=[2052,2057],yr=[20,2028])]
-            self.trimbox = [image.BOX(xr=[200,1850],yr=[0,2047])]
-            self.normbox = [ image.BOX(xr=[1000,1050],yr=[1000,1050]) ]
-            
-        elif inst == 'ARCTIC' :
-            self.biastype = 0
-            self.biasbox = [image.BOX(xr=[2052,2090],yr=[20,2028])]
-            self.trimbox = [image.BOX(xr=[0,2048],yr=[0,2048])]
-            self.normbox = [ image.BOX(xr=[800,1200],yr=[800,1200]) ]
-
-        elif inst == 'TSPEC' :
-            self.biastype = -1
-            self.biasbox = [image.BOX(xr=[2052,2090],yr=[20,2028])]
-            self.trimbox = [image.BOX(xr=[0,2048],yr=[0,2048])]
-            self.normbox = [ image.BOX(xr=[800,1200],yr=[800,1200]) ]
-
-        if self.verbose :
-            print('Biastype : {:d}'.format(self.biastype))
-            print('Bias box: ')
-            for box in self.biasbox :
-                box.show()
             
     def overscan(self,im,trim=False) :
         """ Overscan subtration
         """
         if type(im) is not list : ims=[im]
         else : ims = im
-        if self.biastype == 0 :    
-            out=[]
-            for im,biasbox in zip(ims,self.biasbox) :
+        
+        for im,gain,rn,biasbox,trimbox in zip(ims,self.gain,self.rn,self.biasbox,self.trimbox) :
+            if self.biastype == 0 :
                 b=biasbox.mean(im.data)
                 if self.verbose: print('subtracting overscan: ', b)
                 im.data = im.data.astype(float)-b
                 im.header.add_comment('subtracted overscan: {:f}'.format(b))
-                out.append(im)
-            
-        #elif det.biastype == 1 :
-        #    over=np.median(hdu[ext].data[:,det.biasbox.xmin:det.biasbox.xmax],axis=1)
-        #    boxcar = Box1DKernel(10)
-        #    over=convolve(over,boxcar,boundary='extend')
-        #    over=image.stretch(over,ncol=hdu[ext].data.shape[1])
-        #    hdu[ext].data -= over
-        if trim :
-            for im,trimbox in zip(ims,self.trimbox) :
-                pdb.set_trace()
+            #elif det.biastype == 1 :
+            #    over=np.median(hdu[ext].data[:,det.biasbox.xmin:det.biasbox.xmax],axis=1)
+            #    boxcar = Box1DKernel(10)
+            #    over=convolve(over,boxcar,boundary='extend')
+            #    over=image.stretch(over,ncol=hdu[ext].data.shape[1])
+            #    hdu[ext].data -= over
+
+            # Add uncertainty
+            im.uncertainty = np.sqrt( im.data/gain + (rn/gain)**2 )
+
+            if trim:
                 im.data = im.data[trimbox.ymin:trimbox.ymin+trimbox.nrow(),
                                   trimbox.xmin:trimbox.xmin+trimbox.ncol()]
                 im.uncertainty.array = im.uncertainty.array[trimbox.ymin:trimbox.ymin+trimbox.nrow(),
                                                             trimbox.xmin:trimbox.xmin+trimbox.ncol()]
-    
+
+
     def bias(self,im,superbias=None) :
          """ Superbias subtraction
          """
@@ -202,12 +243,14 @@ class Reducer() :
              im.uncertainty.array *=  im.data**2
              im.header.add_comment('divided by superflat')
 
-    def reduce(self,im,superbias=None,superflat=None) :
+    def reduce(self,num,superbias=None,superflat=None) :
         """ Full reduction
         """
+        im=self.rd(num)
         self.overscan(im)
         self.bias(im,superbias=superbias)
         self.flat(im,superflat=superflat)
+        return im
 
 class Combiner() :
     """ Class for combining calibration data frames
