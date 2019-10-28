@@ -1,0 +1,68 @@
+SPECTRA module
+**************
+
+spectra is a module that implements some classes/tools for handling
+basic spectral data reduction: extraction of spectra and wavelength calibration.
+The routines allow fo both longslit data, echelle data, and a
+combination (multiple orders with longslit, or multiple slitlets).
+
+Data are read and processed using NDData structures, which carry along both 
+the image data and an associated uncertainty array.
+
+The routines are implemented with two basic classes:
+
+spectra.Trace :
+
+spectra.Wavecal : 
+
+In more detail:
+
+Trace 
+=====
+
+Attributes
+   - type
+   - order
+   - pix0
+   - spectrum
+   - rad
+   - model
+   - sc0
+
+
+Methods:
+  - trace
+  - extract
+  - extract2d
+
+Wavecal
+=======
+
+Attributes:
+  - type : type of solution ('poly' or 'chebyshev')
+  - degree : polynomial degree for wavelength
+  - ydegree : polynomial degree for  y dimension
+  - pix0 : reference pixel
+  - order0 : spectral order for first y pixel (needed for cross-dispersed solutions
+  - spectrum : spectrum from which fit is derived
+  - waves
+  - pix
+  - x
+  - y
+  - weights
+
+Methods :
+  - wave
+  - fit
+  - set_spectrum
+  - get_spectrum
+  - identify
+
+
+spectra functions
+=================
+
+.. automodule:: pyvista.spectra
+   :members:
+   :member-order: bysource
+
