@@ -435,16 +435,16 @@ def xcorr(a,b,lags,medfilt=0) :
 
     out=np.zeros(len(lags))
     xs = -lags[0]
-    xe = len(a)-lags[-1]
+    xe = a.shape[-1]-lags[-1]
     print(xs,xe)
+    atmp=np.atleast_2d(a)
+    btmp=np.atleast_2d(b)
     if medfilt>0 :
-        atmp=a-signal.medfilt(a,kernel_size=medfilt)
-        btmp=b-signal.medfilt(b,kernel_size=medfilt)
-    else :
-        atmp=a
-        btmp=b
+        atmp=np.atleast_2d(atmp-signal.medfilt(a,kernel_size=[1,medfilt]))
+        btmp=np.atleast_2d(btmp-signal.medfilt(b,kernel_size=[1,medfilt]))
+
     for i,lag in enumerate(lags) :
-        out[i]=np.sum(atmp[xs:xe]*btmp[xs+lag:xe+lag])
+        out[i]=np.sum(atmp[:,xs:xe]*btmp[:,xs+lag:xe+lag])
 
     return np.array(out)
  
