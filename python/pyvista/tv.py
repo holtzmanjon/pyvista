@@ -527,6 +527,12 @@ class TV:
         self.ax.add_patch(patches.Rectangle((x0,y0),xsize,ysize,fill=False,color=color))
         plt.draw()
 
+    def clear(self) :
+        """  Clear image
+        """
+        self.ax.cla()
+        self.ax.axis('off')
+
     def tvclear(self) :
         """
         clears patches from image
