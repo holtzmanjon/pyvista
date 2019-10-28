@@ -255,8 +255,7 @@ class Reducer() :
 class Combiner() :
     """ Class for combining calibration data frames
     """
-    def __init__(self,reader=None,reducer=None,verbose=True) :
-        self.reader = reader
+    def __init__(self,reducer=None,verbose=True) :
         self.reducer = reducer
         self.verbose = verbose
 
@@ -267,14 +266,13 @@ class Combiner() :
         allcube = []
         for im in ims :
             if self.verbose: print('im: ',im)
-            data = self.reader.rd(im)
-            self.reducer.overscan(data)
+            data = self.reducer.reduce(im)
             if superbias is not None :
                 self.reducer.bias(data,superbias)
             allcube.append(data)
 
         # if just one frame, put in 2D list anyway so we can use same code, allcube[nframe][nchip]
-        if self.reader.nchip == 1 :
+        if self.reducer.nchip == 1 :
             allcube=[list(i) for i in zip(*[allcube])]
 
         return allcube
@@ -286,7 +284,7 @@ class Combiner() :
         nframe = len(allcube)
         
         out=[]
-        for chip in range(self.reader.nchip) :
+        for chip in range(self.reducer.nchip) :
             datacube = []
             varcube = []
             for im in range(nframe) :
@@ -309,7 +307,7 @@ class Combiner() :
 
         # do the combination
         out=[] 
-        for chip in range(self.reader.nchip) :
+        for chip in range(self.reducer.nchip) :
             datacube = []
             varcube = []
             for im in range(nframe) :
