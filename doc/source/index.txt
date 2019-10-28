@@ -24,6 +24,7 @@ Contents:
    tv
    image
    imred
+   spectra
    stars
 
 

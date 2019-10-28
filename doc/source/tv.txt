@@ -2,6 +2,7 @@ TV module
 *********
 
 Introduction
+++++++++++++
 
 tv is a simple package to provide an enhanced image display tool built on
 top of the basic functionality of a matplotlib figure. The tv tool is
@@ -21,14 +22,15 @@ A method is provided to allow the user to retrieve the location of a keystroke
 event in the window along with the key that was pressed.
 
 Installation
+++++++++++++
 
 The package requires autopy to be installed (available via pip). For Mac OS X,
 this requires libpng
 
 The tv package is available at http://github.com/holtzmanjon/tv
 
-Module functions:
-
+Module functions
+++++++++++++++++
 .. automodule:: pyvista.tv
    :members:
 
