@@ -2,9 +2,11 @@ import matplotlib.pyplot as plt
 import pdb
 import copy
 import scipy.signal
+import scipy.interpolate
 import numpy as np
 from astropy.modeling import models, fitting
 from astropy.io import ascii
+from astropy.convolution import convolve, Box1DKernel, Box2DKernel
 import pyvista
 from pyvista import image
 from pyvista import tv
@@ -228,6 +230,21 @@ class WaveCal() :
         self.waves=np.array(waves)
         self.weights=np.array(weight)
 
+    def scomb(self,hd,wav) :
+        """ Resample onto input wavelength grid
+        """
+        #output grid
+        out=np.zeros(len(wav))
+        # raw wavelengths
+        w=self.wave(image=np.array(np.atleast_2d(hd).shape))
+        for i in range(np.atleast_2d(hd).shape[0]) :
+            w1=np.abs(wav-w[i,0]).argmin()
+            w2=np.abs(wav-w[i,-1]).argmin()
+            sort=np.argsort(w[i,:])
+            out[w2:w1] += np.interp(wav[w2:w1],w[i,sort],np.atleast_2d(hd)[i,sort])
+        return out
+
+
 class Trace() :
     """ Class for spectral traces
     """
@@ -303,18 +320,47 @@ class Trace() :
         return 
         
 
-    def extract(self,hd,rad=None) :
+    def extract(self,hd,rad=None,scat=False) :
         """ Extract spectrum given trace(s)
         """
-
         if rad is None : rad=self.rad
+        nrows=hd.data.shape[0]
         ncols=hd.data.shape[-1]
         spec = np.zeros([len(self.model),hd.data.shape[1]])
+        if scat : 
+            print('estimating scattered light ...')
+            boxcar = Box1DKernel(3)
+            points=[]
+            values=[]
+            for col in range(2048) :
+                print('column: {:d}'.format(col),end='\r')
+                yscat = scipy.signal.find_peaks(-convolve(hd.data[:,col],boxcar))[0]
+                for y in yscat :
+                    points.append([y,col])
+                    values.append(hd.data[y,col])
+            print('fitting surface ...')
+            grid_x, grid_y = np.mgrid[0:nrows,0:ncols]
+            boxcar = Box2DKernel(31)
+            grid_z=convolve(scipy.interpolate.griddata(points,values,(grid_x,grid_y),method='cubic',fill_value=0.),boxcar)
+            # go back and try to reject outliers
+            print('rejecting points ...')
+            points_gd=[]
+            values_gd=[]
+            for point,value in zip(points,values) :
+                if value < 1.1*grid_z[point[0],point[1]] :
+                    points_gd.append(point)
+                    values_gd.append(value)
+            print('fitting surface ...')
+            grid_z=convolve(scipy.interpolate.griddata(points_gd,values_gd,(grid_x,grid_y),method='cubic',fill_value=0.),boxcar)
+            data = hd.data - grid_z
+        else :
+            data = hd.data
+
         for i,model in enumerate(self.model) :
             print('extracting aperture {:d}'.format(i),end='\r')
             cr=np.round(model(np.arange(ncols))).astype(int)
             for col in range(ncols) :
-                spec[i,col]=np.sum(hd.data[cr[col]-self.rad:cr[col]+self.rad+1,col])
+                spec[i,col]=np.sum(data[cr[col]-self.rad:cr[col]+self.rad+1,col])
 
         return spec
   
@@ -337,6 +383,7 @@ class Trace() :
             out.append(spec)
         if len(out) == 1 : return out[0]
         else : return out
+
 
 
 def mash(hd,sp=None,bks=None) :
@@ -551,7 +598,7 @@ def arces() :
     #traces=trace(flat,apertures/4)
     traces=Trace()
     traces.trace(flat,apertures/4,sc0=1024,thresh=1000,plot=t)
-    ec=traces.extract(thar)
+    ec=traces.extract(thar,scat=True)
 
     wcal=WaveCal(type='chebyshev2D',order0=54,spectrum=ec)
     wav=readmultispec.readmultispec('w131102.0004.ec.fits')['wavelen']
