@@ -68,10 +68,10 @@ class TV:
         self.top = 1.
 
         # plot windows
-        rect = 0.75, 0.6, 0.25, 0.4
+        rect = 0.73, 0.6, 0.98, 0.4
         plotax = tv.add_axes(rect)
         self.plotax1 = plotax
-        rect = 0.75, 0.15, 0.25, 0.4
+        rect = 0.73, 0.15, 0.98, 0.4
         plotax = tv.add_axes(rect)
         self.plotax2 = plotax
 
