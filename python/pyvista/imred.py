@@ -1,11 +1,14 @@
 import numpy as np
 import astropy
-from astropy.nddata import CCDData
+import copy
+from astropy import units
+from astropy.nddata import CCDData, NDData, StdDevUncertainty
 from astropy.nddata import NDData
 from astropy.io import fits
 from astropy.io import ascii
 from astropy.modeling import models, fitting
-from astropy.convolution import convolve, Box1DKernel
+from astropy.convolution import convolve, Box1DKernel, Box2DKernel, Box2DKernel
+import scipy.signal
 
 import warnings
 from astropy.utils.exceptions import AstropyWarning
@@ -22,62 +25,22 @@ try:
 except:
     print('pyds9 is not available, proceeding')
 
-class Reader() :
-    """ Class for reading images with shorthand input, e.g., image number 
-
-        Will use glob to search for files with name '{:s}/{:s}.{:s}.fits'.format(dir,root,formstr)
-    """
-
-    def __init__(self,dir='./',root='*',formstr='{:04d}',gain=1.,rn=0.,inst=None,verbose=True) :
-        """ set default directory and format strings for reading with shorthand number ID if desired
-            set gain and readout noise to add uncertainty array upon reading
-        """
-        self.dir=dir
-        self.root=root
-        self.verbose=verbose
-
-        # we will allow for instruments to have multiple channels, so everything goes in lists
-        if type(gain) is list : self.gain=gain
-        else : self.gain = [gain]
-        if type(rn) is list : self.rn=rn
-        else : self.rn = [rn]
-        if type(formstr) is list : self.formstr=formstr
-        else : self.formstr=[formstr]
-        if inst == 'DIS' :
-            # DIS has two channels so we we read both
-            self.formstr=['{:04d}b','{:04d}r']
-            self.gain=[1.68,1.88]
-            self.rn=[4.9,4.6]
-        elif inst == 'ARCES' :
-            self.formstr=['{:04d}']
-            self.gain=[3.8]
-            self.rn=[7]
-        elif inst == 'ARCTIC' :
-            self.formstr=['{:04d}']
-            self.gain=[2.0]
-            self.rn=[3.7]
-        elif inst == 'TSPEC' :
-            self.formstr=['{:04d}']
-            self.gain=[3.5]
-            self.rn=[18]
-        self.nchip = len(self.formstr)
-        if self.verbose :
-            for form in self.formstr :
-                print('will use format:  {:s}/{:s}.{:s}.fits'.format(self.dir,self.root,form))
-            print('         gain:  {}    rn: {}'.format(self.gain,self.rn))
-
-
 class Reducer() :
     """ Class for reducing images of a given instrument
     """
-    def __init__(self,inst=None,dir='./',root='*',formstr='{04d}',gain=1,rn=0.,verbose=True) :
+    def __init__(self,inst=None,dir='./',root='*',formstr='{04d}',gain=1,rn=0.,verbose=True,nfowler=1) :
         """  Initialize reducer with information about how to reduce
         """
         self.dir=dir
         self.root=root
         self.verbose=verbose
+        self.inst=inst
+        self.badpix=None
+        self.scat=None
+        self.mask=None
 
         # we will allow for instruments to have multiple channels, so everything goes in lists
+        self.channels=['']
         if type(gain) is list : self.gain=gain
         else : self.gain = [gain]
         if type(rn) is list : self.rn=rn
@@ -87,6 +50,7 @@ class Reducer() :
         
         if inst == 'DIS' :
             # DIS has two channels so we we read both
+            self.channels=['blue','red']
             self.formstr=['{:04d}b','{:04d}r']
             self.gain=[1.68,1.88]
             self.rn=[4.9,4.6]
@@ -101,10 +65,26 @@ class Reducer() :
             self.formstr=['{:04d}']
             self.gain=[3.8]
             self.rn=[7]
+            self.scat = 10
             self.biastype = 0
             self.biasbox = [image.BOX(xr=[2052,2057],yr=[20,2028])]
             self.trimbox = [image.BOX(xr=[200,1850],yr=[0,2047])]
             self.normbox = [ image.BOX(xr=[1000,1050],yr=[1000,1050]) ]
+            self.badpix = [ [ image.BOX(yr=[0,2067],xr=[0,200]),      # left side
+                              image.BOX(yr=[0,2067],xr=[1900,2127]), # right side
+                              image.BOX(yr=[802,2000],xr=[787,787]),
+                              image.BOX(yr=[663,2000],xr=[1682,1682]),
+                              image.BOX(yr=[219,2067],xr=[101,101]),
+                              image.BOX(yr=[1792,1835],xr=[1284,1284]),
+                              image.BOX(yr=[1474,2067],xr=[1355,1355]),
+                              image.BOX(yr=[1418,1782],xr=[1602,1602]),
+                              image.BOX(yr=[1905,1943],xr=[1382,1382]),
+                              image.BOX(yr=[1926,1974],xr=[1416,1416]),
+                              image.BOX(yr=[1610,1890],xr=[981,981]),
+                              image.BOX(yr=[1575,2067],xr=[490,490]),
+                              image.BOX(yr=[1710,1722],xr=[568,568]),
+                              image.BOX(yr=[1905,1981],xr=[653,654]),
+                              image.BOX(yr=[1870,1925],xr=[853,853]) ] ]
             
         elif inst == 'ARCTIC' :
             self.formstr=['{:04d}']
@@ -118,33 +98,36 @@ class Reducer() :
         elif inst == 'TSPEC' :
             self.formstr=['{:04d}']
             self.gain=[3.5]
-            self.rn=[18]
+            self.rn=[18]/np.sqrt(nfowler)
             self.biastype = -1
-            self.biasbox = [image.BOX(xr=[2052,2090],yr=[20,2028])]
-            self.trimbox = [image.BOX(xr=[0,2048],yr=[0,2048])]
-            self.normbox = [ image.BOX(xr=[800,1200],yr=[800,1200]) ]
+            self.biasbox = [image.BOX(xr=[0,2048],yr=[0,1024])]
+            self.trimbox = [image.BOX(xr=[0,2048],yr=[0,1024])]
+            self.normbox = [ image.BOX(xr=[256,956],yr=[570,660]) ]
+
+        try: self.mask=fits.open(os.environ['PYVISTA_DIR']+'/data/'+inst+'/mask.fits')[0].data
+        except: pass
 
         # save number of chips for convenience
         self.nchip = len(self.formstr)
 
         if self.verbose :
             for form in self.formstr :
-                print('will use format:  {:s}/{:s}.{:s}.fits'.format(self.dir,self.root,form))
+                print('  will use format:  {:s}/{:s}.{:s}.fits'.format(self.dir,self.root,form))
             print('         gain:  {}    rn: {}'.format(self.gain,self.rn))
-            print('Biastype : {:d}'.format(self.biastype))
-            print('Bias box: ')
+            print('  Biastype : {:d}'.format(self.biastype))
+            print('  Bias box: ')
             for box in self.biasbox :
                 box.show()
-            print('Trim box: ')
+            print('  Trim box: ')
             for box in self.trimbox :
                 box.show()
-            print('Norm box: ')
+            print('  Norm box: ')
             for box in self.normbox :
                 box.show()
 
     def rd(self,num, ext=0) :
-        """ 
-        Read an image
+        """ Read an image
+
         Args :
             num (str or int) : name or number of image to read
         Returns :
@@ -152,6 +135,7 @@ class Reducer() :
         """
         out=[]
         # loop over different channels (if any)
+        idet=0 
         for form,gain,rn in zip(self.formstr,self.gain,self.rn) :
             # find the files that match the directory/format
             if type(num) is int :
@@ -170,9 +154,23 @@ class Reducer() :
             file=file[0]
 
             # read the file into a CCDData object
-            if self.verbose : print('Reading file: ', file)
+            if self.verbose : print('  Reading file: ', file)
             im=CCDData.read(file,hdu=ext,unit='adu')
+
+            # Add uncertainty (will be in error if there is an overscan
+            data=copy.copy(im.data)
+            data[data<0] = 0.
+            im.uncertainty = StdDevUncertainty(np.sqrt( data/gain + (rn/gain)**2 ))
+
+            # Add mask
+            if self.mask is not None : im.mask = self.mask
+            else : im.mask = np.zeros(im.data.shape,dtype=bool)
+            if self.badpix is not None :
+                for badpix in self.badpix[idet] :
+                    badpix.setval(im.mask,True)
+
             out.append(im)
+            idet+=1
 
         # return the data
         if len(out) == 1 : return out[0]
@@ -183,11 +181,11 @@ class Reducer() :
         """
         if type(im) is not list : ims=[im]
         else : ims = im
-        
+       
         for im,gain,rn,biasbox,trimbox in zip(ims,self.gain,self.rn,self.biasbox,self.trimbox) :
             if self.biastype == 0 :
                 b=biasbox.mean(im.data)
-                if self.verbose: print('subtracting overscan: ', b)
+                if self.verbose: print('  subtracting overscan: ', b)
                 im.data = im.data.astype(float)-b
                 im.header.add_comment('subtracted overscan: {:f}'.format(b))
             #elif det.biastype == 1 :
@@ -197,14 +195,20 @@ class Reducer() :
             #    over=image.stretch(over,ncol=hdu[ext].data.shape[1])
             #    hdu[ext].data -= over
 
-            # Add uncertainty
-            im.uncertainty = np.sqrt( im.data/gain + (rn/gain)**2 )
+            # Add uncertainty (redo from scratch after overscan)
+            data=copy.copy(im.data)
+            data[data<0] = 0.
+            im.uncertainty = StdDevUncertainty(np.sqrt( data/gain + (rn/gain)**2 ))
 
+            # Trim if requested
             if trim:
                 im.data = im.data[trimbox.ymin:trimbox.ymin+trimbox.nrow(),
                                   trimbox.xmin:trimbox.xmin+trimbox.ncol()]
                 im.uncertainty.array = im.uncertainty.array[trimbox.ymin:trimbox.ymin+trimbox.nrow(),
                                                             trimbox.xmin:trimbox.xmin+trimbox.ncol()]
+                if im.mask is not None :
+                    im.mask = im.mask[trimbox.ymin:trimbox.ymin+trimbox.nrow(),
+                                      trimbox.xmin:trimbox.xmin+trimbox.ncol()]
 
 
     def bias(self,im,superbias=None) :
@@ -219,12 +223,80 @@ class Reducer() :
          if type(superbias) is not list : superbiases=[superbias]
          else : superbiases = superbias
          for im,bias in zip(ims,superbiases) :
-             if self.verbose : print('subracting superbias...')
+             if self.verbose : print('  subtracting superbias...')
              # subtract superbias
              im.data -= bias.data
              # adjust uncertainty
-             im.uncertainty = np.sqrt(im.uncertainty.array**2 + bias.uncertainty.array**2)
+             im.uncertainty = StdDevUncertainty(np.sqrt(im.uncertainty.array**2 + bias.uncertainty.array**2))
              im.header.add_comment('subtracted superbias')
+
+    def scatter(self,im,scat=None,display=None,smooth=3) :
+        """ Removal of scattered light (for multi-order/object spectrograph)
+        """
+        if scat is None : return
+
+        print('  estimating scattered light ...')
+        boxcar = Box1DKernel(smooth)
+        points=[]
+        values=[]
+        nrows = im.data.shape[0]
+        ncols = im.data.shape[-1]
+
+        # find minima in each column, and save location and value
+        for col in range(0,ncols,scat) :
+            print('    column: {:d}'.format(col),end='\r')
+            yscat = scipy.signal.find_peaks(-convolve(im.data[:,col],boxcar))[0]
+            for y in yscat :
+                if im.mask is None or not im.mask[y,col] :
+                    points.append([y,col])
+                    values.append(im.data[y,col])
+
+        # fit surface to the minimum values
+        print('    fitting surface ...')
+        grid_x, grid_y = np.mgrid[0:nrows,0:ncols]
+
+        # smooth and reject outlying points
+        boxcar = Box2DKernel(31)
+        grid_z=convolve(scipy.interpolate.griddata(points,values,(grid_x,grid_y),
+                        method='cubic',fill_value=0.),boxcar)
+        # go back and try to reject outliers
+        print('    rejecting points ...')
+        points_gd=[]
+        values_gd=[]
+        for point,value in zip(points,values) :
+            if value < 1.1*grid_z[point[0],point[1]] :
+                points_gd.append(point)
+                values_gd.append(value)
+
+        # refit surface
+        print('    refitting surface ...')
+        grid_z=convolve(scipy.interpolate.griddata(points_gd,values_gd,(grid_x,grid_y),
+                        method='cubic',fill_value=0.),boxcar)
+
+        if display is not None :
+            display.tv(im)
+            points=np.array(points)
+            display.ax.scatter(points[:,1],points[:,0],color='r',s=1)
+            points_gd=np.array(points_gd)
+            display.ax.scatter(points_gd[:,1],points_gd[:,0],color='g',s=1)
+            input("  image with scattered light points, hit any key to continue".format(im))
+            display.clear()
+            display.tv(im)
+            display.tv(grid_z)
+            col=int(im.shape[-1]/2)
+            display.plotax1.cla()
+            display.plotax1.plot(im.data[:,col])
+            display.plotax1.plot(grid_z[:,col])
+            plt.draw()
+            input("  scattered light image, hit any key to continue".format(im))
+
+        im.data -= grid_z
+
+    def crrej(self,im,crrej=None,nsig=5) :
+         """ CR rejection
+         """
+         if crrej is None: return
+         image.zap(im,crrej,nsig=nsig)
 
     def flat(self,im,superflat=None) :
          """ Flat fielding
@@ -237,20 +309,42 @@ class Reducer() :
          if type(superflat) is not list : superflats=[superflat]
          else : superflats = superflat
          for im,flat in zip(ims,superflats) :
-             if self.verbose : print('flat fielding...')
-             im.uncertainty.array =  (im.uncertainty.array**2 / im.data**2 + flat.uncertainty.array**2 / flat.data**2 ) 
-             im.data /= flat.data
-             im.uncertainty.array *=  im.data**2
+             if self.verbose : print('  flat fielding...')
+             header = im.header
+             im = im.divide(flat)
+             im.header =  header
              im.header.add_comment('divided by superflat')
+ 
+    def badpix_fix(self,im,val=0.) :
+        """ Replace bad pixels
+        """
+        if val is None : return
+        if im.mask is not None :
+             bd=np.where(im.mask)
+             im.data[bd[0],bd[1]] = val
+             im.uncertainty.array[bd[0],bd[1]] = np.inf
 
-    def reduce(self,num,superbias=None,superflat=None) :
+    def reduce(self,num,crrej=None,superbias=None,superdark=None,superflat=None,scat=None,badpix=None,return_list=False) :
         """ Full reduction
         """
         im=self.rd(num)
         self.overscan(im)
+        self.crrej(im,crrej=crrej)
         self.bias(im,superbias=superbias)
+        self.scatter(im,scat=scat)
         self.flat(im,superflat=superflat)
+        self.badpix_fix(im,val=badpix)
+        if return_list and type(im) is not list : im=list(im)
         return im
+
+    def write(self,im,name,overwrite=True) :
+        """ write out image, deal with multiple channels 
+        """
+        if type(im) is list :
+            for i,frame in enumerate(im) : frame.write(name+'_'+self.channels[i]+'.fits',overwrite=overwrite)
+        else :
+            im.write(name+'.fits',overwrite=overwrite)
+
 
 class Combiner() :
     """ Class for combining calibration data frames
@@ -259,16 +353,13 @@ class Combiner() :
         self.reducer = reducer
         self.verbose = verbose
 
-    def getcube(self,ims, superbias=None) :
+    def getcube(self,ims, superbias=None,scat=None) :
         """ Read images into data cube
         """
         # create list of images, reading and overscan subtracting
         allcube = []
         for im in ims :
-            if self.verbose: print('im: ',im)
-            data = self.reducer.reduce(im)
-            if superbias is not None :
-                self.reducer.bias(data,superbias)
+            data = self.reducer.reduce(im,superbias=superbias,scat=scat)
             allcube.append(data)
 
         # if just one frame, put in 2D list anyway so we can use same code, allcube[nframe][nchip]
@@ -277,10 +368,10 @@ class Combiner() :
 
         return allcube
 
-    def sum(self,ims,superbias=None) :
+    def sum(self,ims,superbias=None, scat=None) :
         """ Coadd input images
         """
-        allcube = self.getcube(ims,superbias=superbias)
+        allcube = self.getcube(ims,superbias=superbias,scat=scat)
         nframe = len(allcube)
         
         out=[]
@@ -291,18 +382,18 @@ class Combiner() :
                 datacube.append(allcube[im][chip].data)
                 varcube.append(allcube[im][chip].uncertainty.array**2)
             sum = np.sum(np.array(datacube),axis=0)
-            sig = np.sum(np.array(varcube),axis=0)
-            out.append(NDData(sum,uncertainty=sig))
+            sig = np.sqrt(np.sum(np.array(varcube),axis=0))
+            out.append(CCDData(sum,uncertainty=StdDevUncertainty(sig),unit='adu'))
         
         # return the frame
         if len(out) == 1 : return out[0]
         else : return out
 
-    def median(self,ims, superbias=None, normalize=False,display=None,div=True) :
+    def median(self,ims, superbias=None, scat=None, normalize=False,display=None,div=True) :
         """ Combine images from list of images 
         """
         # create list of images, reading and overscan subtracting
-        allcube = self.getcube(ims,superbias=superbias)
+        allcube = self.getcube(ims,superbias=superbias,scat=scat)
         nframe = len(allcube)
 
         # do the combination
@@ -310,45 +401,58 @@ class Combiner() :
         for chip in range(self.reducer.nchip) :
             datacube = []
             varcube = []
+            maskcube = []
+            allnorm = []
             for im in range(nframe) :
                 if normalize :
                     norm=self.reducer.normbox[chip].mean(allcube[im][chip].data)
+                    allnorm.append(norm)
                     allcube[im][chip].data /= norm
                     allcube[im][chip].uncertainty.array /= norm
                 datacube.append(allcube[im][chip].data)
                 varcube.append(allcube[im][chip].uncertainty.array**2)
-            if self.verbose: print('median combining data....')
+                maskcube.append(allcube[im][chip].mask)
+            if self.verbose: print('  median combining data....')
             med = np.median(np.array(datacube),axis=0)
-            if self.verbose: print('calculating uncertainty....')
+            if self.verbose: print('  calculating uncertainty....')
             sig = 1.253 * np.sqrt(np.mean(np.array(varcube),axis=0)/nframe)
-            out.append(NDData(med,uncertainty=sig))
+            mask = np.any(maskcube,axis=0)
+            comb=CCDData(med,uncertainty=StdDevUncertainty(sig),mask=mask,unit='adu')
+            if normalize: comb.meta['MEANNORM'] = np.array(allnorm).mean()
+            out.append(comb)
+
+            # display final combined frame and individual frames relative to combined
             if display :
-                for im in range(nframe) :
+                display.clear()
+                display.tv(med)
+                input("  final image, hit any key to continue")
+                for i,im in enumerate(ims) :
                     if div :
-                        display.tv(allcube[im][chip].data/med)
+                        display.tv(allcube[i][chip].data/med,min=0.5,max=1.5)
+                        input("    image: {} divided by master, hit any key to continue".format(im))
                     else :
-                        display.tv(allcube[im][chip].data-med)
-                    print('image: ',im) 
-                    pdb.set_trace()
+                        delta=5*self.reducer.rn[chip]
+                        display.tv(allcube[i][chip].data-med,min=-delta,max=delta)
+                        input("    image: {} minus master, hit any key to continue".format(im))
 
         # return the frame
         if len(out) == 1 : return out[0]
         else : return out
 
-    def superbias(self,ims,display=None) :
+    def superbias(self,ims,display=None,scat=None) :
         """ Driver for superbias combination (no superbias subraction no normalization)
         """
-        return self.median(ims,display=display,div=False)
+        return self.median(ims,display=display,div=False,scat=scat)
 
-    def superflat(self,ims,superbias=None,display=None) :
+    def superflat(self,ims,superbias=None,scat=None, display=None) :
         """ Driver for superflat combination (with superbias if specified, normalize to normbox
         """
-        return self.median(ims,superbias=superbias,normalize=True,display=display)
+        return self.median(ims,superbias=superbias,normalize=True,scat=scat,display=display)
 
-    def specflat(self,ims,superbias=None,wid=100,display=None) :
+    def specflat(self,ims,superbias=None,scat=None,wid=100,display=None) :
         """ Spectral flat takes out variation along wavelength direction
         """
-        flats = self.median(ims,superbias=superbias,normalize=True,display=display)
+        flats = self.median(ims,superbias=superbias,scat=scat,normalize=True,display=display)
         boxcar = Box1DKernel(wid)
         for iflat,flat in enumerate(flats) : 
             nrows=flats[iflat].data.shape[0]
