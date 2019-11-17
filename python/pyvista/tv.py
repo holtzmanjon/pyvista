@@ -68,10 +68,10 @@ class TV:
         self.top = 1.
 
         # plot windows
-        rect = 0.73, 0.6, 0.98, 0.4
+        rect = 0.74, 0.6, 0.25, 0.4
         plotax = tv.add_axes(rect)
         self.plotax1 = plotax
-        rect = 0.73, 0.15, 0.98, 0.4
+        rect = 0.74, 0.15, 0.25, 0.4
         plotax = tv.add_axes(rect)
         self.plotax2 = plotax
 
@@ -437,13 +437,17 @@ class TV:
         if min is None : 
            min = 0.
         if max is None : 
-           try :
-               sky = mmm.mmm(data)
-               min = sky[0]-5*sky[1]
-               max = sky[0]+20*sky[1]
-           except :
-               min = np.median(data)-5*data.std()
-               max = np.median(data)+20*data.std()
+           try: gd = np.where(np.isfinite(data) & ~img.mask)
+           except : gd = np.where(np.isfinite(data))
+           min = np.median(data[gd])-3*data[gd].std()
+           max = np.median(data[gd])+10*data[gd].std()
+           #try :
+           #    sky = mmm.mmm(data)
+           #    min = sky[0]-5*sky[1]
+           #    max = sky[0]+20*sky[1]
+           #except :
+           #    min = np.median(data)-5*data.std()
+           #    max = np.median(data)+20*data.std()
         self.scale = [min,max]
         self.scalelist.pop(current)
         self.scalelist.insert(current,self.scale)
@@ -480,6 +484,7 @@ class TV:
         self.cblist.insert(current,self.cb)
 
         plt.draw()
+        plt.show()
         # instead of redraw color, could replace data, but not if sizes change?
         # img.set_data()
         # img.changed()
