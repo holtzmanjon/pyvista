@@ -1,0 +1,62 @@
+---
+ date: "October 2019"
+ groups :
+  - name : "ARCES"
+    skip : True
+    inst : "ARCES"
+    config :
+      wref : "arces_wave"
+    rawdir : "UT191020/ARCES"
+    reddir : "red/UT191020/ARCES"
+    biases : [2,3,4,5,6,7,8,9,10]
+    flats : 
+      - id : "red"
+        frames : [11,12,13,14]
+        use : True
+      - id : "blue"
+        frames : [15,16,17,18]
+        use : True
+    traces : 
+        frame : sflat
+    arcs : [4,5,6]
+    objects: 
+      extract1d : [23,24,25,26,27,28,29,30,31]
+
+  - name : "DIS"
+    skip : False
+    inst : "DIS"
+    config :
+      wref : "dis_lowres"
+    rawdir : "UT191019/DIS"
+    reddir : "red/UT191019/DIS"
+    biases : [13,14,15,16,17,18,19,20,21,22]
+    flats : 
+      - id : "bright"
+        frames : [4,5,6,7,8,9,10,11,12]
+        use : True
+    traces : 
+        frame : 25    
+    arcs : [4,5,6]
+    objects: 
+      extract1d : [24,25,26]
+      extract2d : [27,28,29,30,31,32,33,34]
+ 
+  - name : "TSPEC"
+    skip : False
+    inst : "TSPEC"
+    config :
+      wref : "tspec_wave"
+    rawdir : "UT191026/TSPEC"
+    reddir : "red/UT191026/TSPEC"
+    darkflats : [1,2,3,4,5,6,7,8,9,10]
+    flats : 
+      - id : "dome"
+        frames : [11,12,13,14,15,16,17,18,19]  # something bad with frame 20
+        use : True
+    traces : 
+        frame : 21    
+        dark : 22    
+    arcs : [4,5,6]
+    objects: 
+      extract1d : [21,22,23,24]
+      sky1d : [22,21,24,23]
