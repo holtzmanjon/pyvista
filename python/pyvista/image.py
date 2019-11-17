@@ -1,10 +1,11 @@
 import numpy as np
+import copy
 from tools import plots
 from astropy.io import fits
 from astropy.io import ascii
 from astropy.modeling import models, fitting
 from astropy.convolution import convolve, Box1DKernel
-from scipy import signal
+import scipy.signal
 import matplotlib.pyplot as plt
 import glob
 import bz2
@@ -79,6 +80,10 @@ class BOX() :
     def median(self,data):
         if self.nrow() == 0 or self.ncol() == 0 : return 0.
         return np.median(data[self.ymin:self.ymax+1,self.xmin:self.xmax+1])
+
+    def setval(self,data,val):
+        if self.nrow() == 0 or self.ncol() == 0 : return 0.
+        data[self.ymin:self.ymax+1,self.xmin:self.xmax+1] = val
 
 def abx(im,box) :
  
@@ -433,18 +438,37 @@ def xcorr(a,b,lags,medfilt=0) :
     """ Cross correlation function between two arrays, calculated at lags
     """
 
-    out=np.zeros(len(lags))
     xs = -lags[0]
     xe = a.shape[-1]-lags[-1]
-    print(xs,xe)
     atmp=np.atleast_2d(a)
     btmp=np.atleast_2d(b)
     if medfilt>0 :
-        atmp=np.atleast_2d(atmp-signal.medfilt(a,kernel_size=[1,medfilt]))
-        btmp=np.atleast_2d(btmp-signal.medfilt(b,kernel_size=[1,medfilt]))
+        atmp=np.atleast_2d(atmp-scipy.signal.medfilt(a,kernel_size=[1,medfilt]))
+        btmp=np.atleast_2d(btmp-scipy.signal.medfilt(b,kernel_size=[1,medfilt]))
 
-    for i,lag in enumerate(lags) :
-        out[i]=np.sum(atmp[:,xs:xe]*btmp[:,xs+lag:xe+lag])
+    if atmp.shape[0] == btmp.shape[0] :
+        out=np.zeros(len(lags))
+        for i,lag in enumerate(lags) :
+            out[i]=np.sum(atmp[:,xs:xe]*btmp[:,xs+lag:xe+lag])
+    elif atmp.shape[0] == 1 :
+        out=np.zeros([btmp.shape[0],len(lags)])
+        for row in range(btmp.shape[0]) :
+            print('cross correlating row: {:d}'.format(row),end='\r')
+            for i,lag in enumerate(lags) :
+                out[row,i]=np.sum(atmp[0,xs:xe]*btmp[row,xs+lag:xe+lag])
+    else:
+        raise ValueError('input arrays must have same nrows, or first must have 1 row')
+        return
 
     return np.array(out)
- 
+
+def zap(hd,size,nsig=3,mask=False) : 
+    """ Median filter array and replace values > nsig*uncertainty
+    """
+    filt=scipy.signal.medfilt(hd.data,size)
+    if nsig >= 0 : bd = np.where(np.atleast_2d(hd.data)-filt > nsig*hd.uncertainty.array)
+    else : bd = np.where(np.atleast_2d(hd.data)-filt < nsig*hd.uncertainty.array)
+    np.atleast_2d(hd.data)[bd[0],bd[1]] = np.atleast_2d(filt)[bd[0],bd[1]]
+    if mask :
+        if hd.mask is None : hd.mask=np.zeros(hd.data.shape,dtype=bool)
+        hd.mask[bd[0],bd[1]] = True
