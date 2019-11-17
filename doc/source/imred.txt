@@ -11,10 +11,10 @@ data and an associated uncertainty array.
 The routines are implemented with two basic classes:
 
 - imred.Reducer : reads data from disk and does various reduction 
-steps, either individually or as a group
+  steps, either individually or as a group
 
 - imred.Combiner : given a Reducer, reads and reduces a set of input frames, 
-and combines them to a single frame (median or sum)
+  and combines them to a single frame (median or sum)
 
 In more detail:
 
@@ -30,46 +30,48 @@ NDData objects.
 
 Attributes:
 
-  dir : default directory to read images from (can be overridden)
-  root : default root file name (can be overridden)
-  formstr : format string used to search for images using sequence number
-  verbose : turns on verbose output
-  gain : gain to use to calculate initial uncertainty
-  rn  : readout noise used to calculate initial uncertainty
-  biastype : specifies algorithm for bias subtraction
-  biasbox : pyvista BOX object giving region(s) to use for overscan
-  trimbox : pyvista BOX object giving region(s) to trim reduced image to, if requested
-  normbox : pyvista BOX object giving region(s) to use for normalization of flats
+  - dir : default directory to read images from (can be overridden)
+  - root : default root file name (can be overridden)
+  - formstr : format string used to search for images using sequence number
+  - verbose : turns on verbose output
+  - gain : gain to use to calculate initial uncertainty
+  - rn  : readout noise used to calculate initial uncertainty
+  - biastype : specifies algorithm for bias subtraction
+  - biasbox : pyvista BOX object giving region(s) to use for overscan
+  - trimbox : pyvista BOX object giving region(s) to trim reduced image to, if requested
+  - normbox : pyvista BOX object giving region(s) to use for normalization of flats
 
 Methods :
-  rd:  reads image from disk. For convenience, files can be identified by a 
-sequence number alone, and the input directory will be searched for files matching
-the input format (from formstr) with the input file number
-  overscan : subtracts overscane
-  bias : subtracts input superbias frame
-  flat : divides by input superflat frame
-  reduce :  reads, overscan subtracts (per biastype), bias subtracts if
-given a superbias, flat fields if given a superflat
+  - rd:  reads image from disk. For convenience, files can be identified by a 
+    sequence number alone, and the input directory will be searched for files matching
+    the input format (from formstr) with the input file number
+  - overscan : subtracts overscane
+  - bias : subtracts input superbias frame
+  - flat : divides by input superflat frame
+  - reduce :  reads, overscan subtracts (per biastype), bias subtracts if
+             given a superbias, flat fields if given a superflat
 
 Combiner
 ========
 Attributes:
-  reducer : a Reducer object
-  verbose : turns on/off more verbose output
+
+  - reducer : a Reducer object
+  - verbose : turns on/off more verbose output
 
 Methods:
-  getcube: reads a set of frames into a data cube
-  median:  median filters images in cube
-  sum: :   sums images in cube
-  superbias: given input bias frames, creates superbias with 
-median combination after overscan subtraction
-  superflat: given input flat field frames, creates superbias
-with median combination with normalization, after overscan
-subtraction, and bias subtraction if given superbias
-  specflat: creates flat field as above, but then removes
-structure along columns using spectral signature calculated from
-a boxcar filter of a central set of rows, to produce a flat
-field with spectral signature removed
+
+  - getcube: reads a set of frames into a data cube
+  - median:  median filters images in cube
+  - sum: :   sums images in cube
+  - superbias: given input bias frames, creates superbias with 
+    median combination after overscan subtraction
+  - superflat: given input flat field frames, creates superbias
+    with median combination with normalization, after overscan
+    subtraction, and bias subtraction if given superbias
+  - specflat: creates flat field as above, but then removes
+    structure along columns using spectral signature calculated from
+    a boxcar filter of a central set of rows, to produce a flat
+    field with spectral signature removed
 
 imred functions
 ===============
