@@ -1,10 +1,12 @@
 import matplotlib.pyplot as plt
 import pdb
+import pickle
 import copy
 import scipy.signal
 import scipy.interpolate
 import numpy as np
 from astropy.modeling import models, fitting
+from astropy.nddata import CCDData, StdDevUncertainty
 from astropy.io import ascii
 from astropy.convolution import convolve, Box1DKernel, Box2DKernel
 import pyvista
@@ -14,22 +16,24 @@ from pyvista import tv
 class WaveCal() :
     """ Class for wavelength solutions
     """
-    def __init__ (self,type='chebyshev',degree=2,ydegree=2,pix0=0,order0=1,spectrum=None) :
+    def __init__ (self,type='chebyshev',degree=2,ydegree=2,pix0=0,orders=[1],spectrum=None) :
         """ Initialize the wavecal object
 
             type : type of solution ('poly' or 'chebyshev')
             degree : polynomial degree for wavelength
             ydegree : polynomial degree for  y dimension
             pix0 : reference pixel
-            order0 : spectral order for first y pixel (needed for cross-dispersed solutions
+            orders : spectral order for each row
             spectrum : spectrum from which fit is derived
         """
         self.type = type
         self.degree = degree
         self.ydegree = ydegree
         self.pix0 = pix0
-        self.order0 = order0
-        self.spectrum = np.atleast_2d(spectrum)
+        self.orders = orders
+        self.spectrum = spectrum
+        self.spectrum.data = np.atleast_2d(spectrum.data)
+        self.spectrum.uncertainty.array = np.atleast_2d(spectrum.uncertainty.array)
         self.waves = None
         self.x = None
         self.y = None
@@ -39,23 +43,27 @@ class WaveCal() :
         """ Wavelength from pixel using wavelength solution model
 
             pix : input pixel positions [x] or [y,x]
+            image : for input image size [nrows,ncols], return wavelengths at all pixels
             returns wavelength
         """
         if pixels is not None :
             out=np.zeros(len(pixels[0]))
             for i,pixel in enumerate(pixels[0]) :
                 if self.type.find('2D') > 0 :
-                    out[i]=self.model(pixel-self.pix0,pixels[1][i])/(pixels[1][i]+self.order0)
+                    order=self.orders[pixels[1][i]]
+                    out[i]=self.model(pixel-self.pix0,pixels[1][i])/order
                 else :
                     out[i]=self.model(pixel-self.pix0)
             return out
         else :
             out=np.zeros(image)
             cols=np.arange(out.shape[-1])
-            if self.type.find('2D') > 0 :
+            if out.ndim == 2 :
                 for row in range(out.shape[0]) : 
                     rows=np.zeros(len(cols))+row
-                    out[row,:] = self.model(cols-self.pix0,rows)/(row+self.order0)
+                    try : order = self.orders[row]
+                    except : order=1
+                    out[row,:] = self.model(cols-self.pix0,rows)/order
             else :
                 out= self.model(cols-self.pix0)
             return out
@@ -75,20 +83,24 @@ class WaveCal() :
             twod=True
             sz=self.spectrum.shape
             mod=models.Chebyshev2D(x_degree=self.degree,y_degree=self.ydegree,
-                                   x_domain=[0,sz[1]],y_domain=[0+self.order0,sz[0]+self.order0])
+                                   x_domain=[0,sz[1]],y_domain=[0,sz[0]])
         else :
             raise ValueError('unknown fitting type: '+self.type)
             return
 
         if twod :
-            self.model=fitter(mod,self.pix-self.pix0,self.y,self.waves*(self.y+self.order0),weights=self.weights)
+            self.model=fitter(mod,self.pix-self.pix0,self.y,self.waves*self.waves_order,weights=self.weights)
             diff=self.waves-self.wave(pixels=[self.pix,self.y])
             print('rms: {:8.3f}'.format(diff.std()))
             if plot : 
                 fig,ax=plt.subplots(1,1)
-                ax.plot(self.waves,diff,'ro')
+                scat=ax.scatter(self.waves,diff,marker='o',c=self.y,s=2)
                 ax.text(0.1,0.9,'rms: {:8.3f}'.format(diff.std()),transform=ax.transAxes)
+                cb=plt.colorbar(scat,ax=ax,orientation='vertical')
+                cb.ax.set_ylabel('Row')
                 plt.draw()
+                plt.show()
+
         else :
             self.model=fitter(mod,self.pix-self.pix0,self.waves,weights=self.weights)
             diff=self.waves-self.wave(pixels=[self.pix])
@@ -109,6 +121,8 @@ class WaveCal() :
                     self.ax[1].cla()
                     self.ax[1].plot(self.pix[gd],diff[gd],'go')
                     self.ax[1].text(0.1,0.9,'rms: {:8.3f} Angstroms'.format(diff[gd].std()),transform=self.ax[1].transAxes)
+                    self.ax[1].set_xlabel('Pixel')
+                    self.ax[1].set_ylabel('obs wave - fit wave')
                     if len(bd) > 0 : self.ax[1].plot(self.pix[bd],diff[bd],'ro')
                     self.ax[1].set_ylim(diff[gd].min()-1,diff[gd].max()+1)
                     for i in range(len(self.pix)) :
@@ -118,6 +132,7 @@ class WaveCal() :
                         else :
                             self.ax[0].plot([self.pix[i],self.pix[i]],[0,ymax],'r')
                     plt.draw()
+                    plt.show()
 
                     # get input from user on lines to remove
                     for i in range(len(self.pix)) :
@@ -145,7 +160,8 @@ class WaveCal() :
         """
         return self.spectrum 
 
-    def identify(self,file=None,wav=None,wcal0=None,wref=None,disp=None,plot=True,rad=5,thresh=100,xmin=None, xmax=None) :
+    def identify(self,file=None,wav=None,wcal0=None,wref=None,disp=None,plot=True,rad=5,thresh=10,
+                 xmin=None, xmax=None, lags=range(-300,300)) :
         """ Given some estimate of wavelength solution and file with lines,
             identify peaks and centroid
         """
@@ -159,12 +175,28 @@ class WaveCal() :
         if wav is None :
             pix=np.arange(sz[-1])
             if wcal0 is not None :
-                lags=range(-300,300)
-                shift = image.xcorr(wcal0.spectrum,self.spectrum,lags)
-                print('Derived pixel shift from input wcal0: ',shift.argmax()+lags[0])
-                wnew=copy.deepcopy(wcal0)
-                wnew.pix0 = wcal0.pix0+shift.argmax()+lags[0]
-                wav=np.atleast_2d(wnew.wave(image=np.array(sz)))
+                # cross correlate with reference image to get pixel shift
+                print('cross correlating with reference spectrum using lags: ', lags)
+                shift = image.xcorr(wcal0.spectrum,self.spectrum.data,lags)
+                wnew=copy.copy(wcal0)
+                if shift.ndim == 1 :
+                    print('Derived pixel shift from input wcal0: ',shift.argmax()+lags[0])
+                    # single shift for all pixels
+                    wnew.pix0 = wcal0.pix0+shift.argmax()+lags[0]
+                    wav=np.atleast_2d(wnew.wave(image=np.array(sz)))
+                else :
+                    # different shift for each row
+                    wav=np.zeros(sz)
+                    cols = np.arange(sz[-1])
+                    for row in range(wav.shape[0]) : 
+                        print('Derived pixel shift from input wcal0 for row: {:d} {:d}'.format
+                               (row,shift[row,:].argmax()+lags[0]),end='\r')
+                        rows=np.zeros(len(cols))+row
+                        try : order = self.orders[row]
+                        except : order=1
+                        wnew.pix0 = wcal0.pix0+shift[row,:].argmax()+lags[0]
+                        wav[row,:] = wnew.model(cols-wnew.pix0)/order
+                    print("")
             else :
                 # get dispersion guess from header cards if not given in disp
                 if disp is None: disp=hd.header['DISPDW']
@@ -174,82 +206,119 @@ class WaveCal() :
                 else:
                     w0=hd.header['DISPWC']
                     pix0=sz[1]/2 
-                wav=w0+(pix-pix0)*disp
+                wav=np.atleast_2d(w0+(pix-pix0)*disp)
 
         # open file with wavelengths and read
-        f=open(file,'r')
-        lines=[]
-        for line in f :
-            if line[0] != '#' :
-                w=float(line.split()[0])
-                if w > wav.min() and w < wav.max() : lines.append(w)
-        lines=np.array(lines)
-        f.close()
+        if file is not None :
+            f=open(file,'r')
+            lines=[]
+            for line in f :
+                if line[0] != '#' :
+                    w=float(line.split()[0])
+                    # if we have microns, convert to Angstroms
+                    if w<10 : w*=10000
+                    if w > wav.min() and w < wav.max() : lines.append(w)
+            lines=np.array(lines)
+            f.close()
+        elif wcal0 is not None :
+            lines = wcal0.waves
+            weights = wcal0.weights
+            gd = np.where(weights >0)[0]
+            lines = lines[gd]
+        else :
+            raise ValueError('Need to specify previous solution or lamps file')
+            return
 
         # get centroid around expected lines
         x=[]
         y=[]
         waves=[]
+        waves_order=[]
         weight=[]
         if plot is not None : 
             if isinstance(plot,pyvista.tv.TV) :
                 plot.ax.cla()
                 plot.ax.axis('off')
-                plot.tv(self.spectrum)
+                plot.tv(self.spectrum.data)
             else :
                 fig,ax = plt.subplots(2,1,sharex=True,figsize=(14,7))
                 self.ax = ax
                 fig.subplots_adjust(hspace=1.1)
 
         for row in range(nrow) :
-            print('identifying row: ', row,end='\r')
-            if plot :
+            print('identifying lines in row: ', row,end='\r')
+            if plot is not None :
                 if type(plot) is bool :
                     ax[0].cla()
-                    ax[0].plot(self.spectrum[row,:])
+                    ax[0].plot(self.spectrum.data[row,:])
                     ax[0].set_yscale('log')
                     ax[0].set_ylim(1.,ax[0].get_ylim()[1])
                     ax[0].text(0.1,0.9,'row: {:d}'.format(row),transform=ax[0].transAxes)
+                    ax[0].set_xlabel('Pixel')
+                    ax[0].set_ylabel('Intensity')
             for line in lines :
                 peak=abs(line-wav[row,:]).argmin()
                 if isinstance(plot,pyvista.tv.TV) :
                     if (peak > xmin+rad) and (peak < xmax-rad) : plot.ax.scatter(peak,row,marker='o',color='r',s=2)
-                if (peak > xmin+rad) and (peak < xmax-rad) and (self.spectrum[row,peak-rad:peak+rad].max() > thresh) :
-                    cent = (self.spectrum[row,peak-rad:peak+rad]*np.arange(peak-rad,peak+rad)).sum()/self.spectrum[row,peak-rad:peak+rad].sum()
+                if ( (peak > xmin+rad) and (peak < xmax-rad) and 
+                     ((self.spectrum.data[row,peak-rad:peak+rad]/self.spectrum.uncertainty.array[row,peak-rad:peak+rad]).max() > thresh) ) :
+                    cent = (self.spectrum.data[row,peak-rad:peak+rad]*np.arange(peak-rad,peak+rad)).sum()/self.spectrum.data[row,peak-rad:peak+rad].sum()
                     if isinstance(plot,pyvista.tv.TV) :
                         plot.ax.scatter(cent,row,marker='o',color='m',s=2)
                     elif plot :
                         ax[0].text(cent,1.,'{:7.1f}'.format(line),rotation='vertical',va='top',ha='center')
                     x.append(cent)
                     y.append(row)
+                    # we will fit for wavelength*order
                     waves.append(line)
+                    waves_order.append(self.orders[row])
                     weight.append(1.)
+        if plot is not None : 
             plt.draw()
+            plt.show()
         self.pix=np.array(x)
         self.y=np.array(y)
         self.waves=np.array(waves)
+        self.waves_order=np.array(waves_order)
         self.weights=np.array(weight)
+        print('')
 
-    def scomb(self,hd,wav) :
+    def scomb(self,hd,wav,average=True) :
         """ Resample onto input wavelength grid
         """
         #output grid
         out=np.zeros(len(wav))
+        if average: sig=np.zeros(len(wav))
         # raw wavelengths
-        w=self.wave(image=np.array(np.atleast_2d(hd).shape))
+        w=self.wave(image=np.array(np.atleast_2d(hd.data).shape))
         for i in range(np.atleast_2d(hd).shape[0]) :
             w1=np.abs(wav-w[i,0]).argmin()
             w2=np.abs(wav-w[i,-1]).argmin()
             sort=np.argsort(w[i,:])
-            out[w2:w1] += np.interp(wav[w2:w1],w[i,sort],np.atleast_2d(hd)[i,sort])
+            if average :
+                out[w2:w1] += ( np.interp(wav[w2:w1],w[i,sort],np.atleast_2d(hd.data)[i,sort]) /
+                                np.interp(wav[w2:w1],w[i,sort],np.atleast_2d(hd.uncertainty.array)[i,sort])**2 )
+                sig[w2:w1] += 1./np.interp(wav[w2:w1],w[i,sort],np.atleast_2d(hd.uncertainty.array)[i,sort])**2 
+            else :
+                out[w2:w1] += np.interp(wav[w2:w1],w[i,sort],np.atleast_2d(hd.data)[i,sort])
+        if average :
+            out = out / sig
         return out
 
+    def save(self,file) :
+        """ Save object to file
+        """
+        try : delattr(self,'ax')
+        except: pass
+        f=open(file,'wb')
+        pickle.dump(self,f)
+        f.close()
 
 class Trace() :
     """ Class for spectral traces
     """
 
-    def __init__ (self,type='poly',order=2,pix0=0,rad=5,spectrum=None,model=None,sc0=None) :
+    def __init__ (self,inst=None, type='poly',order=2,pix0=0,rad=5,spectrum=None,model=None,sc0=None,channel=None) :
         self.type = type
         self.order = order
         self.pix0 = pix0
@@ -257,8 +326,19 @@ class Trace() :
         self.rad = rad
         if model is not None : self.model=model
         if sc0 is not None : self.sc0=sc0
+        if inst == 'TSPEC' :
+            self.order = 3
+            self.rows = [[135,235],[295,395],[435,535],[560,660],[735,830]]
+            self.lags = range(-75,75) 
+        elif inst == 'DIS' :
+            if channel == 0 : self.rows=[[215,915]]
+            elif channel == 1 : self.rows=[[100,800]]
+            else : raise ValueError('need to specify channel')
+            self.lags = range(-300,300) 
+        elif inst == 'ARCES' :
+            self.lags = range(-10,10) 
 
-    def trace(self,hd,srows,sc0=None,plot=None,thresh=500) :
+    def trace(self,hd,srows,sc0=None,plot=None,thresh=20) :
         """ Trace a spectrum from starting position
         """
 
@@ -273,9 +353,13 @@ class Trace() :
         ncol = hd.data.shape[1]
         if sc0 is None : self.sc0 = int(ncol/2)
         else : self.sc0 = sc0
+        self.spectrum = hd[:,self.sc0]
+        self.spectrum.data[self.spectrum.data<0] = 0.
         rows = np.arange(nrow)
         ypos = np.zeros(ncol)
         ysum = np.zeros(ncol)
+        yvar = np.zeros(ncol)
+        ymask = np.zeros(ncol,dtype=bool)
 
         # we want to handle multiple traces, so make sure srows is iterable
         if type(srows ) is int or type(srows) is float : srows=[srows]
@@ -285,7 +369,7 @@ class Trace() :
             plot.tv(hd)
 
         for srow in srows :
-            print('Tracing row: {:d}'.format(int(srow)),end='\r')
+            print('  Tracing row: {:d}'.format(int(srow)),end='\r')
             sr=copy.copy(srow)
             sr=int(round(sr))
             # march left from center
@@ -294,7 +378,10 @@ class Trace() :
                 cr=sr-self.rad+hd.data[sr-self.rad:sr+self.rad+1,col].argmax()
                 ysum[col] = np.sum(hd.data[cr-self.rad:cr+self.rad+1,col]) 
                 ypos[col] = np.sum(rows[cr-self.rad:cr+self.rad+1]*hd.data[cr-self.rad:cr+self.rad+1,col]) / ysum[col]
-                sr=int(round(ypos[col]))
+                yvar[col] = np.sum(hd.uncertainty.array[cr-self.rad:cr+self.rad+1,col]**2) 
+                ymask[col] = np.any(hd.mask[cr-self.rad:cr+self.rad+1,col]) 
+                # use this position as starting center for next if above threshold S/N
+                if (not ymask[col]) & np.isfinite(ysum[col]) & (ysum[col]/np.sqrt(yvar[col]) > thresh) : sr=int(round(ypos[col]))
             sr=copy.copy(srow)
             sr=int(round(sr))
             # march right from center
@@ -303,10 +390,13 @@ class Trace() :
                 cr=sr-self.rad+hd.data[sr-self.rad:sr+self.rad+1,col].argmax()
                 ysum[col] = np.sum(hd.data[cr-self.rad:cr+self.rad+1,col]) 
                 ypos[col] = np.sum(rows[cr-self.rad:cr+self.rad+1]*hd.data[cr-self.rad:cr+self.rad+1,col]) / ysum[col]
-                if np.isfinite(ysum[col]) & (ysum[col] > thresh) : sr=int(round(ypos[col]))
+                yvar[col] = np.sum(hd.uncertainty.array[cr-self.rad:cr+self.rad+1,col]**2) 
+                ymask[col] = np.any(hd.mask[cr-self.rad:cr+self.rad+1,col]) 
+                # use this position as starting center for next if above threshold S/N
+                if (not ymask[col]) & np.isfinite(ysum[col]) & (ysum[col]/np.sqrt(yvar[col]) > thresh) : sr=int(round(ypos[col]))
 
             cols=np.arange(ncol)
-            gd = np.where(ysum>thresh )[0]
+            gd = np.where((~ymask) & (ysum/np.sqrt(yvar)>thresh) )[0]
             model=(fitter(mod,cols[gd],ypos[gd]))
             self.model.append(model)
 
@@ -315,76 +405,101 @@ class Trace() :
                 plot.ax.scatter(cols[gd],ypos[gd],marker='o',color='g',s=2) 
                 plot.ax.plot(cols,model(cols),color='m')
 
+        print("")
         if plot : 
-            input('enter something to continue....')
-        return 
-        
-
-    def extract(self,hd,rad=None,scat=False) :
+            input('  enter something to continue....')
+     
+    def find(self,hd,lags=None,plot=None) :
+        """ Determine shift from existing trace to input frame
+        """
+        if type(hd) is not list : hd = [hd]
+        if lags is None : lags = self.lags
+         
+        for im in hd : 
+            shift = image.xcorr(self.spectrum,im.data[:,self.sc0],lags)
+            peak=shift.argmax()
+            fit=np.polyfit(range(-3,4),shift[peak-3:peak+4],2)
+            fitpeak=peak+-fit[1]/(2*fit[0])
+            print(peak,fitpeak)
+            print('shift: ', shift.argmax()+lags[0])
+            if plot is not None :
+                plot.tv(im)
+                plot.plotax1.cla()
+                plot.plotax1.plot(self.spectrum.data/self.spectrum.data.max())
+                plot.plotax1.plot(im.data[:,self.sc0]/im.data[:,self.sc0].max())
+                plot.plotax2.cla()
+                plot.plotax2.plot(lags,shift)
+                input('  enter something to continue....')
+        return fitpeak+lags[0]
+ 
+    def extract(self,hd,rad=None,scat=False,plot=None) :
         """ Extract spectrum given trace(s)
         """
         if rad is None : rad=self.rad
         nrows=hd.data.shape[0]
         ncols=hd.data.shape[-1]
         spec = np.zeros([len(self.model),hd.data.shape[1]])
-        if scat : 
-            print('estimating scattered light ...')
-            boxcar = Box1DKernel(3)
-            points=[]
-            values=[]
-            for col in range(2048) :
-                print('column: {:d}'.format(col),end='\r')
-                yscat = scipy.signal.find_peaks(-convolve(hd.data[:,col],boxcar))[0]
-                for y in yscat :
-                    points.append([y,col])
-                    values.append(hd.data[y,col])
-            print('fitting surface ...')
-            grid_x, grid_y = np.mgrid[0:nrows,0:ncols]
-            boxcar = Box2DKernel(31)
-            grid_z=convolve(scipy.interpolate.griddata(points,values,(grid_x,grid_y),method='cubic',fill_value=0.),boxcar)
-            # go back and try to reject outliers
-            print('rejecting points ...')
-            points_gd=[]
-            values_gd=[]
-            for point,value in zip(points,values) :
-                if value < 1.1*grid_z[point[0],point[1]] :
-                    points_gd.append(point)
-                    values_gd.append(value)
-            print('fitting surface ...')
-            grid_z=convolve(scipy.interpolate.griddata(points_gd,values_gd,(grid_x,grid_y),method='cubic',fill_value=0.),boxcar)
-            data = hd.data - grid_z
-        else :
-            data = hd.data
+        sig = np.zeros([len(self.model),hd.data.shape[1]])
 
+        if plot is not None:
+            plot.clear()
+            plot.tv(hd)
         for i,model in enumerate(self.model) :
-            print('extracting aperture {:d}'.format(i),end='\r')
-            cr=np.round(model(np.arange(ncols))).astype(int)
+            print('  extracting aperture {:d}'.format(i),end='\r')
+            cr=model(np.arange(ncols))
+            icr=np.round(cr).astype(int)
+            rfrac=cr-icr+0.5   # add 0.5 because we rounded
+            rlo=[]
+            rhi=[]
             for col in range(ncols) :
-                spec[i,col]=np.sum(data[cr[col]-self.rad:cr[col]+self.rad+1,col])
-
-        return spec
+                r1=icr[col]-self.rad
+                r2=icr[col]+self.rad+1
+                spec[i,col]=np.sum(hd.data[r1+1:r2-1,col])
+                spec[i,col]+=hd.data[r1,col]*(1-rfrac[col])
+                spec[i,col]+=hd.data[r2,col]*rfrac[col]
+                sig[i,col]=np.sqrt(np.sum(hd.uncertainty.array[r1:r2,col]**2))
+                if plot :
+                    rlo.append(r1)
+                    rhi.append(r2-1)
+            if plot :
+                if i%2 == 0 : color='b'
+                else : color='m'
+                plot.ax.plot(range(ncols),icr,color='g')
+                plot.ax.plot(range(ncols),rlo,color=color)
+                plot.ax.plot(range(ncols),rhi,color=color)
+                plt.draw()
+        print("")
+        return CCDData(spec,uncertainty=StdDevUncertainty(sig),unit='adu')
   
     def extract2d(self,hd,rows=None) :
         """  Extract 2D spectrum given trace(s)
              Assumes all requests row uses same trace, just offset, not a 2D model for traces
         """
+        nrows=hd.data.shape[0]
         ncols=hd.data.shape[-1]
         out=[]
-        pdb.set_trace()
-        for model,row in zip(self.model,rows) :
-            nrows=len(row)
-            spec=np.zeros([nrows,ncols])
-            cr=np.round(model(np.arange(ncols))).astype(int)
+        for model,row in zip(self.model,self.rows) :
+            outrows=np.arange(row[0],row[1])
+            noutrows=len(range(row[0],row[1]))
+            spec=np.zeros([noutrows,ncols])
+            sig=np.zeros([noutrows,ncols])
+            cr=model(np.arange(ncols))
             cr-=cr[self.sc0]
-            for r in row :
-                for col in range(ncols) :
-                    try: spec[r-row[0],col]=hd.data[r+cr[col],col]
-                    except: pass
-            out.append(spec)
+            for col in range(ncols) :
+                spec[:,col] = np.interp(outrows+cr[col],np.arange(nrows),hd.data[:,col])
+                sig[:,col] = np.sqrt(np.interp(outrows+cr[col],np.arange(nrows),hd.uncertainty.array[:,col]**2))
+            out.append(CCDData(spec,StdDevUncertainty(sig),unit='adu'))
         if len(out) == 1 : return out[0]
         else : return out
 
-
+    def save(self,file) :
+        """ Save object to file
+        """
+        try : delattr(self,'ax')
+        except: pass
+        f=open(file,'wb')
+        pickle.dump(self,f)
+        f.close()
 
 def mash(hd,sp=None,bks=None) :
     """
@@ -424,7 +539,7 @@ def wavecal(hd,file=None,wref=None,disp=None,wid=[3],rad=5,snr=3,degree=2,wcal0=
         shift = image.xcorr(wcal0.spectrum,spec,lags)
         wnew=copy.deepcopy(wcal0)
         wnew.pix0 = wcal0.pix0+shift.argmax()+lags[0]
-        print('Derived pixel shift from input wcal0: ',shift.argmax()+lags[0])
+        print('  Derived pixel shift from input wcal0: ',shift.argmax()+lags[0])
         wav=wnew.wave(pix)
     else :
         # get dispersion guess from header cards if not given in disp
@@ -461,15 +576,15 @@ def wavecal(hd,file=None,wref=None,disp=None,wid=[3],rad=5,snr=3,degree=2,wcal0=
             print(peak,spec[peak-rad:peak+rad].max())
             cents.append((spec[peak-rad:peak+rad]*np.arange(peak-rad,peak+rad)).sum()/spec[peak-rad:peak+rad].sum())
     cents=np.array(cents)
-    print('cents:', cents)
+    print('  cents:', cents)
 
     waves=[]
     weight=[]
-    print('Centroid  W0  Wave')
+    print('  Centroid  W0  Wave')
     for cent in cents :
         w=wav[int(cent)]
         ax[0].plot([cent,cent],[0,10000],'k')
-        print('{:8.2f}{:8.2f}{:8.2f}'.format(cent, w, lines[np.abs(w-lines).argmin()]))
+        print('  {:8.2f}{:8.2f}{:8.2f}'.format(cent, w, lines[np.abs(w-lines).argmin()]))
         waves.append(lines[np.abs(w-lines).argmin()])
         weight.append(1.)
     waves=np.array(waves)
@@ -503,9 +618,9 @@ def wavecal(hd,file=None,wref=None,disp=None,wid=[3],rad=5,snr=3,degree=2,wcal0=
 
         # get input from user on lines to remove
         for i in range(len(cents)) :
-            print('{:3d}{:8.2f}{:8.2f}{:8.2f}{:8.2f}{:8.2f}'.format(
+            print('  {:3d}{:8.2f}{:8.2f}{:8.2f}{:8.2f}{:8.2f}'.format(
                    i, cents[i], wcal.wave(cents[i]), waves[i], waves[i]-wcal.wave(cents[i]),weight[i]))
-        print('rms: {:8.2f} Anstroms'.format(diff.std()))
+        print('  rms: {:8.2f} Anstroms'.format(diff.std()))
         i = input('enter ID of line to remove (-n for all lines<n, +n for all lines>n, return to continue): ')
         if i is '' :
             done = True
@@ -607,13 +722,15 @@ def arces() :
     wcal.identify(wav=new,file=os.environ['PYVISTA_DIR']+'/data/thar_arces',xmin=201,xmax=1849,thresh=200,rad=3,plot=t)
     wcal.fit()
 
-    pdb.set_trace()
     wcal0=copy.deepcopy(wcal)
     wcal=WaveCal(type='chebyshev2D',order0=54,spectrum=ec)
     wcal.identify(wcal0=wcal0,file=os.environ['PYVISTA_DIR']+'/data/thar_arces',xmin=150,xmax=1900,thresh=200,rad=3,plot=t)
     wcal.fit()
 
     w=wcal.wave(image=np.array(ec.data.shape))
+
+    hr7950=ered.reduce(1,superflat=flat)
+    hr7950ec=traces.extract(hr7950,scat=True)
 
     return flat,thar,traces,ec,wcal,w
 
@@ -657,4 +774,44 @@ def testfit() :
     plt.plot(w,w-fit(x,y)/y)
     plt.clf()
     plt.plot(w,w-fit(x,y)/y,'ro')
+
+
+def echfit() :
+    mod=models.custom_model(echelle_model)
+
+def ripple(w,ord,amp=1,alpha=1,wc=5500) :
+#def echelle_model(ind,amp,alpha,wc) :
+#    w=ind[0,:]
+#    ord=ind[1,:]
+    x = ord * (1 - wc/w)
+    out=amp*(np.sin(np.pi*alpha*x)/(np.pi*alpha*x))**2
+    bd=np.where(np.pi*alpha*x == 0)[0]
+    out[bd] = amp[bd]
+    return out
+
+def ripple2d(w,ord,amp0=1,amp1=0,amp2=0,alpha0=1,alpha1=0,alpha2=0,wc0=5500,wc1=0,wc2=0) :
+#def echelle_model(ind,amp,alpha,wc) :
+#    w=ind[0,:]
+#    ord=ind[1,:]
+    wc = wc0 + wc1*(ord-109) + wc2*(ord-109)**2
+    amp = amp0 + amp1*(ord-109) + amp2*(ord-109)**2
+    alpha = alpha0 + alpha1*(ord-109) + alpha2*(ord-109)**2
+    #print(ord,amp,alpha,wc)
+    x = ord * (1 - wc/w)
+    out=amp*(np.sin(np.pi*alpha*x)/(np.pi*alpha*x))**2
+    bd=np.where(np.pi*alpha*x == 0)[0]
+    out[bd] = amp[bd]
+    return out
+
+def echelle_model_deriv(w,ord,amp=1,alpha=1,wc=5500) :
+    x = ord * (1 - wc/w)
+    f=amp*(np.sin(np.pi*alpha*x)/(np.pi*alpha*x))**2
+    deriv=[]
+    deriv.append(f/amp)
+    deriv.append(2*amp*np.sin(np.pi*alpha*x)/(np.pi*alpha*x)**2*np.cos(np.pi*alpha*x)*np.pi*x
+                 - 2*f/alpha )
+    deriv.append(2*amp*np.sin(np.pi*alpha*x)/(np.pi*alpha*x)**2*np.cos(np.pi*alpha*x)*np.pi*alpha*-1*ord/w
+                 + 2*f/x*ord/w)
+
+    return np.array(deriv)
 
