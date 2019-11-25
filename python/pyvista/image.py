@@ -5,7 +5,9 @@ from astropy.io import fits
 from astropy.io import ascii
 from astropy.modeling import models, fitting
 from astropy.convolution import convolve, Box1DKernel
+from astropy.nddata import StdDevUncertainty
 import scipy.signal
+import scipy.ndimage
 import matplotlib.pyplot as plt
 import glob
 import bz2
@@ -447,20 +449,25 @@ def xcorr(a,b,lags,medfilt=0) :
         btmp=np.atleast_2d(btmp-scipy.signal.medfilt(b,kernel_size=[1,medfilt]))
 
     if atmp.shape[0] == btmp.shape[0] :
-        out=np.zeros(len(lags))
+        shift=np.zeros([1,len(lags)])
         for i,lag in enumerate(lags) :
-            out[i]=np.sum(atmp[:,xs:xe]*btmp[:,xs+lag:xe+lag])
+            shift[0,i]=np.sum(atmp[:,xs:xe]*btmp[:,xs+lag:xe+lag])
     elif atmp.shape[0] == 1 :
-        out=np.zeros([btmp.shape[0],len(lags)])
+        shift=np.zeros([btmp.shape[0],len(lags)])
         for row in range(btmp.shape[0]) :
             print('cross correlating row: {:d}'.format(row),end='\r')
             for i,lag in enumerate(lags) :
-                out[row,i]=np.sum(atmp[0,xs:xe]*btmp[row,xs+lag:xe+lag])
+                shift[row,i]=np.sum(atmp[0,xs:xe]*btmp[row,xs+lag:xe+lag])
     else:
         raise ValueError('input arrays must have same nrows, or first must have 1 row')
         return
+    fitpeak=np.zeros(shift.shape[0])
+    for row in range(shift.shape[0]) :
+        peak=shift[row,:].argmax()
+        fit=np.polyfit(range(-3,4),shift[row,peak-3:peak+4],2)
+        fitpeak[row]=peak+-fit[1]/(2*fit[0])
 
-    return np.array(out)
+    return fitpeak,np.squeeze(np.array(shift))
 
 def zap(hd,size,nsig=3,mask=False) : 
     """ Median filter array and replace values > nsig*uncertainty
@@ -472,3 +479,11 @@ def zap(hd,size,nsig=3,mask=False) :
     if mask :
         if hd.mask is None : hd.mask=np.zeros(hd.data.shape,dtype=bool)
         hd.mask[bd[0],bd[1]] = True
+
+def smooth(hd,size) :
+    """ Boxcar smooth image
+    """
+    hd.data=scipy.ndimage.uniform_filter(hd.data,size=size)
+    npix=1
+    for dim in size : npix*=dim
+    hd.uncertainty=StdDevUncertainty(np.sqrt(scipy.ndimage.uniform_filter(hd.uncertainty.array**2,size=size)/npix))
