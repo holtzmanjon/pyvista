@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib
+import scipy.stats
 from astropy.wcs import wcs
 from pyvista import cmap
 from pyvista import mmm
@@ -388,7 +389,7 @@ class TV:
         else : self.ax.set_ylim(ylim[0],ylim[1])
         plt.draw()
 
-    def tv(self,data,min=None,max=None,cmap=None) :
+    def tv(self,img,min=None,max=None,cmap=None,sn=False) :
         """
         main display routine: displays image with optional scaling
 
@@ -398,9 +399,11 @@ class TV:
         Keyword args:
           min=, max= : optional scaling arguments
         """
-        img=data
         # load data array depending on input type
-        if isinstance(img, (np.ndarray)) :
+        if sn :
+            try : data = img.data / img.uncertainty.array
+            except: raise ValueError('with sn, input must be CCDData type')
+        elif isinstance(img, (np.ndarray)) :
             data = img
         elif isinstance(img.data, (np.ndarray)) :
             data = img.data
@@ -411,8 +414,7 @@ class TV:
         # set figure and axes
         plt.figure(self.fig.number)
         plt.axes(self.ax)
-        #self.ax.cla()
-        #self.ax.axis('off')
+        #self.clear()
 
         # make last image not visible so we don't see anything if new image is smaller
         if self.axlist[self.current] is not None: self.axlist[self.current].set_visible(False)
@@ -439,8 +441,9 @@ class TV:
         if max is None : 
            try: gd = np.where(np.isfinite(data) & ~img.mask)
            except : gd = np.where(np.isfinite(data))
-           min = np.median(data[gd])-3*data[gd].std()
-           max = np.median(data[gd])+10*data[gd].std()
+           std=scipy.stats.median_absolute_deviation(data[gd])
+           min = np.median(data[gd])-3*std
+           max = np.median(data[gd])+10*std
            #try :
            #    sky = mmm.mmm(data)
            #    min = sky[0]-5*sky[1]
@@ -465,7 +468,7 @@ class TV:
         self.aximage = self.ax.imshow(data,vmin=min,vmax=max,cmap=self.cmap, 
                                       interpolation='nearest',aspect=self.aspect)
         old=self.axlist.pop(current)
-        self.tvclear()
+        #self.tvclear()
 
         # if we had a previous image, reload the data with a single value
         # so we don't continually accumulate memory (matplotlib doesn't
@@ -484,7 +487,6 @@ class TV:
         self.cblist.insert(current,self.cb)
 
         plt.draw()
-        plt.show()
         # instead of redraw color, could replace data, but not if sizes change?
         # img.set_data()
         # img.changed()
