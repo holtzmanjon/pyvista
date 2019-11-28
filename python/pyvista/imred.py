@@ -70,6 +70,9 @@ class Reducer() :
         for box in config['normbox'] :
             self.normbox.append(image.BOX(xr=box[0],yr=box[1]) )
            
+        try: self.mask=fits.open(ROOT+'/data/'+inst+'/'+inst+'_mask.fits')[0].data.astype(bool)
+        except: pass
+
         if inst == 'DIS' :
             # DIS has two channels so we we read both
             self.channels=['blue','red']
@@ -131,9 +134,6 @@ class Reducer() :
             self.biasbox = [image.BOX(xr=[0,2048],yr=[0,1024])]
             self.trimbox = [image.BOX(xr=[0,2048],yr=[0,1024])]
             self.normbox = [ image.BOX(xr=[256,956],yr=[570,660]) ]
-
-        try: self.mask=fits.open(os.environ['PYVISTA_DIR']+'/data/'+inst+'/'+inst+'_mask.fits')[0].data
-        except: pass
 
         # save number of chips for convenience
         self.nchip = len(self.formstr)
@@ -251,7 +251,7 @@ class Reducer() :
          """ Superbias subtraction
          """
          # only subtract if we are given a superbias!
-         if superbias is None : return
+         if superbias is None : return im
 
          # work with lists so that we can handle multi-channel instruments
          if type(im) is not list : ims=[im]
@@ -269,7 +269,7 @@ class Reducer() :
          """ Flat fielding
          """
          # only flatfield if we are given a superflat!
-         if superflat is None : return
+         if superflat is None : return im
 
          if type(im) is not list : ims=[im]
          else : ims = im
@@ -711,3 +711,33 @@ def disp(tv,hd,min=None,max=None,sky=False) :
         else :
             tv.tv(hd,min=min,max=max)
 
+def mkmask(inst=None) :
+
+    if inst == 'ARCES' :
+        nrow=2068
+        ncol=2128
+        badpix = [ image.BOX(yr=[0,2067],xr=[0,200]),      # left side
+                   image.BOX(yr=[0,2067],xr=[1900,2127]), # right side
+                   image.BOX(yr=[802,2000],xr=[787,787]),
+                   image.BOX(yr=[663,2000],xr=[1682,1682]),
+                   image.BOX(yr=[219,2067],xr=[101,101]),
+                   image.BOX(yr=[1792,1835],xr=[1284,1284]),
+                   image.BOX(yr=[1474,2067],xr=[1355,1355]),
+                   image.BOX(yr=[1418,1782],xr=[1602,1602]),
+                   image.BOX(yr=[1905,1943],xr=[1382,1382]),
+                   image.BOX(yr=[1926,1974],xr=[1416,1416]),
+                   image.BOX(yr=[1610,1890],xr=[981,981]),
+                   image.BOX(yr=[1575,2067],xr=[490,490]),
+                   image.BOX(yr=[1710,1722],xr=[568,568]),
+                   image.BOX(yr=[1905,1981],xr=[653,654]),
+                   image.BOX(yr=[1870,1925],xr=[853,853]) ] 
+            
+        mask = np.zeros([nrow,ncol],dtype=np.int16)
+        for box in badpix :
+            box.setval(mask,True)
+
+        hdulist=fits.HDUList()
+        hdulist.append(fits.PrimaryHDU(mask))
+        hdulist.writeto('ARCES_mask.fits')
+
+        return mask
