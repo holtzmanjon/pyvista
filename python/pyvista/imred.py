@@ -73,68 +73,6 @@ class Reducer() :
         try: self.mask=fits.open(ROOT+'/data/'+inst+'/'+inst+'_mask.fits')[0].data.astype(bool)
         except: pass
 
-        if inst == 'DIS' :
-            # DIS has two channels so we we read both
-            self.channels=['blue','red']
-            self.formstr=['{:04d}b','{:04d}r']
-            self.gain=[1.68,1.88]
-            self.rn=[4.9,4.6]
-            self.crbox=[1,11]
-            self.biastype = 0
-            self.biasbox = [ image.BOX(xr=[2050,2096],yr=[0,2047]) ,
-                             image.BOX(xr=[2050,2096],yr=[0,2047]) ]
-            self.trimbox = [ image.BOX(xr=[0,2047],yr=[0,1023]) ,
-                             image.BOX(xr=[0,2047],yr=[0,1023]) ]
-            self.normbox = [ image.BOX(xr=[1000,1050],yr=[500,600]) ,
-                             image.BOX(xr=[1000,1050],yr=[500,600]) ]
-
-
-        elif inst == 'ARCES' :
-            self.formstr=['{:04d}']
-            self.gain=[3.8]
-            self.rn=[7]
-            self.crbox=[1,11]
-            self.scat = 10
-            self.biastype = 0
-            self.biasbox = [image.BOX(xr=[2075,2125],yr=[20,2028])]
-            self.trimbox = [image.BOX(xr=[200,1850],yr=[0,2047])]
-            self.normbox = [ image.BOX(xr=[1000,1050],yr=[1000,1050]) ]
-            self.badpix = [ [ image.BOX(yr=[0,2067],xr=[0,200]),      # left side
-                              image.BOX(yr=[0,2067],xr=[1900,2127]), # right side
-                              image.BOX(yr=[802,2000],xr=[787,787]),
-                              image.BOX(yr=[663,2000],xr=[1682,1682]),
-                              image.BOX(yr=[219,2067],xr=[101,101]),
-                              image.BOX(yr=[1792,1835],xr=[1284,1284]),
-                              image.BOX(yr=[1474,2067],xr=[1355,1355]),
-                              image.BOX(yr=[1418,1782],xr=[1602,1602]),
-                              image.BOX(yr=[1905,1943],xr=[1382,1382]),
-                              image.BOX(yr=[1926,1974],xr=[1416,1416]),
-                              image.BOX(yr=[1610,1890],xr=[981,981]),
-                              image.BOX(yr=[1575,2067],xr=[490,490]),
-                              image.BOX(yr=[1710,1722],xr=[568,568]),
-                              image.BOX(yr=[1905,1981],xr=[653,654]),
-                              image.BOX(yr=[1870,1925],xr=[853,853]) ] ]
-            
-        elif inst == 'ARCTIC' :
-            self.formstr=['{:04d}']
-            self.gain=[2.0]
-            self.rn=[3.7]
-            self.biastype = 0
-            self.crbox=[11,11]
-            self.biasbox = [image.BOX(xr=[2052,2090],yr=[20,2028])]
-            self.trimbox = [image.BOX(xr=[0,2048],yr=[0,2048])]
-            self.normbox = [ image.BOX(xr=[800,1200],yr=[800,1200]) ]
-
-        elif inst == 'TSPEC' :
-            self.formstr=['{:04d}']
-            self.gain=[3.5]
-            self.rn=[18]/np.sqrt(nfowler)
-            self.crbox=[1,11]
-            self.biastype = -1
-            self.biasbox = [image.BOX(xr=[0,2048],yr=[0,1024])]
-            self.trimbox = [image.BOX(xr=[0,2048],yr=[0,1024])]
-            self.normbox = [ image.BOX(xr=[256,956],yr=[570,660]) ]
-
         # save number of chips for convenience
         self.nchip = len(self.formstr)
 
