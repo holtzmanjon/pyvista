@@ -456,20 +456,26 @@ class Trace() :
     def find(self,hd,lags=None,plot=None) :
         """ Determine shift from existing trace to input frame
         """
-        if type(hd) is not list : hd = [hd]
         if lags is None : lags = self.lags
-         
-        for im in hd : 
-            fitpeak,shift = image.xcorr(self.spectrum,im.data[:,self.sc0],lags)
-            print('shift: ', fitpeak+lags[0])
-            if plot is not None :
-                plot.tv(im)
-                plot.plotax1.cla()
-                plot.plotax1.plot(self.spectrum.data/self.spectrum.data.max())
-                plot.plotax1.plot(im.data[:,self.sc0]/im.data[:,self.sc0].max())
-                plot.plotax2.cla()
-                plot.plotax2.plot(lags,shift)
-                input('  See spectra and cross-correlation. Hit any key to continue....')
+       
+        im=copy.deepcopy(hd.data)
+        im[:self.rows[0]] = 0.  
+        im[self.rows[1]:] = 0.  
+        fitpeak,shift = image.xcorr(self.spectrum,im[:,self.sc0],lags)
+        print('  traces shift: ', fitpeak+lags[0])
+        if plot is not None :
+            plot.tv(im)
+            plot.plotax1.cla()
+            plot.plotax1.text(0.05,0.95,'obj and ref cross-section',transform=plot.plotax1.transAxes)
+            plot.plotax1.plot(self.spectrum.data/self.spectrum.data.max())
+            plot.plotax1.plot(im[:,self.sc0]/im[:,self.sc0].max())
+            plot.plotax1.set_xlabel('row')
+            plot.plotax2.cla()
+            plot.plotax2.text(0.05,0.95,'cross correlation',transform=plot.plotax2.transAxes)
+            plot.plotax2.plot(lags,shift)
+            plot.plotax2.set_xlabel('lag')
+            plt.draw()
+            input('  See spectra and cross-correlation. Hit any key to continue....')
         self.pix0=fitpeak+lags[0]
         return fitpeak+lags[0]
  
@@ -481,9 +487,9 @@ class Trace() :
         ncols=hd.data.shape[-1]
         spec = np.zeros([len(self.model),hd.data.shape[1]])
         sig = np.zeros([len(self.model),hd.data.shape[1]])
+        mask = np.zeros([len(self.model),hd.data.shape[1]],dtype=bool)
 
         if plot is not None:
-            plot.clear()
             plot.tv(hd)
 
         for i,model in enumerate(self.model) :
@@ -495,27 +501,30 @@ class Trace() :
             rhi=[]
             for col in range(ncols) :
                 r1=icr[col]-rad
-                r2=icr[col]+rad+1
+                r2=icr[col]+rad
                 # sum inner pixels directly, outer pixels depending on fractional pixel location of trace
                 if r1>=0 and r2<nrows :
-                    spec[i,col]=np.sum(hd.data[r1+1:r2-1,col])
+                    spec[i,col]=np.sum(hd.data[r1+1:r2,col])
+                    sig[i,col]=np.sum(hd.uncertainty.array[r1+1:r2,col]**2)
+                    spec[i,col]+=hd.data[r1,col]*(1-rfrac[col])
+                    sig[i,col]+=hd.uncertainty.array[r1,col]**2*(1-rfrac[col])
                     spec[i,col]+=hd.data[r2,col]*rfrac[col]
-                    sig[i,col]=np.sqrt(np.sum(hd.uncertainty.array[r1:r2,col]**2))
+                    sig[i,col]+=hd.uncertainty.array[r2,col]**2*rfrac[col]
+                    sig[i,col]=np.sqrt(sig[i,col])
+                    mask[i,col] = np.any(hd.mask[r1:r2+1,col]) 
                 if plot is not None :
                     rlo.append(r1)
                     rhi.append(r2-1)
             if plot is not None :
                 if i%2 == 0 : color='b'
                 else : color='m'
-                plot.ax.plot(range(ncols),cr,color='g')
-                plot.ax.plot(range(ncols),rlo,color=color,linestyle='--')
-                plot.ax.plot(range(ncols),rhi,color=color,linestyle='--')
+                plot.ax.plot(range(ncols),cr,color='g',linewidth=3)
+                plot.ax.plot(range(ncols),rlo,color=color,linewidth=1)
+                plot.ax.plot(range(ncols),rhi,color=color,linewidth=1)
                 plt.draw()
-                #plot.fig.canvas.manager.window.activateWindow()
-                #plot.fig.canvas.manager.window.raise_()
         if plot is not None : input('  See extraction window(s). Hit any key to continue....')
         print("")
-        return CCDData(spec,uncertainty=StdDevUncertainty(sig),unit='adu')
+        return CCDData(spec,uncertainty=StdDevUncertainty(sig),mask=mask,header=hd.header,unit='adu')
   
     def extract2d(self,hd,rows=None,plot=None) :
         """  Extract 2D spectrum given trace(s)
