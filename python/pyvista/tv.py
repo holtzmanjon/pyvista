@@ -539,6 +539,8 @@ class TV:
         """
         self.ax.cla()
         self.ax.axis('off')
+        self.plotax1.cla()
+        self.plotax2.cla()
 
     def tvclear(self) :
         """
