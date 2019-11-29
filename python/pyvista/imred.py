@@ -69,6 +69,8 @@ class Reducer() :
         self.normbox=[]
         for box in config['normbox'] :
             self.normbox.append(image.BOX(xr=box[0],yr=box[1]) )
+        try: self.scat=config['scat']
+        except : pass
            
         try: self.mask=fits.open(ROOT+'/data/'+inst+'/'+inst+'_mask.fits')[0].data.astype(bool)
         except: pass
@@ -122,8 +124,9 @@ class Reducer() :
             # read the file into a CCDData object
             if self.verbose : print('  Reading file: ', file)
             im=CCDData.read(file,hdu=ext,unit='adu')
+            im.header['FILE'] = os.path.basename(file)
 
-            # Add uncertainty (will be in error if there is an overscan
+            # Add uncertainty (will be in error if there is an overscan, but redo with overscan subraction later)
             data=copy.copy(im.data)
             data[data<0] = 0.
             im.uncertainty = StdDevUncertainty(np.sqrt( data/gain + (rn/gain)**2 ))
@@ -148,16 +151,19 @@ class Reducer() :
         if type(im) is not list : ims=[im]
         else : ims = im
        
-        for im,gain,rn,biasbox,trimbox in zip(ims,self.gain,self.rn,self.biasbox,self.trimbox) :
+        for ichan,(im,gain,rn,biasbox,trimbox) in enumerate(zip(ims,self.gain,self.rn,self.biasbox,self.trimbox)) :
             if self.display is not None : 
-                self.display.clear()
                 self.display.tv(im)
             if self.biastype == 0 :
                 b=biasbox.mean(im.data)
                 if self.verbose: print('  subtracting overscan: ', b)
                 if self.display is not None : 
                     self.display.tvbox(0,0,box=biasbox)
-                    self.display.plotax1.plot(np.mean(im.data[:,biasbox.xmin:biasbox.xmax],axis=1))
+                    if ichan %2 == 0 : ax=self.display.plotax1
+                    else : ax=self.display.plotax2
+                    ax.plot(np.mean(im.data[:,biasbox.xmin:biasbox.xmax],axis=1))
+                    ax.text(0.05,0.95,'Overscan mean',transform=ax.transAxes)
+                    ax.set_xlabel('Row')
                     plt.draw()
                     input("  See bias box and cross section. Hit any key to continue")
                 im.data = im.data.astype(float)-b
@@ -294,7 +300,6 @@ class Reducer() :
         for im in ims :
             if self.verbose : print('  zapping CRs with filter [{:d},{:d}]...'.format(*crbox))
             if self.display is not None : 
-                self.display.clear()
                 self.display.tv(im)
             image.zap(im,crbox,nsig=nsig)
             if self.display is not None : 
@@ -369,12 +374,15 @@ class Combiner() :
         for chip in range(self.reducer.nchip) :
             datacube = []
             varcube = []
+            maskcube = []
             for im in range(nframe) :
                 datacube.append(allcube[im][chip].data)
                 varcube.append(allcube[im][chip].uncertainty.array**2)
+                maskcube.append(allcube[im][chip].mask)
             sum = np.sum(np.array(datacube),axis=0)
             sig = np.sqrt(np.sum(np.array(varcube),axis=0))
-            out.append(CCDData(sum,uncertainty=StdDevUncertainty(sig),unit='adu'))
+            mask = np.any(maskcube,axis=0)
+            out.append(CCDData(sum,uncertainty=StdDevUncertainty(sig),mask=mask,unit='adu'))
         
         # return the frame
         if len(out) == 1 : 
@@ -654,7 +662,7 @@ def mkmask(inst=None) :
     if inst == 'ARCES' :
         nrow=2068
         ncol=2128
-        badpix = [ image.BOX(yr=[0,2067],xr=[0,200]),      # left side
+        badpix = [ image.BOX(yr=[0,2067],xr=[0,230]),      # left side
                    image.BOX(yr=[0,2067],xr=[1900,2127]), # right side
                    image.BOX(yr=[802,2000],xr=[787,787]),
                    image.BOX(yr=[663,2000],xr=[1682,1682]),
@@ -676,6 +684,6 @@ def mkmask(inst=None) :
 
         hdulist=fits.HDUList()
         hdulist.append(fits.PrimaryHDU(mask))
-        hdulist.writeto('ARCES_mask.fits')
+        hdulist.writeto('ARCES_mask.fits',overwrite=True)
 
         return mask
