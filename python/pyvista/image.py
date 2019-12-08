@@ -440,8 +440,9 @@ def xcorr(a,b,lags,medfilt=0) :
     """ Cross correlation function between two arrays, calculated at lags
     """
 
+    # compute xcorr with starting and ending position to allow full range of lags
     xs = -lags[0]
-    xe = a.shape[-1]-lags[-1]
+    xe = np.min([a.shape[-1],b.shape[-1]])-lags[-1]
     atmp=np.atleast_2d(a)
     btmp=np.atleast_2d(b)
     if medfilt>0 :
@@ -468,6 +469,43 @@ def xcorr(a,b,lags,medfilt=0) :
         fitpeak[row]=peak+-fit[1]/(2*fit[0])
 
     return fitpeak,np.squeeze(np.array(shift))
+
+def xcorr2d(a,b,lags) :
+    """ Two-dimensional cross correlation
+
+        Parameters:
+            a, b : input CCDData frames
+            lags : array (1D) of x-corrlation lags
+
+        Returns:
+            peak : (x,y) position of cross correlation peak from quadratic fit to x-correlation
+            shift : 2D cross correlation function
+    """
+    # do x-corrlation over section of image that fits within input lag array
+    xs = -lags[0]
+    xe = np.min([a.shape[1],b.shape[1]])-lags[-1]
+    ys = -lags[0]
+    ye = np.min([a.shape[0],b.shape[0]])-lags[-1]
+
+    # compute x-corrleation
+    shift = np.zeros([len(lags),len(lags)])
+    for i, xlag in enumerate(lags) :
+        for j, ylag in enumerate(lags) :
+            shift[j,i] = np.sum(a.data[ys:ye,xs:xe]*b.data[ys+ylag:ye+ylag,xs+xlag:xe+xlag])
+
+    # quadratic fit and determine peak
+    fit=fitting.LinearLSQFitter()
+    mod=models.Polynomial2D(degree=2)
+    y,x=np.meshgrid(lags,lags)
+    yp,xp=np.unravel_index(shift.argmax(),shift.shape)
+    print(yp,xp)
+    p=fit(mod,x[yp-1:yp+2,xp-1:xp+2],y[yp-1:yp+2,xp-1:xp+2],shift[yp-1:yp+2,xp-1:xp+2])
+    a = np.array([ [2*p.parameters[2], p.parameters[5]], [p.parameters[5],2*p.parameters[4]] ])
+    b = np.array([-p.parameters[1],-p.parameters[3]])
+    peak=np.linalg.solve(a,b)+(xp,yp)+(lags[0],lags[0])
+
+    return peak,shift
+
 
 def zap(hd,size,nsig=3,mask=False) : 
     """ Median filter array and replace values > nsig*uncertainty
