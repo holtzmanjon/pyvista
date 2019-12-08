@@ -104,7 +104,7 @@ class WaveCal() :
                 cb = self.fig.colorbar(scat,cax=cb_ax)
                 cb.ax.set_ylabel('Row')
                 plt.draw()
-                plt.show()
+                self.fig.canvas.draw_idle()
                 input('  See 2D wavecal fit. Hit any key to continue....')
 
         else :
@@ -188,10 +188,14 @@ class WaveCal() :
                     print('  Derived pixel shift from input wcal: ',fitpeak+lags[0])
                     if display is not None :
                         display.plotax1.cla()
+                        display.plotax1.text(0.05,0.95,'spectrum and reference',transform=display.plotax1.transAxes)
                         display.plotax1.plot(spectrum.data[0,:],color='m')
                         display.plotax1.plot(self.spectrum.data[0,:],color='g')
+                        display.plotax1.set_xlabel('Pixel')
                         display.plotax2.cla()
+                        display.plotax2.text(0.05,0.95,'cross correlation',transform=display.plotax2.transAxes)
                         display.plotax2.plot(lags,shift)
+                        display.plotax1.set_xlabel('Lag')
                         plt.draw()
                         input("  See spectrum and template spectrum (top), cross corrleation(bottom). hit any key to continue")
                     # single shift for all pixels
@@ -459,11 +463,16 @@ class Trace() :
         if lags is None : lags = self.lags
        
         im=copy.deepcopy(hd.data)
-        im[:self.rows[0]] = 0.  
-        im[self.rows[1]:] = 0.  
-        fitpeak,shift = image.xcorr(self.spectrum,im[:,self.sc0],lags)
+        # if we have a window, zero array outside of window
+        spec=im[:,self.sc0]
+        try:
+            spec[:self.rows[0]] = 0.  
+            spec[self.rows[1]:] = 0.  
+        except: pass
+        fitpeak,shift = image.xcorr(self.spectrum,spec,lags)
         print('  traces shift: ', fitpeak+lags[0])
         if plot is not None :
+            plot.clear()
             plot.tv(im)
             plot.plotax1.cla()
             plot.plotax1.text(0.05,0.95,'obj and ref cross-section',transform=plot.plotax1.transAxes)
