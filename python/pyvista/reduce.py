@@ -16,7 +16,7 @@ import scipy.signal
 
 ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../../'
 
-def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,groups='all') :
+def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,groups='all') :
     """ Reduce full night(s) of data given input configuration file
     """
     f=open(ymlfile,'r')
@@ -67,13 +67,14 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,groups='all') :
             # existing trace template
             traces=pickle.load(open(ROOT+'/data/'+inst+'/'+inst+'_traces.pkl','rb'))
 
+            if wclobber is None : wclobber = clobber
             wavedict={}
             wavecals=group['arcs']
             for wavecal in wavecals :
                 print('create wavecal : {:s}'.format(wavecal['id']))
                 # existing wavecal template
                 waves=pickle.load(open(ROOT+'/data/'+inst+'/'+wavecal['wref']+'.pkl','rb'))
-                if clobber :
+                if wclobber :
                     make = True
                 else :
                     make = False
