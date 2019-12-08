@@ -4,6 +4,7 @@ import matplotlib.patches as patches
 import matplotlib
 import scipy.stats
 from astropy.wcs import wcs
+from astropy.nddata import support_nddata
 from pyvista import cmap
 from pyvista import mmm
 try:
@@ -395,8 +396,7 @@ class TV:
 
         Args:
           img: a numpy array OR a fits HDU
-
-        Keyword args:
+          min=, max= : optional scaling arguments
           min=, max= : optional scaling arguments
         """
         # load data array depending on input type
@@ -439,18 +439,7 @@ class TV:
         if min is None : 
            min = 0.
         if max is None : 
-           try: gd = np.where(np.isfinite(data) & ~img.mask)
-           except : gd = np.where(np.isfinite(data))
-           std=scipy.stats.median_absolute_deviation(data[gd])
-           min = np.median(data[gd])-3*std
-           max = np.median(data[gd])+10*std
-           #try :
-           #    sky = mmm.mmm(data)
-           #    min = sky[0]-5*sky[1]
-           #    max = sky[0]+20*sky[1]
-           #except :
-           #    min = np.median(data)-5*data.std()
-           #    max = np.median(data)+20*data.std()
+           min,max = minmax(data[gd])
         self.scale = [min,max]
         self.scalelist.pop(current)
         self.scalelist.insert(current,self.scale)
@@ -572,3 +561,25 @@ class TV:
         self.tv(y)
         self.tv(x+y)
         self.tv(x-y)
+
+@support_nddata
+def minmax(data,mask=None, low=3,high=10):
+    """ Return min,max scaling factors for input data using median, and MAD
+   
+        Args:
+            img : input CCDData
+            low : number of MADs below median to retunr
+            high : number of MADs above median to retunr
+
+        Returns:
+            min,max : low and high scaling factors
+    """
+    if mask is not None :
+        gd = np.where(np.isfinite(data) & ~mask)
+    else :
+        gd = np.where(np.isfinite(data))
+    std=scipy.stats.median_absolute_deviation(data[gd])
+    min = np.median(data[gd])-low*std
+    max = np.median(data[gd])+high*std
+    return min,max
+
