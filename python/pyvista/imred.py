@@ -1,5 +1,6 @@
 import numpy as np
 import astropy
+import code
 import copy
 from astropy import units
 from astropy.nddata import CCDData, NDData, StdDevUncertainty
@@ -11,6 +12,7 @@ from astropy.convolution import convolve, Box1DKernel, Box2DKernel, Box2DKernel
 import ccdproc
 import scipy.signal
 import yaml
+import sys
 
 import warnings
 from astropy.utils.exceptions import AstropyWarning
@@ -22,6 +24,7 @@ import bz2
 import os
 import pdb
 from pyvista import image
+from pyvista import tv
 try: 
     import pyds9
 except:
@@ -42,7 +45,6 @@ class Reducer() :
         self.badpix=None
         self.scat=None
         self.mask=None
-        self.display=None
 
         # we will allow for instruments to have multiple channels, so everything goes in lists
         self.channels=['']
@@ -52,7 +54,8 @@ class Reducer() :
         else : self.rn = [rn]
         if type(formstr) is list : self.formstr=formstr
         else : self.formstr=[formstr]
-        
+       
+        # Read instrument configuation from YAML configuration file 
         config = yaml.load(open(ROOT+'/data/'+inst+'/'+inst+'_config.yml','r'), Loader=yaml.FullLoader)
         self.channels=config['channels']
         self.formstr=config['formstr']
@@ -72,12 +75,14 @@ class Reducer() :
         try: self.scat=config['scat']
         except : pass
            
+        # Add bad pixel mask if it exists
         try: self.mask=fits.open(ROOT+'/data/'+inst+'/'+inst+'_mask.fits')[0].data.astype(bool)
         except: pass
 
         # save number of chips for convenience
         self.nchip = len(self.formstr)
 
+        # output setup if verbose
         if self.verbose :
             for form in self.formstr :
                 print('  will use format:  {:s}/{:s}.{:s}.fits'.format(self.dir,self.root,form))
@@ -113,6 +118,9 @@ class Reducer() :
                     search='*'+num+'*'
                 else :
                     search=self.dir+'/*'+num+'*'
+            else :
+                print('stopping in rd... num:',num)
+                pdb.set_trace()
             file=glob.glob(search)
             if len(file) == 0 : 
                 print('cannot find file matching: '+search)
@@ -122,8 +130,9 @@ class Reducer() :
             file=file[0]
 
             # read the file into a CCDData object
-            if self.verbose : print('  Reading file: ', file)
-            im=CCDData.read(file,hdu=ext,unit='adu')
+            if self.verbose : print('  Reading file: {:s}'.format(file)) 
+            try : im=CCDData.read(file,hdu=ext,unit='adu')
+            except : raise RuntimeError('Error reading file: {:s}'.format(file))
             im.header['FILE'] = os.path.basename(file)
 
             # Add uncertainty (will be in error if there is an overscan, but redo with overscan subraction later)
@@ -145,27 +154,31 @@ class Reducer() :
         if len(out) == 1 : return out[0]
         else : return out
             
-    def overscan(self,im,trim=False) :
-        """ Overscan subtration
+    def overscan(self,im,display=None) :
+        """ Overscan subtraction
         """
         if type(im) is not list : ims=[im]
         else : ims = im
        
-        for ichan,(im,gain,rn,biasbox,trimbox) in enumerate(zip(ims,self.gain,self.rn,self.biasbox,self.trimbox)) :
-            if self.display is not None : 
-                self.display.tv(im)
+        for ichan,(im,gain,rn,biasbox) in enumerate(zip(ims,self.gain,self.rn,self.biasbox)) :
+            if display is not None : 
+                display.tv(im)
             if self.biastype == 0 :
                 b=biasbox.mean(im.data)
                 if self.verbose: print('  subtracting overscan: ', b)
-                if self.display is not None : 
-                    self.display.tvbox(0,0,box=biasbox)
-                    if ichan %2 == 0 : ax=self.display.plotax1
-                    else : ax=self.display.plotax2
+                if display is not None : 
+                    display.tvbox(0,0,box=biasbox)
+                    if ichan %2 == 0 : ax=display.plotax1
+                    else : ax=display.plotax2
                     ax.plot(np.mean(im.data[:,biasbox.xmin:biasbox.xmax],axis=1))
                     ax.text(0.05,0.95,'Overscan mean',transform=ax.transAxes)
                     ax.set_xlabel('Row')
+                    display.fig.canvas.draw_idle()
                     plt.draw()
-                    input("  See bias box and cross section. Hit any key to continue")
+                    get=input("  See bias box and cross section. Hit any key to continue")
+                    if get == 'i' : code.interact(local=locals())
+                    elif get == 'q' : quit()
+                    elif get == 'p' : pdb.set_trace()
                 im.data = im.data.astype(float)-b
                 im.header.add_comment('subtracted overscan: {:f}'.format(b))
             #elif det.biastype == 1 :
@@ -180,15 +193,17 @@ class Reducer() :
             data[data<0] = 0.
             im.uncertainty = StdDevUncertainty(np.sqrt( data/gain + (rn/gain)**2 ))
 
-            # Trim if requested
-            if trim:
-                im.data = im.data[trimbox.ymin:trimbox.ymin+trimbox.nrow(),
-                                  trimbox.xmin:trimbox.xmin+trimbox.ncol()]
-                im.uncertainty.array = im.uncertainty.array[trimbox.ymin:trimbox.ymin+trimbox.nrow(),
-                                                            trimbox.xmin:trimbox.xmin+trimbox.ncol()]
-                if im.mask is not None :
-                    im.mask = im.mask[trimbox.ymin:trimbox.ymin+trimbox.nrow(),
-                                      trimbox.xmin:trimbox.xmin+trimbox.ncol()]
+    def trim(self,im) :
+        """ Trim image by masking non-trimmed pixels
+            Need to preserve image size to match reference/calibration frames, etc.
+        """
+        if type(im) is not list : ims=[im]
+        else : ims = im
+
+        for  im,trimbox in zip(ims,self.trimbox) :
+            tmp = np.ones(im.mask.shape,dtype=bool)
+            trimbox.setval(tmp,False)
+            im.mask = np.logical_or(im.mask,tmp)
 
 
     def bias(self,im,superbias=None) :
@@ -209,7 +224,25 @@ class Reducer() :
          if len(out) == 1 : return out[0]
          else : return out
 
-    def flat(self,im,superflat=None) :
+    def dark(self,im,superdark=None) :
+         """ Superdark subtraction
+         """
+         # only subtract if we are given a superdark!
+         if superdark is None : return im
+
+         # work with lists so that we can handle multi-channel instruments
+         if type(im) is not list : ims=[im]
+         else : ims = im
+         if type(superdark) is not list : superdarks=[superdark]
+         else : superdarks = superdark
+         out=[]
+         for im,dark in zip(ims,superdarks) :
+             if self.verbose : print('  subtracting superdark...')
+             out.append(ccdproc.subtract_dark(im,dark,exposure_time='EXPTIME'))
+         if len(out) == 1 : return out[0]
+         else : return out
+
+    def flat(self,im,superflat=None,display=None) :
          """ Flat fielding
          """
          # only flatfield if we are given a superflat!
@@ -222,7 +255,31 @@ class Reducer() :
          out=[]
          for im,flat in zip(ims,superflats) :
              if self.verbose : print('  flat fielding...')
-             out.append(ccdproc.flat_correct(im,flat))
+             if display is not None : 
+                 display.tv(im)
+             corr = ccdproc.flat_correct(im,flat)
+             out.append(corr)
+             if display is not None : 
+                 display.tv(corr)
+                 #plot central crossections
+                 display.plotax1.cla()
+                 dim=corr.data.shape
+                 col = int(dim[1]/2)
+                 row = corr.data[:,col]
+                 display.plotax1.plot(row)
+                 min,max=tv.minmax(row,low=5,high=5)
+                 display.plotax1.set_ylim(min,max)
+                 display.plotax1.set_xlabel('row')
+                 display.plotax1.text(0.05,0.95,'Column {:d}'.format(col),transform=display.plotax1.transAxes)
+                 display.plotax2.cla()
+                 row = int(dim[0]/2)
+                 col = corr.data[row,:]
+                 min,max=tv.minmax(col,low=10,high=10)
+                 display.plotax2.plot(col)
+                 display.plotax2.set_xlabel('col')
+                 display.plotax2.text(0.05,0.95,'Row {:d}'.format(row),transform=display.plotax2.transAxes)
+                 display.plotax2.set_ylim(min,max)
+                 input("  See flat-fielded image and original with - key. Hit any key to continue")
          if len(out) == 1 : return out[0]
          else : return out
 
@@ -270,9 +327,8 @@ class Reducer() :
         grid_z=convolve(scipy.interpolate.griddata(points_gd,values_gd,(grid_x,grid_y),
                         method='cubic',fill_value=0.),boxcar)
 
-        if display is None and self.display is not None : display = self.display
         if display is not None :
-            self.display.clear()
+            display.clear()
             display.tv(im)
             points=np.array(points)
             display.ax.scatter(points[:,1],points[:,0],color='r',s=1)
@@ -291,20 +347,28 @@ class Reducer() :
 
         im.data -= grid_z
 
-    def crrej(self,im,crbox=None,nsig=5) :
+    def crrej(self,im,crbox=None,nsig=5,display=None) :
         """ CR rejection
         """
-        if crbox is None: return
+        if crbox is None: return im
         if type(im) is not list : ims=[im]
         else : ims = im
-        for im in ims :
-            if self.verbose : print('  zapping CRs with filter [{:d},{:d}]...'.format(*crbox))
-            if self.display is not None : 
-                self.display.tv(im)
-            image.zap(im,crbox,nsig=nsig)
-            if self.display is not None : 
-                self.display.tv(im)
+        out=[]
+        for i,im in enumerate(ims) :
+            if display is not None : 
+                display.tv(im)
+            if crbox == 'lacosmic':
+                if self.verbose : print('  zapping CRs with ccdproc.cosmicray_lacosmic')
+                im= ccdproc.cosmicray_lacosmic(im)
+            else :
+                if self.verbose : print('  zapping CRs with filter [{:d},{:d}]...'.format(*crbox))
+                image.zap(im,crbox,nsig=nsig)
+            if display is not None : 
+                display.tv(im)
                 input("  See CR-zapped image and original with - key. Hit any key to continue")
+            out.append(im)
+        if len(out) == 1 : return out[0]
+        else : return out
 
     def badpix_fix(self,im,val=0.) :
         """ Replace bad pixels
@@ -318,24 +382,45 @@ class Reducer() :
                  ims[i].data[bd[0],bd[1]] = val
                  ims[i].uncertainty.array[bd[0],bd[1]] = np.inf
 
+    def display(self,display,id) :
+
+        im = self.reduce(id)
+        if type(im) is not list : ims=[im]
+        else : ims = im
+        for i, im in enumerate(ims) :
+            display.tv(im)
+
     def reduce(self,num,crbox=None,superbias=None,superdark=None,superflat=None,scat=None,badpix=None,return_list=False,display=None) :
         """ Full reduction
         """
-        self.display = display
         im=self.rd(num)
-        self.overscan(im)
-        self.crrej(im,crbox=crbox)
+        self.overscan(im,display=display)
+        im=self.crrej(im,crbox=crbox,display=display)
         im=self.bias(im,superbias=superbias)
-        self.scatter(im,scat=scat)
-        im=self.flat(im,superflat=superflat)
+        im=self.dark(im,superdark=superdark)
+        self.scatter(im,scat=scat,display=display)
+        im=self.flat(im,superflat=superflat,display=display)
         self.badpix_fix(im,val=badpix)
+        self.trim(im)
         if return_list and type(im) is not list : im=[im]
         return im
 
-    def write(self,im,name,overwrite=True) :
+    def write(self,im,name,overwrite=True,trim=False) :
         """ write out image, deal with multiple channels 
         """
-        if type(im) is list :
+
+        if type(im) is not list : ims=[im]
+        else : ims = im
+        for image,trimbox in zip(ims,self.trimbox) :
+            if trim :
+                image.data = image.data[trimbox.ymin:trimbox.ymin+trimbox.nrow(),
+                                        trimbox.xmin:trimbox.xmin+trimbox.ncol()]
+                image.uncertainty.array = image.uncertainty.array[trimbox.ymin:trimbox.ymin+trimbox.nrow(),
+                                                                  trimbox.xmin:trimbox.xmin+trimbox.ncol()]
+                if image.mask is not None :
+                    image.mask = image.mask[trimbox.ymin:trimbox.ymin+trimbox.nrow(),
+                                            trimbox.xmin:trimbox.xmin+trimbox.ncol()]
+        if self.nchip > 1 :
             for i,frame in enumerate(im) : frame.write(name+'_'+self.channels[i]+'.fits',overwrite=overwrite)
         else :
             im.write(name+'.fits',overwrite=overwrite)
@@ -425,9 +510,20 @@ class Combiner() :
             # display final combined frame and individual frames relative to combined
             if display :
                 display.clear()
-                display.tv(med)
-                input("  See final image. Hit any key to continue")
+                display.tv(comb,sn=True)
+                display.tv(comb)
+                gd=np.where(comb.mask == False)
+                min,max=tv.minmax(med[gd[0],gd[1]],low=10,high=10)
+                display.plotax1.hist(med[gd[0],gd[1]],bins=np.linspace(min,max,100),histtype='step')
+                display.fig.canvas.draw_idle()
+                get = input("  See final image, use - key for S/N image. Hit any key to continue")
+                if get == 'i' : code.interact(local=locals())
+                elif get == 'q' : sys.exit()
+                elif get == 'p' : pdb.set_trace()
                 for i,im in enumerate(ims) :
+                    min,max=tv.minmax(med[gd[0],gd[1]],low=5,high=5)
+                    display.plotax2.hist((allcube[i][chip].data/med)[gd[0],gd[1]],bins=np.linspace(min,max,100),histtype='step')
+                    display.fig.canvas.draw_idle()
                     if div :
                         display.tv(allcube[i][chip].data/med,min=0.5,max=1.5)
                         input("    see image: {} divided by master, hit any key to continue".format(im))
@@ -447,22 +543,26 @@ class Combiner() :
         """
         return self.median(ims,display=display,div=False,scat=scat)
 
-    def superflat(self,ims,superbias=None,scat=None, display=None) :
+    def superdark(self,ims,superbias=None,display=None,scat=None) :
+        """ Driver for superdark combination (no normalization)
+        """
+        return self.median(ims,superbias=superbias,display=display,div=False,scat=scat)
+
+    def superflat(self,ims,superbias=None,superdark=None,scat=None,display=None) :
         """ Driver for superflat combination (with superbias if specified, normalize to normbox
         """
-        return self.median(ims,superbias=superbias,normalize=True,scat=scat,display=display)
+        return self.median(ims,superbias=superbias,superdark=superdark,normalize=True,scat=scat,display=display)
 
-    def specflat(self,ims,superbias=None,scat=None,wid=100,display=None) :
+    def specflat(self,flats,wid=101) :
         """ Spectral flat takes out variation along wavelength direction
         """
-        flats = self.median(ims,superbias=superbias,scat=scat,normalize=True,display=display)
         boxcar = Box1DKernel(wid)
         for iflat,flat in enumerate(flats) : 
             nrows=flats[iflat].data.shape[0]
-            c=convolve(flats[iflat].data[int(nrows/2)-50:int(nrows/2)+50,:].sum(axis=0),boxcar,boundary='extend')
+            med = convolve(np.median(flat,axis=0),boxcar,boundary='extend')
             for row in range(flats[iflat].data.shape[0]) :
-                flats[iflat].data[row,:] /= (c/wid)
-                flats[iflat].uncertainty.array[row,:] /= (c/wid)
+                flats[iflat].data[row,:] /= med
+                flats[iflat].uncertainty.array[row,:] /= med
 
         return flats
 
@@ -678,12 +778,27 @@ def mkmask(inst=None) :
                    image.BOX(yr=[1905,1981],xr=[653,654]),
                    image.BOX(yr=[1870,1925],xr=[853,853]) ] 
             
-        mask = np.zeros([nrow,ncol],dtype=np.int16)
-        for box in badpix :
-            box.setval(mask,True)
 
-        hdulist=fits.HDUList()
-        hdulist.append(fits.PrimaryHDU(mask))
-        hdulist.writeto('ARCES_mask.fits',overwrite=True)
+    elif inst == 'DIS' :
+        nrow=1078
+        ncol=2098
+        badpix = [ image.BOX(yr=[474,1077],xr=[803,803]),
+                   image.BOX(yr=[0,1077],xr=[1196,1196]),
+                   image.BOX(yr=[0,1077],xr=[0,0]) ]
 
-        return mask
+    mask = np.zeros([nrow,ncol],dtype=np.int16)
+    for box in badpix :
+        box.setval(mask,True)
+
+    hdulist=fits.HDUList()
+    hdulist.append(fits.PrimaryHDU(mask))
+    hdulist.writeto(inst+'_mask.fits',overwrite=True)
+
+    return mask
+
+def getinput(str) :
+    get = input(str)
+    if get == 'i' : code.interact(local=globals())
+    elif get == 'p' :
+        pdb.set_trace()
+    return get
