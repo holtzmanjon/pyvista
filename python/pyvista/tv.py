@@ -439,7 +439,7 @@ class TV:
         if min is None : 
            min = 0.
         if max is None : 
-           min,max = minmax(data[gd])
+           min,max = minmax(data)
         self.scale = [min,max]
         self.scalelist.pop(current)
         self.scalelist.insert(current,self.scale)
