@@ -1,5 +1,5 @@
 Stars module
-*********
+************
 
 stars is the pyvista module that implements routines for dealing with stellar images
 
