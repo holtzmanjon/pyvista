@@ -8,11 +8,50 @@ import scipy.interpolate
 import numpy as np
 from astropy.modeling import models, fitting
 from astropy.nddata import CCDData, StdDevUncertainty
-from astropy.io import ascii
+from astropy.io import ascii, fits
 from astropy.convolution import convolve, Box1DKernel, Box2DKernel
 import pyvista
 from pyvista import image
 from pyvista import tv
+from tools import plots
+
+class SpecData(CCDData) :
+    """ Class to include a wavelength array on top of CCDData, with simple read/write/plot methods
+    """
+    def __init__(self,data,wave=None) :
+        if type(data) is str :
+            hdulist=fits.open(data)
+            self.meta = hdulist[0].header
+            self.unit = hdulist[0].header['BUNIT']
+            self.data = hdulist[1].data
+            self.uncertainty = StdDevUncertainty(hdulist[2].data)
+            self.mask = hdulist[3].data
+            self.wave = hdulist[4].data
+        elif type(data) is CCDData :
+            self.unit = data.unit
+            self.meta = data.meta
+            self.data = data.data
+            self.uncertainty = data.uncertainty
+            self.mask = data.mask
+            self.wave = wave
+        else :
+            print('Input must be a filename or CCDData object')
+
+    def write(self,file,overwrite=True) :
+        hdulist=fits.HDUList()
+        hdulist.append(fits.PrimaryHDU(header=self.meta))
+        hdulist.append(fits.ImageHDU(self.data))
+        hdulist.append(fits.ImageHDU(self.uncertainty.array))
+        hdulist.append(fits.ImageHDU(self.mask.astype(np.int16)))
+        hdulist.append(fits.ImageHDU(self.wave))
+        hdulist.writeto(file,overwrite=overwrite)
+
+    def plot(self,ax,**kwargs) :
+        for row in range(self.wave.shape[0]) :
+            gd = np.where(self.mask[row,:] == False)[0]
+            plots.plotl(ax,self.wave[row,gd],self.data[row,gd],**kwargs)
+        
+
 
 class WaveCal() :
     """ Class for wavelength solutions
@@ -416,35 +455,47 @@ class Trace() :
             plot.clear()
             plot.tv(hd)
 
+        rad = self.rad-1
         for srow in srows :
             print('  Tracing row: {:d}'.format(int(srow)),end='\r')
             sr=copy.copy(srow)
             sr=int(round(sr))
+            sr=hd.data[sr-rad:sr+rad+1,self.sc0].argmax()+sr-rad
             # march left from center
             for col in range(self.sc0,0,-1) :
                 # centroid
-                cr=sr-self.rad+hd.data[sr-self.rad:sr+self.rad+1,col].argmax()
-                ysum[col] = np.sum(hd.data[cr-self.rad:cr+self.rad+1,col]) 
-                ypos[col] = np.sum(rows[cr-self.rad:cr+self.rad+1]*hd.data[cr-self.rad:cr+self.rad+1,col]) / ysum[col]
-                yvar[col] = np.sum(hd.uncertainty.array[cr-self.rad:cr+self.rad+1,col]**2) 
-                ymask[col] = np.any(hd.mask[cr-self.rad:cr+self.rad+1,col]) 
+                cr=sr-rad+hd.data[sr-rad:sr+rad+1,col].argmax()
+                ysum[col] = np.sum(hd.data[cr-rad:cr+rad+1,col]) 
+                ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*hd.data[cr-rad:cr+rad+1,col]) / ysum[col]
+                yvar[col] = np.sum(hd.uncertainty.array[cr-rad:cr+rad+1,col]**2) 
+                ymask[col] = np.any(hd.mask[cr-rad:cr+rad+1,col]) 
+                # if centroid is too far from starting guess, mask as bad
+                if np.abs(ypos[col]-sr) > rad/2. : ymask[col] = True
                 # use this position as starting center for next if above threshold S/N
-                if (not ymask[col]) & np.isfinite(ysum[col]) & (ysum[col]/np.sqrt(yvar[col]) > thresh) : sr=int(round(ypos[col]))
+                if (not ymask[col]) & np.isfinite(ysum[col]) & (ysum[col]/np.sqrt(yvar[col]) > thresh)  : sr=int(round(ypos[col]))
             sr=copy.copy(srow)
             sr=int(round(sr))
+            sr=hd.data[sr-rad:sr+rad+1,self.sc0].argmax()+sr-rad
             # march right from center
             for col in range(self.sc0+1,ncol,1) :
                 # centroid
-                cr=sr-self.rad+hd.data[sr-self.rad:sr+self.rad+1,col].argmax()
-                ysum[col] = np.sum(hd.data[cr-self.rad:cr+self.rad+1,col]) 
-                ypos[col] = np.sum(rows[cr-self.rad:cr+self.rad+1]*hd.data[cr-self.rad:cr+self.rad+1,col]) / ysum[col]
-                yvar[col] = np.sum(hd.uncertainty.array[cr-self.rad:cr+self.rad+1,col]**2) 
-                ymask[col] = np.any(hd.mask[cr-self.rad:cr+self.rad+1,col]) 
+                cr=sr-rad+hd.data[sr-rad:sr+rad+1,col].argmax()
+                ysum[col] = np.sum(hd.data[cr-rad:cr+rad+1,col]) 
+                ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*hd.data[cr-rad:cr+rad+1,col]) / ysum[col]
+                yvar[col] = np.sum(hd.uncertainty.array[cr-rad:cr+rad+1,col]**2) 
+                ymask[col] = np.any(hd.mask[cr-rad:cr+rad+1,col]) 
+                if np.abs(ypos[col]-sr) > rad/2. : ymask[col] = True
                 # use this position as starting center for next if above threshold S/N
-                if (not ymask[col]) & np.isfinite(ysum[col]) & (ysum[col]/np.sqrt(yvar[col]) > thresh) : sr=int(round(ypos[col]))
+                if (not ymask[col]) & np.isfinite(ysum[col]) & (ysum[col]/np.sqrt(yvar[col]) > thresh)  : sr=int(round(ypos[col]))
 
             cols=np.arange(ncol)
+            print(len(ymask))
             gd = np.where((~ymask) & (ysum/np.sqrt(yvar)>thresh) )[0]
+            model=(fitter(mod,cols[gd],ypos[gd]))
+
+            # reject outlier points (>1 pixel) and refit
+            res = model(cols)-ypos
+            gd = np.where((~ymask) & (ysum/np.sqrt(yvar)>thresh) & (np.abs(res)<1))[0]
             model=(fitter(mod,cols[gd],ypos[gd]))
             self.model.append(model)
 
@@ -452,10 +503,19 @@ class Trace() :
                 plot.ax.scatter(cols,ypos,marker='o',color='r',s=2) 
                 plot.ax.scatter(cols[gd],ypos[gd],marker='o',color='g',s=2) 
                 plot.ax.plot(cols,model(cols),color='m')
-                plt.pause(0.05)
+                #plt.pause(0.05)
 
         print("")
         if plot : input('  See trace. Hit any key to continue....')
+
+    def retrace(self,hd,plot=None,thresh=20) :
+        """ Retrace starting with existing model
+        """
+        self.find(hd)
+        srows = []
+        for row in range(len(self.model)) :
+            srows.append(self.model[row](self.sc0))
+        self.trace(hd,srows,plot=plot,thresh=thresh)
      
     def find(self,hd,lags=None,plot=None) :
         """ Determine shift from existing trace to input frame
