@@ -5,7 +5,7 @@ from astropy.io import fits
 from astropy.io import ascii
 from astropy.modeling import models, fitting
 from astropy.convolution import convolve, Box1DKernel
-from astropy.nddata import StdDevUncertainty
+from astropy.nddata import StdDevUncertainty, support_nddata
 import scipy.signal
 import scipy.ndimage
 import matplotlib.pyplot as plt
@@ -22,14 +22,31 @@ class BOX() :
     """ 
     Defines BOX class
     """
-    def __init__(self,n=0,nr=None,nc=None,sr=1,sc=1,cr=None,cc=None,const=None,xr=None,yr=None) :
-        if nr is None and nc is None :
-            try :
-                nr=n
-                nc=n
-            except:
-                print('You must specify either n=, or nr= and nc=')
-                return
+    def __init__(self,n=None,nr=None,nc=None,sr=1,sc=1,cr=None,cc=None,xr=None,yr=None) :
+        """ Define a BOX
+
+            Args :
+               n (int) : size of box (if square)
+               nr (int) : number of rows 
+               nc (int) : number of cols
+               sr (int) : start row
+               sc (int) : start column
+               cr (int) : central row (supercedes sr)
+               cc (int) : central column (supercedes sc)
+               xr       : [xmin,xmax]  (supercedes cc and sc)
+               yr       : [ymin,ymax]  (supercedes cr and sr)
+        """
+        if nr is None and nc is None and n is None and xr is None and yr is None:
+            print('You must specify either n=, or nr= and nc=')
+            return
+        elif nr is None and nc is None :
+            nr=n
+            nc=n
+        elif nr is None :
+            print('You much specify nr= with nc=')
+        elif nc is None :
+            print('You much specify nc= with nr=')
+
         if cr is not None and cc is not None :
             sr=cr-nr/2
             sc=cc-nr/2
@@ -48,59 +65,128 @@ class BOX() :
             self.ymax = sr+nr-1
 
     def set(self,xmin,xmax,ymin,ymax):
+        """ Resets limits of a box
+        
+            Args:
+                xmin : lower x value
+                xmax : higher x value
+                ymin : lower y value
+                ymax : higher xyvalue
+        """
         self.xmin = xmin
         self.xmax = xmax
         self.ymin = ymin
         self.ymax = ymax
 
     def nrow(self):
+        """ Returns number of rows in a box
+
+            Returns :
+                number of rows 
+        """
         return(self.ymax-self.ymin+1)
 
     def ncol(self):
+        """ Returns number of columns in a box
+
+            Returns :
+                number of columns
+        """
         return(self.xmax-self.xmin+1)
 
     def show(self):
+        """ Prints box limits
+        """
         print('    SC    NC    SR    NR  Exp       Date     Name')
         print('{:6d}{:6d}{:6d}{:6d} '.format(self.xmin,self.ncol(),self.ymin,self.nrow()))
 
     def mean(self,data):
+        """ Returns mean of data in box
+
+            Args :
+                data : input data (CCDData or np.array)
+ 
+            Returns:
+                mean of data in box
+        """
         if self.nrow() <= 0 or self.ncol() <= 0 : return 0.
         return data[self.ymin:self.ymax+1,self.xmin:self.xmax+1].mean() 
 
     def stdev(self,data):
+        """ Returns standard deviation of data in box
+
+            Args :
+                data : input data (CCDData or np.array)
+
+            Returns:
+                standard deviation of data in box
+        """
         if self.nrow() == 0 or self.ncol() == 0 : return 0.
         return data[self.ymin:self.ymax+1,self.xmin:self.xmax+1].std() 
 
     def max(self,data):
+        """ Returns maximum of data in box
+
+            Args :
+                data : input data (CCDData or np.array)
+
+            Returns:
+                maximum of data in box
+        """
         if self.nrow() == 0 or self.ncol() == 0 : return 0.
         return data[self.ymin:self.ymax+1,self.xmin:self.xmax+1].max() 
 
     def min(self,data):
+        """ Returns minimum of data in box
+
+            Args :
+                data : input data (CCDData or np.array)
+
+            Returns:
+                minimum of data in box
+        """
         if self.nrow() == 0 or self.ncol() == 0 : return 0.
         return data[self.ymin:self.ymax+1,self.xmin:self.xmax+1].min() 
 
     def median(self,data):
+        """ Returns median of data in box
+
+            Args :
+                data : input data (CCDData or np.array)
+
+            Returns:
+                median of data in box
+        """
         if self.nrow() == 0 or self.ncol() == 0 : return 0.
         return np.median(data[self.ymin:self.ymax+1,self.xmin:self.xmax+1])
 
     def setval(self,data,val):
+        """ Sets data in box to specified value
+        """
         if self.nrow() == 0 or self.ncol() == 0 : return 0.
         data[self.ymin:self.ymax+1,self.xmin:self.xmax+1] = val
 
-def abx(im,box) :
- 
-    ''' 
+@support_nddata
+def abx(data,box) :
+    """
     Returns dictionary with image statistics in box.
-    '''
-    return {'mean': box.mean(im),
-            'stdev': box.stdev(im),
-            'max': box.max(im),
-            'min': box.min(im),
+
+    Args :
+        data  : input data (CCDData or np.array)
+        box   : pyvista BOX
+
+    Returns :
+        dictionary with image statistics : 'mean', 'stdev', 'min', 'max', 'peakx', 'peaky'
+    """
+    return {'mean': box.mean(data),
+            'stdev': box.stdev(data),
+            'max': box.max(data),
+            'min': box.min(data),
             'peakx': np.unravel_index(
-                        im[box.ymin:box.ymax,box.xmin:box.xmax].argmax(),
+                        data[box.ymin:box.ymax,box.xmin:box.xmax].argmax(),
                         (box.nrow(),box.ncol()) )[1]+box.xmin,
             'peaky': np.unravel_index(
-                        im[box.ymin:box.ymax,box.xmin:box.xmax].argmax(),
+                        data[box.ymin:box.ymax,box.xmin:box.xmax].argmax(),
                         (box.nrow(),box.ncol()) )[0]+box.ymin}
 
 def gfit(data,x0,y0,size=5,fwhm=3,sub=True,plot=None,fig=1,scale=1,pafixed=False) :
@@ -321,7 +407,7 @@ def buf(hd) :
 
 def rd(file,ext=0) :
     """
-    Read files into HDU
+    Read file into HDU
     """
     try:
         return fits.open(file)[ext]
@@ -438,6 +524,15 @@ def getdata(hd) :
 
 def xcorr(a,b,lags,medfilt=0) :
     """ Cross correlation function between two arrays, calculated at lags
+
+        Args:
+            a, b : input 1D arrays
+            lags : array (1D) of x-corrlation lags
+            medfilt : size of median filter for arrays (default=0)
+
+        Returns :
+            fit peak of cross-correlation (quadratic fit)
+            1D cross-correlation function
     """
 
     # compute xcorr with starting and ending position to allow full range of lags
@@ -473,13 +568,13 @@ def xcorr(a,b,lags,medfilt=0) :
 def xcorr2d(a,b,lags) :
     """ Two-dimensional cross correlation
 
-        Parameters:
+        Args:
             a, b : input CCDData frames
             lags : array (1D) of x-corrlation lags
 
         Returns:
-            peak : (x,y) position of cross correlation peak from quadratic fit to x-correlation
-            shift : 2D cross correlation function
+            (x,y) position of cross correlation peak from quadratic fit to x-correlation
+            2D cross correlation function
     """
     # do x-corrlation over section of image that fits within input lag array
     xs = -lags[0]
