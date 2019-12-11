@@ -19,6 +19,8 @@ ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../../'
 def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,groups='all') :
     """ Reduce full night(s) of data given input configuration file
     """
+
+    # read input configuration file for reductions
     f=open(ymlfile,'r')
     d=yaml.load(f, Loader=yaml.FullLoader)
     f.close()
@@ -30,8 +32,9 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
 
         if 'skip' in group:
             if group['skip']  : continue
-        if groups != 'all' and group['name'] not in groups  : continue
+        if groups[0] != 'all' and group['name'] not in groups  : continue
 
+        # clear displays if given
         if display is not None : display.clear()
         if plot is not None : plot.clf()
 
@@ -39,30 +42,34 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
         inst = group['inst']
         print('Instrument: {:s}'.format(inst))
         try : red = imred.Reducer(inst=group['inst'],dir=group['rawdir'],verbose=verbose,nfowler=group['nfowler'])
-        except: red = imred.Reducer(inst=group['inst'],dir=group['rawdir'],verbose=verbose)
+        except KeyError : red = imred.Reducer(inst=group['inst'],dir=group['rawdir'],verbose=verbose)
         comb = imred.Combiner(reducer=red,verbose=verbose)
         reddir = group['reddir']+'/'
         try: os.makedirs(reddir)
-        except: pass
+        except FileExistsError : pass
 
-        #create superbias if biases given
+        #create superbiases if biases given
         if 'biases' in group : 
             sbias = mkcal(group['biases'],'bias',comb,reddir,clobber=clobber,display=display)
         else: 
             print('no bias frames given')
             sbias = None
+
+        #create superdarks if darks given
         if 'darks' in group : 
             sdark = mkcal(group['darks'],'dark',comb,reddir,clobber=clobber,display=display,sbias=sbias)
         else: 
             print('no dark frames given')
             sdark = None
+
+        #create superflats if darks given
         if 'flats' in group : 
             sflat = mkcal(group['flats'],'flat',comb,reddir,clobber=clobber,display=display,sbias=sbias,sdark=sdark)
         else: 
             print('no flat frames given')
             sflat = None
 
-        # wavecals
+        # create wavecals if arcs given
         if 'arcs' in group :
             # existing trace template
             traces=pickle.load(open(ROOT+'/data/'+inst+'/'+inst+'_traces.pkl','rb'))
@@ -79,11 +86,11 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                 else :
                     make = False
                     try: waves_all = pickle.load(open(reddir+wavecal['id']+'.pkl','rb'))
-                    except : make=True
+                    except FileNotFoundError : make=True
                 if make :
                     # combine frames
                     try : superbias = sbias[obj['bias']]
-                    except: superbias = None
+                    except KeyError: superbias = None
                     arcs=comb.sum(wavecal['frames'],return_list=True, superbias=superbias, crbox=[5,1], display=display)
 
                     print('extract wavecal')
@@ -128,29 +135,32 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
             print('no wavecal frames given')
             w=None
 
+        # reduce objects
         if 'objects' in group :
             objects = group['objects']
             if 'image' in objects :
+                # images
                 for obj in objects['image']:
                     try : superbias = sbias[obj['bias']]
-                    except: superbias = None
+                    except KeyError: superbias = None
                     try : superdark = sdark[obj['dark']]
-                    except: superdark = None
+                    except KeyError: superdark = None
                     try : superflat = sflat[obj['flat']]
-                    except: superflat = None
+                    except KeyError: superflat = None
                     pdb.set_trace()
                     for iframe,id in enumerate(obj['frames']) : 
                         frames=red.reduce(id,superbias=superbias,superdark=superdark,superflat=superflat,scat=red.scat,
                                           return_list=True,crbox=red.crbox,display=display) 
             elif 'extract1d' in objects :
+                # 1D spectra
                 traces=pickle.load(open(ROOT+'/data/'+inst+'/'+inst+'_traces.pkl','rb'))
                 for obj in objects['extract1d'] :
                     try : superbias = sbias[obj['bias']]
-                    except: superbias = None
+                    except KeyError: superbias = None
                     try : superdark = sdark[obj['dark']]
-                    except: superdark = None
+                    except KeyError: superdark = None
                     try : superflat = sflat[obj['flat']]
-                    except: superflat = None
+                    except KeyError: superflat = None
                     waves_all = wavedict[obj['wavecal']]
 
                     if obj['flat_type'] == '1d' :
@@ -165,6 +175,7 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                         superflat = None
                     # now frames
                     for iframe,id in enumerate(obj['frames']) : 
+                        if display is not None : display.clear() 
                         print("extracting object {}".format(id))
                         frames=red.reduce(id,superbias=superbias,superdark=superdark,superflat=superflat,scat=red.scat,
                                           return_list=True,crbox=red.crbox,display=display) 
@@ -177,18 +188,29 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                                 frames[iframe]= frame.subtract(skyframe)
                                 frames[iframe].header = header
 
+                        # extraction radius
                         try : rad = obj['rad'] 
-                        except : rad = None
+                        except KeyError : rad = None
+
+                        # retrace?
+                        try : retrace = obj['retrace'] 
+                        except KeyError : retrace = False
+
+                        # initialize plots
                         if plot is not None : 
                             plot.clf()
                             ax=[]
                             ax.append(plot.add_subplot(2,1,1))
                             ax.append(plot.add_subplot(2,1,2,sharex=ax[0]))
                             plot.subplots_adjust(hspace=0.001)
+
+                        # loop over channels
                         max=0
                         for ichannel,(frame,wave,trace) in enumerate(zip(frames,waves_all,traces)) :
+                            # loop over windows
                             for iwind,(wcal,wtrace) in enumerate(zip(wave,trace)) :
-                                shift=wtrace.find(frame,plot=display) 
+                                if retrace : shift=wtrace.retrace(frame,plot=display) 
+                                else : shift=wtrace.find(frame,plot=display) 
                                 ec=wtrace.extract(frame,plot=display,rad=rad)
                                 if obj['flat_type'] == '1d' : 
                                     header=ec.header
@@ -207,10 +229,12 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                                     plot.canvas.draw_idle()
                                     plt.pause(0.1)
                                     input("  hit a key to continue")
-                            ec.write(reddir+ec.header['FILE'].replace('.fits','.ec.fits'),overwrite=True)
+                            #ec.write(reddir+ec.header['FILE'].replace('.fits','.ec.fits'),overwrite=True)
+                            out = spectra.SpecData(ec,wave=wave)
+                            out.write(reddir+ec.header['FILE'].replace('.fits','.ec.fits'))
                         pdb.set_trace()
-                        if display is not None : display.clear() 
             elif 'extract2d' in objects :
+                # 2D spectra
                 print('extract2d')
 
         """      
@@ -233,11 +257,12 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
 
         # now frames
         for id in group['objects']['extract1d']['frames'] : 
+            if display is not None : display.clear() 
             print("extracting object {}",id)
             frames=red.reduce(id,superbias=sbias,superdark=sdark,superflat=sflat2d,scat=red.scat,
                               return_list=True,crbox=red.crbox,display=display) 
             try : rad = group['objects']['extract1d']['rad'] 
-            except : rad = None
+            except KeyError : rad = None
             if plot is not None : 
                 plot.clf()
                 ax=[]
@@ -268,7 +293,6 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                         input("  hit a key to continue")
                 ec.write(reddir+ec.header['FILE'].replace('.fits','.ec.fits'),overwrite=True)
             pdb.set_trace()
-            if display is not None : display.clear() 
         """
     # 2d extractions
 #    traces=pickle.load(open(group['inst']+'_trace.pkl','rb'))
@@ -296,9 +320,9 @@ def mkcal(cals,caltype,comb,reddir,sbias=None,sdark=None,clobber=False,**kwargs)
     for cal in cals :
         calname = cal['id']
         try : superbias = sbias[cal['bias']]
-        except: superbias = None
+        except KeyError: superbias = None
         try : superdark = sdark[cal['dark']]
-        except: superdark = None
+        except KeyError: superdark = None
         try :
             print('create {:s} : {:s}'.format(caltype,calname))
             # if not clobber, try to read existing frames
@@ -308,15 +332,15 @@ def mkcal(cals,caltype,comb,reddir,sbias=None,sdark=None,clobber=False,**kwargs)
                 make=False
                 if len(comb.reducer.channels)==1 :
                     try : scal= CCDData.read(reddir+calname+'.fits')
-                    except : make=True
+                    except FileNotFoundError : make=True
                 else :
                     scal=[]
                     for channel in comb.reducer.channels :
                         try : scal.append(CCDData.read(reddir+calname+'_'+channel+'.fits'))
-                        except : make=True
+                        except FileNotFoundError : make=True
             if make :
                 try :
-                    # see if we are requested to make produc from previous products by seeing if dictionary entries exist for frames
+                    # see if we are requested to make product from previous products by seeing if dictionary entries exist for frames
                     scal=[]
                     tot=[]
                     for frame in cal['frames'] :
