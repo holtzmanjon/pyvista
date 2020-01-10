@@ -113,9 +113,9 @@ class Reducer() :
             # find the files that match the directory/format
             if type(num) is int :
                 search=self.dir+'/'+self.root+form.format(num)+'.fits*'
-            elif type(num) is str :
+            elif type(num) is str or type(num) is np.str_ :
                 if num.find('/') >= 0 :
-                    search='*'+num+'*'
+                    search=num+'*'
                 else :
                     search=self.dir+'/*'+num+'*'
             else :
@@ -238,7 +238,7 @@ class Reducer() :
          out=[]
          for im,dark in zip(ims,superdarks) :
              if self.verbose : print('  subtracting superdark...')
-             out.append(ccdproc.subtract_dark(im,dark,exposure_time='EXPTIME'))
+             out.append(ccdproc.subtract_dark(im,dark,exposure_time='EXPTIME',exposure_unit=units.s))
          if len(out) == 1 : return out[0]
          else : return out
 
@@ -503,7 +503,7 @@ class Combiner() :
             if self.verbose: print('  calculating uncertainty....')
             sig = 1.253 * np.sqrt(np.mean(np.array(varcube),axis=0)/nframe)
             mask = np.any(maskcube,axis=0)
-            comb=CCDData(med,uncertainty=StdDevUncertainty(sig),mask=mask,unit='adu')
+            comb=CCDData(med,header=allcube[im][chip].header,uncertainty=StdDevUncertainty(sig),mask=mask,unit='adu')
             if normalize: comb.meta['MEANNORM'] = np.array(allnorm).mean()
             out.append(comb)
 
@@ -522,13 +522,14 @@ class Combiner() :
                 elif get == 'p' : pdb.set_trace()
                 for i,im in enumerate(ims) :
                     min,max=tv.minmax(med[gd[0],gd[1]],low=5,high=5)
-                    display.plotax2.hist((allcube[i][chip].data/med)[gd[0],gd[1]],bins=np.linspace(min,max,100),histtype='step')
                     display.fig.canvas.draw_idle()
                     if div :
+                        display.plotax2.hist((allcube[i][chip].data/med)[gd[0],gd[1]],bins=np.linspace(0.5,1.5,100),histtype='step')
                         display.tv(allcube[i][chip].data/med,min=0.5,max=1.5)
                         input("    see image: {} divided by master, hit any key to continue".format(im))
                     else :
                         delta=5*self.reducer.rn[chip]
+                        display.plotax2.hist((allcube[i][chip].data-med)[gd[0],gd[1]],bins=np.linspace(-delta,delta,100),histtype='step')
                         display.tv(allcube[i][chip].data-med,min=-delta,max=delta)
                         input("    see image: {} minus master, hit any key to continue".format(im))
 
