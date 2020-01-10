@@ -252,7 +252,8 @@ def centroid(data,x,y,r) :
         iter+=1
     return x,y
 
-def process(file,inst,tab,disp=None,rcent=7,rad=[3,5,7],skyrad=[10,15],cards=['EXPTIME','FILTER','AIRMASS']):
+def process(file,inst,tab,bias=None,dark=None,flat=None,disp=None,
+            rcent=7,rad=[3,5,7],skyrad=[10,15],cards=['EXPTIME','FILTER','AIRMASS']):
     """ Process and do photometry on input file
     """
 
