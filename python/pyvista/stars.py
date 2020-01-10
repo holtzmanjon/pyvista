@@ -251,3 +251,46 @@ def centroid(data,x,y,r) :
         yold = round(y)
         iter+=1
     return x,y
+
+def process(file,inst,tab,disp=None,rcent=7,rad=[3,5,7],skyrad=[10,15],cards=['EXPTIME','FILTER','AIRMASS']):
+    """ Process and do photometry on input file
+    """
+
+    red = imred.Reducer(inst,dir='./')
+
+    # work in temporary directory
+    with tempfile.TemporaryDirectory() as tempdir :
+
+        cwd = os.getcwd()
+        os.chdir(tempdir)
+
+        # get WCS: requires good starting guess in FITS header!
+        # output file into current directory
+        cmd=('imwcs -wi 5000 -c ua2 '+file).split()
+        subprocess.call(cmd)
+
+        # process file
+        name=os.path.splitext(os.path.basename(file))[0]+'w.fits'
+        a=red.reduce(name,superdark=dark,superbias=bias,superflat=flat)
+
+        # get x,y positions from RA/DEC and load into photometry table
+        x,y=a.wcs.wcs_world2pix(tab['RA'],tab['DEC'],0)
+        phot=copy.copy(tab)
+        phot['x']=x
+        phot['y']=y
+
+        # re-centroid stars
+        if disp is not None :
+            disp.tv(a)
+            stars.mark(disp,phot,exit=True,auto=False,color='r',new=True,rad=rcent)
+        stars.mark(disp,phot,exit=True,auto=True,color='g',rad=rcent)
+
+        # do photometry 
+        phot=stars.photom(a,phot,rad=rad,skyrad=skyrad)
+        phot.add_column(Column([date+'_'+name]*len(tab),name='FILE',dtype=str))
+        for card in cards :
+            phot[card] = [a.header[card]]*len(tab)
+        phot['MJD'] = Time(a.header['DATE-OBS'],format='fits').mjd
+
+    return phot
+
