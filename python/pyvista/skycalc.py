@@ -12,13 +12,13 @@ from astropy.time import Time
 from astropy.coordinates import get_moon, get_sun
 from astropy import units
 
-def airmass(ra=0., dec=0., obs='apo', date='2019-10-01',name='object',plot=False) :
+def airmass(ra=0., dec=0., obs='apo', date='2019-10-01',name='object',plot=False,tz='US/Mountain') :
 
     """  Get airmass table for specified object position, observatory, date
     """
 
     # set the site
-    site=Observer.at_site(obs)
+    site=Observer.at_site(obs,timezone=tz)
 
     # set the objects
     if type(ra) is float :
@@ -35,6 +35,7 @@ def airmass(ra=0., dec=0., obs='apo', date='2019-10-01',name='object',plot=False
     for t in [sunset,civil,nautical,astronomical] :
         t.format='isot'
         t.precision=0
+    print('Observatory: ',obs)
     print('Sunset: ',sunset)
     print('Civil twilight: ',civil)
     print('Nautical twilight: ',nautical)
@@ -42,8 +43,8 @@ def airmass(ra=0., dec=0., obs='apo', date='2019-10-01',name='object',plot=False
 
 
     # loop over all UTC hours for this date (would prefer local!)
-    print('{:20s}{:8s}{:8s}{:9s}{:8s}{:8s} {:16s}{:20s}'.format(
-          'UT','LST','Airmass','ParAng','Phase','Moon Alt','Moon RA', 'Moon DEC'))
+    print('{:8s}{:8s}{:8s}{:8s}{:8s}{:9s}{:8s}{:8s} {:16s}{:20s}'.format(
+          'Local','UT','LST','HA','Airmass','ParAng','Phase','Moon Alt','Moon RA', 'Moon DEC'))
     for hr in np.arange(24) :
         time = Time('{:s} {:d}:00:00'.format(date,hr),scale='utc',
                location=(site.location.lon,site.location.lat),precision=0)
@@ -63,9 +64,14 @@ def airmass(ra=0., dec=0., obs='apo', date='2019-10-01',name='object',plot=False
         else :
             moonalt = '{:8.2f}'.format(val)
         lst=time.sidereal_time('mean').hms
-        print('{:s} {:02d}:{:02d} {:8s} {:8.2f} {:8.2f} {:8s} {:s} {:s}'.format(
-               time.value,
+        ha=site.target_hour_angle(time,obj)
+        ha.wrap_angle=180 *units.deg
+        local=site.astropy_time_to_datetime(time)
+        print('{:02d}:{:02d}  {:02d}:{:02d}  {:02d}:{:02d} {:3d}:{:02d} {:8s} {:8.2f} {:8.2f} {:8s} {:s} {:s}'.format(
+               local.hour,local.minute,
+               time.datetime.hour,time.datetime.minute,
                int(round(lst[0])),int(round(lst[1])),
+               int(round(ha.hms[0])),int(abs(round(ha.hms[1]))),
                airmass,
                #site.altaz(time,obj).secz,
                site.parallactic_angle(time,obj).deg,
