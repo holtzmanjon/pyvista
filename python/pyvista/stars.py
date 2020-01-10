@@ -14,7 +14,7 @@ from astropy.stats import sigma_clipped_stats
 from photutils import CircularAperture, CircularAnnulus
 from photutils import aperture_photometry
 
-def mark(tv,stars=None,rad=3,auto=False,color='m',exit=False):
+def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False):
     """ Interactive mark stars on TV, or recenter current list 
 
     Args : 
@@ -27,7 +27,7 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',exit=False):
     """
 
     # clear display and mark current star list( if not new)
-    tv.tvclear()
+    if new: tv.tvclear()
     try: dateobs=Time(tv.hdr['DATE-OBS'],format='fits')
     except: dateobs=None
     #try: exptime=tv.hdr['EXPTIME']
