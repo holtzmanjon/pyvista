@@ -121,15 +121,15 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                                 arcec.data=arcec.data - scipy.signal.medfilt(arcec.data,kernel_size=[1,101])
                                 # smooth vertically for better S/N, then sample accordingly
                                 image.smooth(arcec,[5,1])
-                                wcal.identify(spectrum=arcec, rad=3, display=display, plot=plot, nskip=5,lags=range(-500,500))
+                                wcal.identify(spectrum=arcec, rad=3, display=display, plot=plot, nskip=5,lags=range(-50,50))
    
                             wcal.fit()
                             delattr(wcal,'ax')
                             delattr(wcal,'fig')
                             waves_channel.append(wcal)
                         waves_all.append(waves_channel)
+                        if display is not None : display.clear()
                     pickle.dump(waves_all,open(reddir+wavecal['id']+'.pkl','wb'))
-                    if display is not None : display.clear()
                     if plot is not None : plot.clf()
                 else :
                     print('  already made!')
