@@ -1,0 +1,79 @@
+REDUCE module
+************
+
+reduce is a module that implements basic data reduction for imaging
+and spectroscopic data. It works by reading a configuration file that
+contains blocks of information needed to reduce a set of data for
+a given instrument in a given night; multiple blocks can be specified
+in a single input configuration file if desired. It can be run in an
+interactive mode where the user sees the results of each step and can make some
+modification, and also in a batch mode where the processing proceeds
+automatically.
+
+The reduction is run using the reduce.reduce() routine where a configuration
+file is a required input. Optional inputs control
+the amount of user interaction: the plot= option allows the user to specify
+a matplotlib figure in which some data are displayed, and the display= option
+allows the user to specify a pyvista.tv.TV() instance into which image
+data are displayed. A verbose= option allows the user to control the
+level of output.
+
+The configuration file provides an instrument identification, which
+is used to read an instrument configuration file with basic information
+such as overscan region, gain, readout noise, normalization region, etc.
+It then contains blocks of information used for the calibration 
+(superbias, superdark, superflat, wavelength calibration), which can either
+specify existing calibration products, or a list of frames to be used
+to construct new calibration products. Multiple calibration products of
+a given type can be constructed and each is given a label by which it can
+be referenced for use in reduction. Finally, blocks of information are
+given for the object frames to reduce.
+
+The configuration file is formatted as a YAML file, which is a simply
+and natural way to provide the required information. There is some required
+information in the file, and some optional information. A complete list
+is provided below.
+
+---                             # required line for YAML file
+ date: "October 2019"           #
+ groups :                       # required start list of reduction blocks
+  - name : "ARCTIC"             # name of first block
+    skip : True
+    inst : "ARCTIC"             # instrument, used to identify reduction configuration
+    rawdir : "UT191028/ARCTIC"  # directory with raw input images, relative to run directory
+    reddir : "red/UT191028/ARCTIC"  # directory for reduced output images, relative to run directory
+    biases :                   # optional specification(s) for superbias frame
+      - id : "bias"            # identification name and name for output file
+        frames : [1,2,3,4,5,6,7,8,9,10]  # list of frame IDs (number or character) to construct superbias if it doesn't exist
+    darks :                    # optional specification(s) for superbias frame
+      - id : "dark_1200"       # identification name and name for output file
+        frames : [82,83,84,85,86,87,88,89,90] # list of frame IDs (number or character) to construct superbias if it doesn't exist
+        bias : "bias"          # bias frame used to reduce individual darks before superdark construction
+    flats :                    # optional specification(s) for superflat frame
+      - id : "domeflat_z"      # identification name and name for first flat
+        frames : [1,2,3,4,5]   # list of frame IDs
+        bias : "bias"          # bias frame used to reduce individual flats before superflat construction
+      - id : "domeflat_r"      # identification name and name for second flat
+        frames : [6,7,8,9,10]  # list of frame IDs
+        bias : "bias"          # bias frame used to reduce individual flats before superflat construction
+      ....
+    arcs :                     # frames to be used for wavelength calibration
+      - id : "pre"             # ID for first wavecal set
+        frames : [19,20,21,22] # frames to use
+        bias : "bias"          # bias to use
+        wref : "ARCES_wave"    # reference file for template wavecals (pkl file)
+        wavecal_type : "echelle"  # type:  echelle or longslit
+      - id : "post"            # ID for second wavecal set
+        frames : [32]
+        bias : "bias"
+        wref : "ARCES_wave"
+        wavecal_type : "echelle"
+
+
+
+reduce functions
+===============
+.. automodule:: pyvista.reduce
+   :members:
+   :member-order: bysource
+
