@@ -89,11 +89,11 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                     except FileNotFoundError : make=True
                 if make :
                     # combine frames
-                    try : superbias = sbias[obj['bias']]
+                    try : superbias = sbias[wavecal['bias']]
                     except KeyError: superbias = None
                     arcs=comb.sum(wavecal['frames'],return_list=True, superbias=superbias, crbox=[5,1], display=display)
 
-                    print('extract wavecal')
+                    print('  extract wavecal')
                     # loop over channels
                     waves_all=[]
                     for arc,wave,trace in zip(arcs,waves,traces) :
@@ -112,7 +112,7 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                                 wtrace.pix0 +=30
                                 arcec=wtrace.extract(arc,plot=display,rad=20)
                                 arcec.data=arcec.data - scipy.signal.medfilt(arcec.data,kernel_size=[1,101])
-                                wcal.identify(spectrum=arcec, rad=3, plot=plot, display=display)
+                                wcal.identify(spectrum=arcec, rad=3, plot=plot, display=display,lags=range(-500,500))
                                 wcal.fit()
 
                                 print("doing 2D wavecal...")
@@ -121,15 +121,18 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                                 arcec.data=arcec.data - scipy.signal.medfilt(arcec.data,kernel_size=[1,101])
                                 # smooth vertically for better S/N, then sample accordingly
                                 image.smooth(arcec,[5,1])
-                                wcal.identify(spectrum=arcec, rad=3, display=display, plot=plot, nskip=5)
-    
+                                wcal.identify(spectrum=arcec, rad=3, display=display, plot=plot, nskip=5,lags=range(-500,500))
+   
                             wcal.fit()
-                            w=wcal.wave(image=np.array(arcec.data.shape))
-                            waves_channel.append(w)
+                            delattr(wcal,'ax')
+                            delattr(wcal,'fig')
+                            waves_channel.append(wcal)
                         waves_all.append(waves_channel)
                     pickle.dump(waves_all,open(reddir+wavecal['id']+'.pkl','wb'))
                     if display is not None : display.clear()
                     if plot is not None : plot.clf()
+                else :
+                    print('  already made!')
                 wavedict[wavecal['id']] = waves_all
         else :
             print('no wavecal frames given')
@@ -170,7 +173,7 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                             tmp=[]
                             for wtrace in trace :
                                 shift=wtrace.find(superflat,plot=display) 
-                                tmp.append(wtrace.extract(superflat,plot=display))
+                                tmp.append(wtrace.extract(superflat,plot=display,medfilt=101))
                             ecflat.append(tmp)
                         superflat = None
                     # now frames
@@ -194,7 +197,7 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
 
                         # retrace?
                         try : retrace = obj['retrace'] 
-                        except KeyError : retrace = False
+                        except KeyError : retrace = True
 
                         # initialize plots
                         if plot is not None : 
@@ -209,9 +212,12 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                         for ichannel,(frame,wave,trace) in enumerate(zip(frames,waves_all,traces)) :
                             # loop over windows
                             for iwind,(wcal,wtrace) in enumerate(zip(wave,trace)) :
-                                if retrace : shift=wtrace.retrace(frame,plot=display) 
+                                if retrace : 
+                                    print('  retracing ....')
+                                    shift=wtrace.retrace(frame,plot=display,thresh=10) 
                                 else : shift=wtrace.find(frame,plot=display) 
                                 ec=wtrace.extract(frame,plot=display,rad=rad)
+                                w=wcal.wave(image=np.array(ec.data.shape))
                                 if obj['flat_type'] == '1d' : 
                                     header=ec.header
                                     ec=ec.divide(ecflat[ichannel][iwind])
@@ -222,79 +228,25 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                                     max=np.max([max,scipy.signal.medfilt(ec.data,[1,101]).max()])
                                     for row in range(ec.data.shape[0]) :
                                         gd=np.where(ec.mask[row,:] == False)[0]
-                                        plots.plotl(ax[0],wcal[row,gd],ec.data[row,gd],yr=[0,1.2*max],xt='Wavelength',yt='Flux')
-                                        plots.plotl(ax[1],wcal[row,gd],ec.data[row,gd]/ec.uncertainty.array[row,gd],xt='Wavelength',yt='S/N')
+                                        plots.plotl(ax[0],w[row,gd],ec.data[row,gd],yr=[0,1.2*max],xt='Wavelength',yt='Flux')
+                                        plots.plotl(ax[1],w[row,gd],ec.data[row,gd]/ec.uncertainty.array[row,gd],xt='Wavelength',yt='S/N')
                                     plot.suptitle(ec.header['OBJNAME'])
                                     plt.draw()
                                     plot.canvas.draw_idle()
                                     plt.pause(0.1)
                                     input("  hit a key to continue")
                             #ec.write(reddir+ec.header['FILE'].replace('.fits','.ec.fits'),overwrite=True)
-                            out = spectra.SpecData(ec,wave=wave)
+                            comb=wcal.scomb(ec,10.**np.arange(3.5,4.0,5.5e-6),average=False,usemask=False)
+                            plots.plotl(ax[0],10.**np.arange(3.5,4.0,5.5e-6),comb.data,color='k')
+                            plots.plotl(ax[1],10.**np.arange(3.5,4.0,5.5e-6),comb.data/comb.uncertainty.array,color='k')
+                            out = spectra.SpecData(ec,wave=w)
                             out.write(reddir+ec.header['FILE'].replace('.fits','.ec.fits'))
+                            out = spectra.SpecData(comb,wave=w)
+                            out.write(reddir+comb.header['FILE'])
                         pdb.set_trace()
             elif 'extract2d' in objects :
                 # 2D spectra
                 print('extract2d')
-
-        """      
-        # 1d extractions
-        # flat field for 1D first
-        if group['config']['flat_type'] == '1d' :
-            print("extracting 1D flat")
-            ecflat=[]
-            for trace in traces :
-                tmp=[]
-                for wtrace in trace :
-                    shift=wtrace.find(sflat,plot=display) 
-                    tmp.append(wtrace.extract(sflat,plot=display))
-                ecflat.append(tmp)
-            sflat2d=None
-        elif group['config']['flat_type'] == '2d' :
-            sflat2d=sflat
-        else :
-            sflat2d=None
-
-        # now frames
-        for id in group['objects']['extract1d']['frames'] : 
-            if display is not None : display.clear() 
-            print("extracting object {}",id)
-            frames=red.reduce(id,superbias=sbias,superdark=sdark,superflat=sflat2d,scat=red.scat,
-                              return_list=True,crbox=red.crbox,display=display) 
-            try : rad = group['objects']['extract1d']['rad'] 
-            except KeyError : rad = None
-            if plot is not None : 
-                plot.clf()
-                ax=[]
-                ax.append(plot.add_subplot(2,1,1))
-                ax.append(plot.add_subplot(2,1,2,sharex=ax[0]))
-            max=0
-            for ichannel,(frame,wave,trace) in enumerate(zip(frames,waves_all,traces)) :
-                for iwind,(wcal,wtrace) in enumerate(zip(wave,trace)) :
-                    shift=wtrace.find(frame,plot=display) 
-                    ec=wtrace.extract(frame,plot=display,rad=rad)
-                    if group['config']['flat_type'] == '1d' : 
-                        header=ec.header
-                        ec=ec.divide(ecflat[ichannel][iwind])
-                        ec.header=header
-                    if plot is not None :
-                        plot.subplots_adjust(hspace=0.001)
-                        gd=np.where(ec.mask == False) 
-                        med=np.median(ec.data[gd[0],gd[1]])
-                        max=np.max([max,scipy.signal.medfilt(ec.data,[1,101]).max()])
-                        for row in range(ec.data.shape[0]) :
-                            gd=np.where(ec.mask[row,:] == False)[0]
-                            plots.plotl(ax[0],wcal[row,gd],ec.data[row,gd],yr=[0,1.2*max],xt='Wavelength',yt='Flux')
-                            plots.plotl(ax[1],wcal[row,gd],ec.data[row,gd]/ec.uncertainty.array[row,gd],xt='Wavelength',yt='S/N')
-                        plot.suptitle(ec.header['OBJNAME'])
-                        plt.draw()
-                        plot.canvas.draw_idle()
-                        plt.pause(0.1)
-                        input("  hit a key to continue")
-                ec.write(reddir+ec.header['FILE'].replace('.fits','.ec.fits'),overwrite=True)
-            pdb.set_trace()
-        """
-    # 2d extractions
 #    traces=pickle.load(open(group['inst']+'_trace.pkl','rb'))
 #    if type(traces) is not list : traces = [traces]
 #    pdb.set_trace()
@@ -397,7 +349,7 @@ def mkcal(cals,caltype,comb,reddir,sbias=None,sdark=None,clobber=False,**kwargs)
             else : print('  already made!')
         except RuntimeError :
             print('error processing {:s} frames'.format(caltype))
-        except:
+        except KeyError:
             print('no {:s} frames given'.format(caltype))
             scal=None
 
