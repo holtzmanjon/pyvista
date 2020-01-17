@@ -560,8 +560,11 @@ def xcorr(a,b,lags,medfilt=0) :
     fitpeak=np.zeros(shift.shape[0])
     for row in range(shift.shape[0]) :
         peak=shift[row,:].argmax()
-        fit=np.polyfit(range(-3,4),shift[row,peak-3:peak+4],2)
-        fitpeak[row]=peak+-fit[1]/(2*fit[0])
+        try :
+            fit=np.polyfit(range(-3,4),shift[row,peak-3:peak+4],2)
+            fitpeak[row]=peak+-fit[1]/(2*fit[0])
+        except TypeError :
+            fitpeak[row]=peak
 
     return fitpeak,np.squeeze(np.array(shift))
 
