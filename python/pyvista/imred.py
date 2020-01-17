@@ -32,6 +32,41 @@ except:
 
 ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../../'
 
+class Data(object) :
+    def __init__(self,data,wave=None) :
+        if type(data) is str :
+            hdulist=fits.open(data)
+            self.meta = hdulist[0].header
+            self.attr_list = []
+            for i in range(1,len(hdulist) ) :
+                try : 
+                    attr=hdulist[i].header['ATTRIBUT']
+                except KeyError :
+                    if i == 1 : attr='data'
+                    elif i == 2 : attr='uncertainty'
+                    elif i == 3 : attr='mask'
+                    elif i == 4 : attr='wave'
+                print('attr: {:s}'.format(attr))
+                self.attr_list.append(attr)
+                setattr(self,attr,hdulist[i].data) 
+        elif type(data) is CCDData :
+            self.unit = data.unit
+            self.meta = data.meta
+            self.data = data.data
+            self.uncertainty = data.uncertainty
+            self.mask = data.mask
+            self.wave = wave
+        else :
+            print('Input must be a filename or CCDData object')
+
+    def write(self,file,overwrite=True) :
+        hdulist=fits.HDUList()
+        hdulist.append(fits.PrimaryHDU(header=self.meta))
+        for attr in self.attr_list :
+            hdulist.append(fits.ImageHDU(getattr(self,attr)))
+        hdulist.writeto(file,overwrite=overwrite)
+
+
 class Reducer() :
     """ Class for reducing images of a given instrument
     """
@@ -284,7 +319,7 @@ class Reducer() :
          else : return out
 
 
-    def scatter(self,im,scat=None,display=None,smooth=3) :
+    def scatter(self,im,scat=None,display=None,smooth=3,smooth2d=31) :
         """ Removal of scattered light (for multi-order/object spectrograph)
         """
         if scat is None : return
@@ -310,7 +345,7 @@ class Reducer() :
         grid_x, grid_y = np.mgrid[0:nrows,0:ncols]
 
         # smooth and reject outlying points
-        boxcar = Box2DKernel(31)
+        boxcar = Box2DKernel(smooth2d)
         grid_z=convolve(scipy.interpolate.griddata(points,values,(grid_x,grid_y),
                         method='cubic',fill_value=0.),boxcar)
         # go back and try to reject outliers
