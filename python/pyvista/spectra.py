@@ -141,9 +141,18 @@ class WaveCal() :
 
         if not hasattr(self,'ax') : self.ax = None
         if twod :
-            self.model=fitter(mod,self.pix-self.pix0,self.y,self.waves*self.waves_order,weights=self.weights)
-            diff=self.waves-self.wave(pixels=[self.pix,self.y])
-            print('  rms: {:8.3f}'.format(diff.std()))
+            nold=-1
+            nbd=0
+            while nbd != nold :
+                nold=nbd
+                self.model=fitter(mod,self.pix-self.pix0,self.y,self.waves*self.waves_order,weights=self.weights)
+                diff=self.waves-self.wave(pixels=[self.pix,self.y])
+                print('  rms: {:8.3f}'.format(diff.std()))
+                bd = np.where(abs(diff) > 3*diff.std())
+                nbd = len(bd)
+                print('rejecting {:d} points from {:d} total: '.format(nbd,len(self.waves)))
+                self.weights[bd] = 0.
+
             if self.ax is not None : 
                 self.ax[1].cla()
                 scat=self.ax[1].scatter(self.waves,diff,marker='o',c=self.y,s=2)
@@ -193,7 +202,6 @@ class WaveCal() :
                         else :
                             self.ax[0].plot([self.waves[i],self.waves[i]],[0,ymax],'r')
                     plt.draw()
-                    plt.show()
 
                     # get input from user on lines to remove
                     for i in range(len(self.pix)) :
@@ -351,7 +359,7 @@ class WaveCal() :
             for line in lines :
                 peak=abs(line-wav[row,:]).argmin()
                 if isinstance(display,pyvista.tv.TV) :
-                    if (peak > xmin+rad) and (peak < xmax-rad) : plot.ax.scatter(peak,row,marker='o',color='r',s=2)
+                    if (peak > xmin+rad) and (peak < xmax-rad) : display.ax.scatter(peak,row,marker='o',color='r',s=2)
                 if ( (peak > xmin+rad) and (peak < xmax-rad) and 
                      ((spectrum.data[row,peak-rad:peak+rad]/spectrum.uncertainty.array[row,peak-rad:peak+rad]).max() > thresh) ) :
                     cent = (spectrum.data[row,peak-rad:peak+rad]*np.arange(peak-rad,peak+rad)).sum()/spectrum.data[row,peak-rad:peak+rad].sum()
@@ -382,7 +390,6 @@ class WaveCal() :
                 print("  rms from old fit (with shift): {:8.3f}".format(diff.std()))
             plt.figure(plot.number)
             plt.draw()
-            plt.show()
             input('  See identified lines. hit any key to continue....')
         self.pix=np.array(x)
         self.y=np.array(y)
