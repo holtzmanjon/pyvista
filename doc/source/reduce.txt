@@ -1,5 +1,5 @@
 REDUCE module
-************
+*************
 
 reduce is a module that implements basic data reduction for imaging
 and spectroscopic data. It works by reading a configuration file that
@@ -72,7 +72,7 @@ is provided below.
 
 
 reduce functions
-===============
+================
 .. automodule:: pyvista.reduce
    :members:
    :member-order: bysource
