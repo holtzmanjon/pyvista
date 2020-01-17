@@ -53,6 +53,12 @@ class SpecData(CCDData) :
         
 
 
+def get_wavecal(file) :
+    """ load a wavecal object from disk file 
+    """
+    with open(file,'rb') as wavecal :
+        return pickle.load(wavecal) 
+
 class WaveCal() :
     """ Class for wavelength solutions
     """
@@ -107,25 +113,31 @@ class WaveCal() :
                 out= self.model(cols-self.pix0)/self.orders[0]
             return out
 
-    def fit(self,plot=True) :
-        """ do a wavelength fit 
+    def getmod(self) :
+        """ Return model for current attributes
         """
-        print("doing wavelength fit")
-        # set up fitter and model
-        twod=False
-        fitter=fitting.LinearLSQFitter()
+
         if self.type == 'poly' :
             mod=models.Polynomial1D(degree=self.degree)
         elif self.type == 'chebyshev' :
             mod=models.Chebyshev1D(degree=self.degree)
         elif self.type == 'chebyshev2D' :
-            twod=True
             sz=self.spectrum.data.shape
             mod=models.Chebyshev2D(x_degree=self.degree,y_degree=self.ydegree,
                                    x_domain=[0,sz[1]],y_domain=[0,sz[0]])
         else :
             raise ValueError('unknown fitting type: '+self.type)
             return
+        return mod
+
+    def fit(self,plot=True) :
+        """ do a wavelength fit 
+        """
+        print("doing wavelength fit")
+        # set up fitter and model
+        twod='2D' in self.type
+        fitter=fitting.LinearLSQFitter()
+        mod = self.getmod()
 
         if not hasattr(self,'ax') : self.ax = None
         if twod :
@@ -151,18 +163,22 @@ class WaveCal() :
             diff=self.waves-self.wave(pixels=[self.pix])
             print('  rms: {:8.3f} Angstroms'.format(diff.std()))
             if self.ax is not None :
-                self.ax[1].plot(self.waves,diff,'ro')
                 # iterate allowing for interactive removal of points
                 done = False
                 ymax = self.ax[0].get_ylim()[1]
                 while not done :
+
+                    # do fit
                     gd=np.where(self.weights>0.)[0]
                     bd=np.where(self.weights<=0.)[0]
                     self.model=fitter(mod,self.pix[gd]-self.pix0,self.waves[gd]*self.waves_order[gd],weights=self.weights[gd])
                     diff=self.waves-self.wave(pixels=[self.pix])
                     print('  rms: {:8.3f} Anstroms'.format(diff[gd].std()))
 
-                    # plot
+                    # replot spectrum with new fit wavelength scale
+                    self.ax[0].cla()
+                    self.ax[0].plot(self.wave(image=self.spectrum.data.shape)[0,:],self.spectrum.data[0,:])
+                    # plot residuals
                     self.ax[1].cla()
                     self.ax[1].plot(self.waves[gd],diff[gd],'go')
                     self.ax[1].text(0.1,0.9,'rms: {:8.3f} Angstroms'.format(diff[gd].std()),transform=self.ax[1].transAxes)
@@ -183,9 +199,13 @@ class WaveCal() :
                     for i in range(len(self.pix)) :
                         print('{:3d}{:8.2f}{:8.2f}{:8.2f}{:8.2f}'.format(
                                i, self.pix[i], self.waves[i], diff[i], self.weights[i]))
-                    i = input('  enter ID of line to remove (-n for all lines<n, +n for all lines>n, return to continue): ')
-                    if i is '' :
+                    i = input('  enter ID of line to remove (-n for all lines<n, +n for all lines>n, O for new degree, return to continue): ')
+                    if i == '' :
                         done = True
+                    elif i == 'O' :
+                        print('  current degree of fit: {:d}'.format(self.degree))
+                        self.degree = int(input('  enter new degree of fit: '))
+                        mod = self.getmod()
                     elif '+' in i :
                         self.weights[int(i)+1:] = 0.
                     elif '-' in i :
@@ -212,6 +232,10 @@ class WaveCal() :
         """
 
         sz=spectrum.shape
+        if len(sz) == 1 : 
+            spectrum.data = np.atleast_2d(spectrum.data)
+            spectrum.uncertainty.array = np.atleast_2d(spectrum.uncertainty.array)
+            sz=spectrum.shape
         if xmin is None : xmin=0
         if xmax is None : xmax=sz[-1]
         nrow=sz[0]
@@ -326,10 +350,12 @@ class WaveCal() :
                 ax[0].set_ylabel('Intensity')
             for line in lines :
                 peak=abs(line-wav[row,:]).argmin()
-                if isinstance(plot,pyvista.tv.TV) :
+                if isinstance(display,pyvista.tv.TV) :
                     if (peak > xmin+rad) and (peak < xmax-rad) : plot.ax.scatter(peak,row,marker='o',color='r',s=2)
                 if ( (peak > xmin+rad) and (peak < xmax-rad) and 
                      ((spectrum.data[row,peak-rad:peak+rad]/spectrum.uncertainty.array[row,peak-rad:peak+rad]).max() > thresh) ) :
+                    cent = (spectrum.data[row,peak-rad:peak+rad]*np.arange(peak-rad,peak+rad)).sum()/spectrum.data[row,peak-rad:peak+rad].sum()
+                    peak = int(cent)
                     cent = (spectrum.data[row,peak-rad:peak+rad]*np.arange(peak-rad,peak+rad)).sum()/spectrum.data[row,peak-rad:peak+rad].sum()
                     if display is not None and  isinstance(display,pyvista.tv.TV) :
                         display.ax.scatter(cent,row,marker='o',color='g',s=2)
@@ -349,7 +375,7 @@ class WaveCal() :
                 diff=self.wave(pixels=[x,y])-np.array(waves)
                 ax[1].cla()
                 ax[1].scatter(np.array(waves),diff,s=2,c=y)
-                ax[1].text(0.1,0.9,'rms: {:8.3f}'.format(diff.std()),transform=ax[1].transAxes)
+                ax[1].text(0.1,0.9,'form previous fit, rms: {:8.3f}'.format(diff.std()),transform=ax[1].transAxes)
                 xlim=ax[1].get_xlim()
                 ax[1].plot(xlim,[0,0],linestyle=':')
                 ax[1].set_ylim(diff.min()-0.5,diff.max()+0.5)
@@ -366,27 +392,36 @@ class WaveCal() :
         self.spectrum = spectrum
         print('')
 
-    def scomb(self,hd,wav,average=True) :
+    def scomb(self,hd,wav,average=True,usemask=True) :
         """ Resample onto input wavelength grid
         """
         #output grid
         out=np.zeros(len(wav))
-        if average: sig=np.zeros(len(wav))
+        sig=np.zeros(len(wav))
+        mask=np.zeros(len(wav),dtype=bool)
         # raw wavelengths
         w=self.wave(image=np.array(np.atleast_2d(hd.data).shape))
         for i in range(np.atleast_2d(hd).shape[0]) :
-            w1=np.abs(wav-w[i,0]).argmin()
-            w2=np.abs(wav-w[i,-1]).argmin()
             sort=np.argsort(w[i,:])
+            if usemask : 
+                gd = np.where(~hd.mask[i,sort])
+                sort= sort[gd]
+            wmin=w[i,sort].min()
+            wmax=w[i,sort].max()
+            w2=np.abs(wav-wmin).argmin()
+            w1=np.abs(wav-wmax).argmin()
             if average :
                 out[w2:w1] += ( np.interp(wav[w2:w1],w[i,sort],np.atleast_2d(hd.data)[i,sort]) /
                                 np.interp(wav[w2:w1],w[i,sort],np.atleast_2d(hd.uncertainty.array)[i,sort])**2 )
                 sig[w2:w1] += 1./np.interp(wav[w2:w1],w[i,sort],np.atleast_2d(hd.uncertainty.array)[i,sort])**2 
             else :
                 out[w2:w1] += np.interp(wav[w2:w1],w[i,sort],np.atleast_2d(hd.data)[i,sort])
+                sig[w2:w1] += np.interp(wav[w2:w1],w[i,sort],np.atleast_2d(hd.uncertainty.array**2)[i,sort])
         if average :
             out = out / sig
-        return out
+        else :
+            sig = np.sqrt(sig)
+        return CCDData(out,uncertainty=StdDevUncertainty(sig),mask=mask,header=hd.header,unit='adu')
 
     def save(self,file) :
         """ Save object to file
@@ -409,10 +444,6 @@ class Trace() :
         self.pix0 = pix0
         self.spectrum = spectrum
         self.rad = rad
-        if rows is not None : self.rows=rows
-        if lags is not None : self.lags=lags
-        if model is not None : self.model=model
-        if sc0 is not None : self.sc0=sc0
         if inst == 'TSPEC' :
             self.order = 3
             self.rows = [[135,235],[295,395],[435,535],[560,660],[735,830]]
@@ -424,6 +455,10 @@ class Trace() :
             self.lags = range(-300,300) 
         elif inst == 'ARCES' :
             self.lags = range(-10,10) 
+        if rows is not None : self.rows=rows
+        if lags is not None : self.lags=lags
+        if model is not None : self.model=model
+        if sc0 is not None : self.sc0=sc0
 
     def trace(self,hd,srows,sc0=None,plot=None,thresh=20) :
         """ Trace a spectrum from starting position
@@ -450,13 +485,14 @@ class Trace() :
 
         # we want to handle multiple traces, so make sure srows is iterable
         if type(srows ) is int or type(srows) is float : srows=[srows]
+        oldmodel=copy.copy(self.model)
         self.model=[]
         if plot is not None : 
             plot.clear()
             plot.tv(hd)
 
         rad = self.rad-1
-        for srow in srows :
+        for irow,srow in enumerate(srows) :
             print('  Tracing row: {:d}'.format(int(srow)),end='\r')
             sr=copy.copy(srow)
             sr=int(round(sr))
@@ -489,7 +525,6 @@ class Trace() :
                 if (not ymask[col]) & np.isfinite(ysum[col]) & (ysum[col]/np.sqrt(yvar[col]) > thresh)  : sr=int(round(ypos[col]))
 
             cols=np.arange(ncol)
-            print(len(ymask))
             gd = np.where((~ymask) & (ysum/np.sqrt(yvar)>thresh) )[0]
             model=(fitter(mod,cols[gd],ypos[gd]))
 
@@ -497,14 +532,18 @@ class Trace() :
             res = model(cols)-ypos
             gd = np.where((~ymask) & (ysum/np.sqrt(yvar)>thresh) & (np.abs(res)<1))[0]
             model=(fitter(mod,cols[gd],ypos[gd]))
+            if len(gd) < 10 : 
+                print('  failed trace for row: {:d}, using old model'.format(irow))
+                model=copy.copy(oldmodel[irow])
             self.model.append(model)
 
             if plot : 
-                plot.ax.scatter(cols,ypos,marker='o',color='r',s=2) 
-                plot.ax.scatter(cols[gd],ypos[gd],marker='o',color='g',s=2) 
+                plot.ax.scatter(cols,ypos,marker='o',color='r',s=4) 
+                plot.ax.scatter(cols[gd],ypos[gd],marker='o',color='g',s=4) 
                 plot.ax.plot(cols,model(cols),color='m')
                 #plt.pause(0.05)
 
+        self.pix0=0
         print("")
         if plot : input('  See trace. Hit any key to continue....')
 
@@ -548,7 +587,7 @@ class Trace() :
         self.pix0=fitpeak+lags[0]
         return fitpeak+lags[0]
  
-    def extract(self,hd,rad=None,scat=False,plot=None) :
+    def extract(self,hd,rad=None,scat=False,plot=None,medfilt=None) :
         """ Extract spectrum given trace(s)
         """
         if rad is None : rad=self.rad
@@ -584,6 +623,12 @@ class Trace() :
                 if plot is not None :
                     rlo.append(r1)
                     rhi.append(r2-1)
+            if medfilt is not None :
+                boxcar = Box1DKernel(medfilt)
+                median = convolve(spec[i,:],boxcar,boundary='extend')
+                spec[i,:]/=median
+                sig[i,:]/=median
+
             if plot is not None :
                 if i%2 == 0 : color='b'
                 else : color='m'
