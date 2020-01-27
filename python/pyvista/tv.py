@@ -574,10 +574,9 @@ class TV:
             g=image.gfit(self.img,x,y,size=size,fwhm=fwhm,scale=scale,plot=self.plotax1,sub=False,pafixed=pafixed)
             xfwhm=g[0].x_stddev*2.354*scale
             yfwhm=g[0].y_stddev*2.354*scale
-            fwhm=np.sqrt(xfwhm*yfwhm)
             xcen=g[0].x_mean.value
             ycen=g[0].y_mean.value
-            self.tvcirc(x,y,fwhm/2.)
+            self.tvcirc(xcen,ycen,np.sqrt(xfwhm*yfwhm)/2.)
 
 
 @support_nddata
@@ -596,7 +595,8 @@ def minmax(data,mask=None, low=3,high=10):
         gd = np.where(np.isfinite(data) & ~mask)
     else :
         gd = np.where(np.isfinite(data))
-    std=scipy.stats.median_absolute_deviation(data[gd])
+    #std=scipy.stats.median_absolute_deviation(data[gd])
+    std=np.median(np.abs(data[gd]-data[gd].mean()))
     min = np.median(data[gd])-low*std
     max = np.median(data[gd])+high*std
     return min,max
