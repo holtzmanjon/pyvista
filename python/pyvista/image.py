@@ -211,7 +211,8 @@ def gfit(data,x0,y0,size=5,fwhm=3,sub=True,plot=None,fig=1,scale=1,pafixed=False
     fwhm=np.sqrt(xfwhm*yfwhm)
     xcen=g[0].x_mean.value
     ycen=g[0].y_mean.value
-    print('xFWHM:{:8.2f}   yFWHM:{:8.2f}   FWHM:{:8.2f}  SCALE:{:8.2f}  PA:{:8.2f}'.format(xfwhm,yfwhm,fwhm,scale,g[0].theta.value))
+    theta=(g[0].theta.value % (2*np.pi)) * 180./np.pi
+    print('xFWHM:{:8.2f}   yFWHM:{:8.2f}   FWHM:{:8.2f}  SCALE:{:8.2f}  PA:{:8.2f}'.format(xfwhm,yfwhm,fwhm,scale,theta))
     if plot is not None:
         r = np.sqrt((y-ycen)**2 + (x-xcen)**2)
         plots.plotp(plot,r,z,xt='R(pixels)',yt='Intensity')
@@ -220,7 +221,6 @@ def gfit(data,x0,y0,size=5,fwhm=3,sub=True,plot=None,fig=1,scale=1,pafixed=False
         plot.plot(r,peak*np.exp(-np.power(r, 2.) / (2 * np.power(g[0].x_stddev, 2.)))+g[1].amplitude)
         plot.plot(r,peak*np.exp(-np.power(r, 2.) / (2 * np.power(g[0].y_stddev, 2.)))+g[1].amplitude)
         plot.text(0.9,0.9,'x: {:7.1f} y: {:7.1f} fw: {:8.2f}'.format(xcen,ycen,fwhm),transform=plot.transAxes,ha='right')
-        plt.figure(fig)
         plt.draw()
        
     if sub :
