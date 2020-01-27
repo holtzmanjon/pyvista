@@ -7,6 +7,7 @@ from astropy.wcs import wcs
 from astropy.nddata import support_nddata
 from pyvista import cmap
 from pyvista import mmm
+from pyvista import image
 try:
    import autopy
 except:
@@ -561,6 +562,23 @@ class TV:
         self.tv(y)
         self.tv(x+y)
         self.tv(x-y)
+
+    def imexam(self,size=11,fwhm=5,scale=1,pafixed=False) :
+        """ Fit gaussian and show radial profile of stars marked interactively
+        """
+        key=''
+        print('Hit key near star center, "q" to quit')
+        while key != 'q' :
+            key,x,y=self.tvmark()
+            self.plotax1.cla()
+            g=image.gfit(self.img,x,y,size=size,fwhm=fwhm,scale=scale,plot=self.plotax1,sub=False,pafixed=pafixed)
+            xfwhm=g[0].x_stddev*2.354*scale
+            yfwhm=g[0].y_stddev*2.354*scale
+            fwhm=np.sqrt(xfwhm*yfwhm)
+            xcen=g[0].x_mean.value
+            ycen=g[0].y_mean.value
+            self.tvcirc(x,y,fwhm/2.)
+
 
 @support_nddata
 def minmax(data,mask=None, low=3,high=10):
