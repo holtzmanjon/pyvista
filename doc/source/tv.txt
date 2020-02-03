@@ -9,7 +9,7 @@ top of the basic functionality of a matplotlib figure. The tv tool is
 an object that displays images and also allows the user to get input
 from the display.
 
-It can take as input either a numpy array, an astropy ndData or a FITS HDU object (e.g., from
+It can take as input either a numpy array, an astropy NDData/CCDData or a FITS HDU object (e.g., from
 astropy.io.fits), and will display it in the window. Pixel and value readout
 is provided. Normal matplotlib options/buttons (zoom/pan) are available.
 For FITS input, WCS as well as pixel locations are given, as is the OBJECT
@@ -38,7 +38,7 @@ required for interactive functions that move the cursor.
 Usage
 +++++
 
-A display tool is created when a TV object is instatiated, e.g.
+A display tool is created when a TV object is instantiated, e.g.
 
 .. code-block:: python
 
@@ -46,7 +46,18 @@ A display tool is created when a TV object is instatiated, e.g.
 
 In this way, multiple displays can be used if desired.
 
-Once the TV object is created, images are displayed using the tv() function.
+Once the TV object is created, images are displayed using the tv() function, e.g.
+
+.. code-block:: python
+
+   display.tv(image)
+
+where image is one of the input data types. By default, the image is displayed
+using greyscale (colormap "Greys_r") with an automatically determined stretch; however, the display
+scaling can be set explicitly using the min= and max= keywords, and the cmap=
+keyword can be used to specify a different colormap. If the input data type
+is an astropy NDData/CCDData object, then the sn= keyword can be used to display
+the S/N image (data extension divided by uncertainty dimension).
 
 Given a TV object with image data loaded, various asynchronous functions are
 available in the main display window:
@@ -61,10 +72,15 @@ available in the main display window:
   |  a           : toggle axes on/off
   |  h/?         : print this help
 
-Several synchronous (waits for input) functions are also available:
+Several synchronous (waits for input) methods are also available:
 
-  |  tvstat : draws radial profiles and fits Gaussian around cursor position when key is hit
-  |  mark :   returns (x,y,key) when a key is hit at (data) position (x,y)
+  |  imexam(size=11,fwhm=5,scale=1,pafixed=False)  : draws radial profiles and fits Gaussian around cursor position when key is hit
+  |  tvmark() :   returns (x,y,key) when a key is hit at (data) position (x,y)
+  |  clear() :   clears the display
+  |  tvbox(x,y,box=None,size=3,color='m') : displays square of specified size at input position (or pyvista box object) with specified color
+  |  tvvcirc(x,y,rad=3,color='m') : displays circle of specified size and color at input position
+  |  tvclear() :  clears graphics patches from display
+  |  flip() :  toggles vertical flip of displays (default starts with origin in lower left)
 
 
 Module functions

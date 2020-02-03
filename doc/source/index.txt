@@ -6,21 +6,25 @@
 Welcome to pyvista's documentation!
 ===================================
 
-pyvista is package that provides image display, processing, and analysis tools for 
-a versatile quick analysis environment
+pyvista is package that provides image display, and some image processing and 
+analysis tools for a versatile quick analysis environment for working
+with astronomical data (imaging and spectroscopy). The goal is to provide
+a convenient framework that is relatively straightforward to understand and
+to use that allows for both performing data processing efficiently but also
+has options that may be useful pedagogically.
 
-Dependencies:
-   numpy
-   scipy
-   astropy
-   bz2
-   autopy (optional but valuable, for keystroke controlled moves in the display)
+The initial algorithms are relatively simple, but might be extended over
+time by interested users.
+
+The project is hosted on github. See the Installation page for how to download
+and set up.
 
 Contents:
 
 .. toctree::
    :maxdepth: 2
 
+   installation
    tv
    image
    imred
