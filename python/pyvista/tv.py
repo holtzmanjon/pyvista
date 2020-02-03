@@ -1,3 +1,5 @@
+# routines for a pyvista display tool
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -15,7 +17,6 @@ except:
 import pdb
  
 class TV:
- 
     """
     A "TV" figure
     
@@ -23,21 +24,16 @@ class TV:
            tv=TV()  to set up a new TV object (display window)
     """
  
-    def __init__(self, img=np.zeros([5,5]), fig=None, aspect='equal'):
-    
+    def __init__(self, figsize=(12,8.5), aspect='equal'):
         """
         Initialize TV object
         """
     
         # create new figure,set title, margins, and facecolor
-        #tv = plt.figure(figsize=(10,8.5))
-        tv = plt.figure(figsize=(12,8.5))
+        tv = plt.figure(figsize=figsize)
         self.fig = tv
         tv.canvas.set_window_title('Image display window')
         tv.set_facecolor('darkred')
-        #ax = plt.axes()
-        #ax = tv.add_subplot(111)
-        #rect = 0., 0.05, 1., 0.95
         rect = 0., 0.05, 0.7, 0.95
         ax = tv.add_axes(rect)
         self.ax = ax
@@ -142,6 +138,7 @@ class TV:
                 return (p2[1]-p1[1])/100., (p2[0]-p1[0])/100.
 
             if event.key == '-' or event.key == '+' or event.key == '=':
+                # rolling image buffer
                 if event.key == '-' :
                     self.current = (self.current-1) % self.images
                 elif event.key == '+' or event.key == '=':
@@ -168,6 +165,7 @@ class TV:
                 except: pass
 
             elif (event.key == 'p' or event.key == 'v') and subPlotNr == 0 :
+                # find peak or valley near cursor position and move mouse there
                 n=7
                 xdata=int(round(event.xdata))
                 ydata=int(round(event.ydata))
@@ -186,6 +184,7 @@ class TV:
                 except: pass
 
             elif event.key == 'r' and subPlotNr == 0 :
+                # in display window, redraw image at original zoom
                 dim=np.shape(self.img)
                 size=np.max([dim[0],dim[1]])
                 self.ax.set_xlim(dim[1]/2.-size/2.,dim[1]/2.+size/2.)
@@ -196,6 +195,7 @@ class TV:
                 plt.draw()
 
             elif event.key == 'r' and subPlotNr == 1 :
+                # in color bar, redraw image at original color scale
                 self.bottom=0.
                 self.top=1.
                 cm=cmap.remap(self.cmap,self.bottom,self.top)
@@ -203,6 +203,7 @@ class TV:
                 plt.draw()
 
             elif event.key == 'x' and subPlotNr == 0 :
+                # row and column plots
                 xdata=int(round(event.xdata))
                 ydata=int(round(event.ydata))
                 self.plotax1.cla()
@@ -220,6 +221,7 @@ class TV:
                 plt.draw()
 
             elif event.key == 'left' and subPlotNr == 0 :
+                # move cursor
                 xs,ys = scale()
                 try:
                     x,y= autopy.mouse.location()
@@ -230,6 +232,7 @@ class TV:
                 except: pass
 
             elif event.key == 'right' and subPlotNr == 0 :
+                # move cursor
                 xs,ys = scale()
                 try:
                     x,y= autopy.mouse.location()
@@ -240,6 +243,7 @@ class TV:
                 except: pass
 
             elif event.key == 'up' and subPlotNr == 0 :
+                # move cursor
                 xs,ys = scale()
                 try:
                     x,y= autopy.mouse.location()
@@ -250,6 +254,7 @@ class TV:
                 except: pass
 
             elif event.key == 'down' and subPlotNr == 0 :
+                # move cursor
                 xs,ys = scale()
                 try:
                     x,y = autopy.mouse.location()
@@ -260,6 +265,7 @@ class TV:
                 except: pass
 
             elif event.key == 'a' and subPlotNr == 0 :
+                # toggle axes on and off
                 if self.axis :
                     rect = 0., 0.05, 1., 0.95
                     self.ax.axis('off')
@@ -271,6 +277,7 @@ class TV:
                 plt.draw()
 
             elif event.key == 'h' or event.key == '?' :
+                # print help
                 print('Asynchronous commands: ')
                 print('Image window: ')
                 print('  mouse:')
@@ -387,8 +394,8 @@ class TV:
         """
         self.doflip = not self.doflip
         ylim = self.ax.get_ylim()
-        if self.doflip : self.ax.set_ylim(ylim[1],ylim[0])
-        else : self.ax.set_ylim(ylim[0],ylim[1])
+        if self.doflip : self.ax.set_ylim(np.max(ylim),np.min(ylim))
+        else : self.ax.set_ylim(np.min(ylim),np.max(ylim))
         plt.draw()
 
     def tv(self,img,min=None,max=None,cmap=None,sn=False) :
