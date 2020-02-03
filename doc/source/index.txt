@@ -6,7 +6,7 @@
 Welcome to pyvista's documentation!
 ===================================
 
-pyvista is package that provides image display, and some image processing and 
+pyvista is Python package that provides image display, and some image processing and 
 analysis tools for a versatile quick analysis environment for working
 with astronomical data (imaging and spectroscopy). The goal is to provide
 a convenient framework that is relatively straightforward to understand and
