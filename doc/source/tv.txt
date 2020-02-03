@@ -4,16 +4,17 @@ TV module
 Introduction
 ++++++++++++
 
-tv is a simple package to provide an enhanced image display tool built on
+tv is a module that provide an enhanced image display tool built on
 top of the basic functionality of a matplotlib figure. The tv tool is
 an object that displays images and also allows the user to get input
 from the display.
 
-It can take as input either a numpy array or a FITS HDU object (e.g., from
+It can take as input either a numpy array, an astropy ndData or a FITS HDU object (e.g., from
 astropy.io.fits), and will display it in the window. Pixel and value readout
 is provided. Normal matplotlib options/buttons (zoom/pan) are available.
 For FITS input, WCS as well as pixel locations are given, as is the OBJECT
-information. 
+information.  Two plot windows are created for use with some built-in
+functions (row and column plots, radial profiles).
 
 Four images are stored internally, allowing for rapid cycling (blinking)
 between them using the '-' and '+/=' keys.
@@ -24,10 +25,47 @@ event in the window along with the key that was pressed.
 Installation
 ++++++++++++
 
-The package requires autopy to be installed (available via pip). For Mac OS X,
-this requires libpng
+The tv module is part of pyvista,  is available at http://github.com/holtzmanjon/pyvista
+To load it:
 
-The tv package is available at http://github.com/holtzmanjon/tv
+.. code-block:: python
+
+   from pyvista import tv
+
+If the autopy package is available it will be loaded: this functionality is
+required for interactive functions that move the cursor.
+
+Usage
++++++
+
+A display tool is created when a TV object is instatiated, e.g.
+
+.. code-block:: python
+
+   display = tv.TV()
+
+In this way, multiple displays can be used if desired.
+
+Once the TV object is created, images are displayed using the tv() function.
+
+Given a TV object with image data loaded, various asynchronous functions are
+available in the main display window:
+
+  |  left mouse  : zoom in, centered on cursor
+  |  center mouse: zoom out, centered on cursor
+  |  right mouse : pan, center to cursor
+  |  r           : redraw at default zoom
+  |  +/=         : toggle to next image in stack
+  |  -           : toggle to previous image in stack
+  |  arrow keys  : move single image pixels
+  |  a           : toggle axes on/off
+  |  h/?         : print this help
+
+Several synchronous (waits for input) functions are also available:
+
+  |  tvstat : draws radial profiles and fits Gaussian around cursor position when key is hit
+  |  mark :   returns (x,y,key) when a key is hit at (data) position (x,y)
+
 
 Module functions
 ++++++++++++++++
