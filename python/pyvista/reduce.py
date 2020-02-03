@@ -101,10 +101,12 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                         # loop over windows
                         waves_channel=[]
                         for iwind,(wcal,wtrace) in enumerate(zip(wave,trace)) :
-                            # extract
+                            try : file = wavecal['file']
+                            except KeyError : file = None
+                            # extract and ID lines
                             if wavecal['wavecal_type'] == 'echelle' :
                                 arcec=wtrace.extract(arc,plot=display)
-                                wcal.identify(spectrum=arcec, rad=3, display=display, plot=plot)
+                                wcal.identify(spectrum=arcec, rad=3, display=display, plot=plot,file=file)
                             elif wavecal['wavecal_type'] == 'longslit' :
                                 r0=wtrace.rows[0]
                                 r1=wtrace.rows[1]
@@ -112,7 +114,7 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                                 wtrace.pix0 +=30
                                 arcec=wtrace.extract(arc,plot=display,rad=20)
                                 arcec.data=arcec.data - scipy.signal.medfilt(arcec.data,kernel_size=[1,101])
-                                wcal.identify(spectrum=arcec, rad=3, plot=plot, display=display,lags=range(-500,500))
+                                wcal.identify(spectrum=arcec, rad=7, plot=plot, display=display,lags=range(-500,500),file=file)
                                 wcal.fit()
 
                                 print("doing 2D wavecal...")
