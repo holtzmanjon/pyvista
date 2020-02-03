@@ -1,5 +1,6 @@
 import matplotlib
 import matplotlib.pyplot as plt
+import os
 import pdb
 import pickle
 import copy
@@ -14,6 +15,9 @@ import pyvista
 from pyvista import image
 from pyvista import tv
 from tools import plots
+
+ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../../'
+
 
 class SpecData(CCDData) :
     """ Class to include a wavelength array on top of CCDData, with simple read/write/plot methods
@@ -148,7 +152,7 @@ class WaveCal() :
                 self.model=fitter(mod,self.pix-self.pix0,self.y,self.waves*self.waves_order,weights=self.weights)
                 diff=self.waves-self.wave(pixels=[self.pix,self.y])
                 print('  rms: {:8.3f}'.format(diff.std()))
-                bd = np.where(abs(diff) > 3*diff.std())
+                bd = np.where(abs(diff) > 3*diff.std())[0]
                 nbd = len(bd)
                 print('rejecting {:d} points from {:d} total: '.format(nbd,len(self.waves)))
                 self.weights[bd] = 0.
@@ -303,7 +307,7 @@ class WaveCal() :
 
         # open file with wavelengths and read
         if file is not None :
-            f=open(file,'r')
+            f=open(ROOT+'/data/lamps/'+file,'r')
             lines=[]
             for line in f :
                 if line[0] != '#' :
