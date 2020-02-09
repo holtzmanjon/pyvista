@@ -34,7 +34,7 @@ and natural way to provide the required information. There is some required
 information in the file, and some optional information. A complete list
 is provided below.
 
-.. include:: config.yml
+.. include:: reduce.yml
    :literal:
 
 reduce functions
