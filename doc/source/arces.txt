@@ -1,4 +1,0 @@
-.. automodule:: pyvista.arces
-   :members:
-   :member-order: bysource
-
