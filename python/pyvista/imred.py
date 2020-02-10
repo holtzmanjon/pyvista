@@ -32,39 +32,6 @@ except:
 
 ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../../'
 
-class Data(object) :
-    def __init__(self,data,wave=None) :
-        if type(data) is str :
-            hdulist=fits.open(data)
-            self.meta = hdulist[0].header
-            self.attr_list = []
-            for i in range(1,len(hdulist) ) :
-                try : 
-                    attr=hdulist[i].header['ATTRIBUT']
-                except KeyError :
-                    if i == 1 : attr='data'
-                    elif i == 2 : attr='uncertainty'
-                    elif i == 3 : attr='mask'
-                    elif i == 4 : attr='wave'
-                print('attr: {:s}'.format(attr))
-                self.attr_list.append(attr)
-                setattr(self,attr,hdulist[i].data) 
-        elif type(data) is CCDData :
-            self.unit = data.unit
-            self.meta = data.meta
-            self.data = data.data
-            self.uncertainty = data.uncertainty
-            self.mask = data.mask
-            self.wave = wave
-        else :
-            print('Input must be a filename or CCDData object')
-
-    def write(self,file,overwrite=True) :
-        hdulist=fits.HDUList()
-        hdulist.append(fits.PrimaryHDU(header=self.meta))
-        for attr in self.attr_list :
-            hdulist.append(fits.ImageHDU(getattr(self,attr)))
-        hdulist.writeto(file,overwrite=overwrite)
 
 
 class Reducer() :
@@ -91,28 +58,32 @@ class Reducer() :
         else : self.formstr=[formstr]
        
         # Read instrument configuation from YAML configuration file 
-        config = yaml.load(open(ROOT+'/data/'+inst+'/'+inst+'_config.yml','r'), Loader=yaml.FullLoader)
-        self.channels=config['channels']
-        self.formstr=config['formstr']
-        self.gain=config['gain']
-        self.rn=config['rn']/np.sqrt(nfowler)
-        self.crbox=config['crbox']
-        self.biastype=config['biastype']
-        self.biasbox=[]
-        for box in config['biasbox'] :
-            self.biasbox.append(image.BOX(xr=box[0],yr=box[1]) )
-        self.trimbox=[]
-        for box in config['trimbox'] :
-            self.trimbox.append(image.BOX(xr=box[0],yr=box[1]) )
-        self.normbox=[]
-        for box in config['normbox'] :
-            self.normbox.append(image.BOX(xr=box[0],yr=box[1]) )
-        try: self.scat=config['scat']
-        except : pass
+        if inst is not None :
+            if inst.find('/') < 0 :
+                config = yaml.load(open(ROOT+'/data/'+inst+'/'+inst+'_config.yml','r'), Loader=yaml.FullLoader)
+            else :
+                config = yaml.load(open(inst+'_config.yml','r'), Loader=yaml.FullLoader)
+            self.channels=config['channels']
+            self.formstr=config['formstr']
+            self.gain=config['gain']
+            self.rn=config['rn']/np.sqrt(nfowler)
+            self.crbox=config['crbox']
+            self.biastype=config['biastype']
+            self.biasbox=[]
+            for box in config['biasbox'] :
+                self.biasbox.append(image.BOX(xr=box[0],yr=box[1]) )
+            self.trimbox=[]
+            for box in config['trimbox'] :
+                self.trimbox.append(image.BOX(xr=box[0],yr=box[1]) )
+            self.normbox=[]
+            for box in config['normbox'] :
+                self.normbox.append(image.BOX(xr=box[0],yr=box[1]) )
+            try: self.scat=config['scat']
+            except : pass
            
-        # Add bad pixel mask if it exists
-        try: self.mask=fits.open(ROOT+'/data/'+inst+'/'+inst+'_mask.fits')[0].data.astype(bool)
-        except: pass
+            # Add bad pixel mask if it exists
+            try: self.mask=fits.open(ROOT+'/data/'+inst+'/'+inst+'_mask.fits')[0].data.astype(bool)
+            except: pass
 
         # save number of chips for convenience
         self.nchip = len(self.formstr)
@@ -192,6 +163,8 @@ class Reducer() :
     def overscan(self,im,display=None) :
         """ Overscan subtraction
         """
+        if self.biastype < 0 : return
+
         if type(im) is not list : ims=[im]
         else : ims = im
        
@@ -460,14 +433,6 @@ class Reducer() :
         else :
             im.write(name+'.fits',overwrite=overwrite)
 
-
-class Combiner() :
-    """ Class for combining calibration data frames
-    """
-    def __init__(self,reducer=None,verbose=True) :
-        self.reducer = reducer
-        self.verbose = verbose
-
     def getcube(self,ims,**kwargs) :
         """ Read images into data cube
         """
@@ -475,11 +440,11 @@ class Combiner() :
         allcube = []
         for im in ims :
             if type(im) is not astropy.nddata.CCDData :
-                data = self.reducer.reduce(im, **kwargs)
+                data = self.reduce(im, **kwargs)
             allcube.append(data)
 
         # if just one frame, put in 2D list anyway so we can use same code, allcube[nframe][nchip]
-        if self.reducer.nchip == 1 :
+        if self.nchip == 1 :
             allcube=[list(i) for i in zip(*[allcube])]
 
         return allcube
@@ -491,7 +456,7 @@ class Combiner() :
         nframe = len(allcube)
         
         out=[]
-        for chip in range(self.reducer.nchip) :
+        for chip in range(self.nchip) :
             datacube = []
             varcube = []
             maskcube = []
@@ -519,14 +484,14 @@ class Combiner() :
 
         # do the combination
         out=[] 
-        for chip in range(self.reducer.nchip) :
+        for chip in range(self.nchip) :
             datacube = []
             varcube = []
             maskcube = []
             allnorm = []
             for im in range(nframe) :
                 if normalize :
-                    norm=self.reducer.normbox[chip].mean(allcube[im][chip].data)
+                    norm=self.normbox[chip].mean(allcube[im][chip].data)
                     allnorm.append(norm)
                     allcube[im][chip].data /= norm
                     allcube[im][chip].uncertainty.array /= norm
@@ -563,7 +528,7 @@ class Combiner() :
                         display.tv(allcube[i][chip].data/med,min=0.5,max=1.5)
                         input("    see image: {} divided by master, hit any key to continue".format(im))
                     else :
-                        delta=5*self.reducer.rn[chip]
+                        delta=5*self.rn[chip]
                         display.plotax2.hist((allcube[i][chip].data-med)[gd[0],gd[1]],bins=np.linspace(-delta,delta,100),histtype='step')
                         display.tv(allcube[i][chip].data-med,min=-delta,max=delta)
                         input("    see image: {} minus master, hit any key to continue".format(im))
@@ -574,22 +539,22 @@ class Combiner() :
            else : return out[0]
         else : return out
 
-    def superbias(self,ims,display=None,scat=None) :
+    def mksuperbias(self,ims,display=None,scat=None) :
         """ Driver for superbias combination (no superbias subraction no normalization)
         """
         return self.median(ims,display=display,div=False,scat=scat)
 
-    def superdark(self,ims,superbias=None,display=None,scat=None) :
+    def mksuperdark(self,ims,superbias=None,display=None,scat=None) :
         """ Driver for superdark combination (no normalization)
         """
         return self.median(ims,superbias=superbias,display=display,div=False,scat=scat)
 
-    def superflat(self,ims,superbias=None,superdark=None,scat=None,display=None) :
+    def mksuperflat(self,ims,superbias=None,superdark=None,scat=None,display=None) :
         """ Driver for superflat combination (with superbias if specified, normalize to normbox
         """
         return self.median(ims,superbias=superbias,superdark=superdark,normalize=True,scat=scat,display=display)
 
-    def specflat(self,flats,wid=101) :
+    def mkspecflat(self,flats,wid=101) :
         """ Spectral flat takes out variation along wavelength direction
         """
         boxcar = Box1DKernel(wid)
@@ -838,3 +803,39 @@ def getinput(str) :
     elif get == 'p' :
         pdb.set_trace()
     return get
+
+class Data(object) :
+    """ Experimental data class to cinclude wavelength array
+    """
+    def __init__(self,data,wave=None) :
+        if type(data) is str :
+            hdulist=fits.open(data)
+            self.meta = hdulist[0].header
+            self.attr_list = []
+            for i in range(1,len(hdulist) ) :
+                try : 
+                    attr=hdulist[i].header['ATTRIBUT']
+                except KeyError :
+                    if i == 1 : attr='data'
+                    elif i == 2 : attr='uncertainty'
+                    elif i == 3 : attr='mask'
+                    elif i == 4 : attr='wave'
+                print('attr: {:s}'.format(attr))
+                self.attr_list.append(attr)
+                setattr(self,attr,hdulist[i].data) 
+        elif type(data) is CCDData :
+            self.unit = data.unit
+            self.meta = data.meta
+            self.data = data.data
+            self.uncertainty = data.uncertainty
+            self.mask = data.mask
+            self.wave = wave
+        else :
+            print('Input must be a filename or CCDData object')
+
+    def write(self,file,overwrite=True) :
+        hdulist=fits.HDUList()
+        hdulist.append(fits.PrimaryHDU(header=self.meta))
+        for attr in self.attr_list :
+            hdulist.append(fits.ImageHDU(getattr(self,attr)))
+        hdulist.writeto(file,overwrite=overwrite)
