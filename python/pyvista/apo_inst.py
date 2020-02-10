@@ -24,21 +24,28 @@ import os
 import pickle
 
 def dis() :
-    dred=imred.Reducer(inst='DIS',dir='UT191019/DIS/')
+    pdb.set_trace()
+    #dred=imred.Reducer(inst='DIS',dir='UT191019/DIS/')
+    dred=imred.Reducer(inst='DIS',dir='UT191027/DIS/')
     dcomb=imred.Combiner(reducer=dred)
     arc=dcomb.sum([1,2,3])
 
     # define a flat trace model
     def model(x) : return(np.zeros(len(x))+500)
-    traces=Trace(rad=10,model=[model],sc0=1024)
+    traces=spectra.Trace(rad=10,model=[model],sc0=1024)
 
     spec=traces.extract(arc[0])
-    spec-=scipy.signal.medfilt(spec[0,:],kernel_size=101)
+    spec.data-=scipy.signal.medfilt(spec.data[0,:],kernel_size=101)
 
-    wcal=WaveCal(type='chebyshev',spectrum=spec)
-    f=open(os.environ['PYVISTA_DIR']+'/data/dis/dis_blue_lowres.pkl','rb')
+    wcal=spectra.WaveCal(type='chebyshev')
+    #wcal.set_spectrum(spec)
+    #f=open(os.environ['PYVISTA_DIR']+'/data/dis/dis_blue_lowres.pkl','rb')
+    f=open(os.environ['PYVISTA_DIR']+'/data/DIS/DIS_hires_6400_waves.pkl','rb')
     wcal0=pickle.load(f)
-    wcal.identify(wcal0=wcal0,file=os.environ['PYVISTA_DIR']+'/data/henear.dat',rad=3)
+    wcal0.orders=[1]
+    wav=wcal0[0][0].wave(image=spec.shape)
+
+    wcal.identify(spec,wav=wav,file=os.environ['PYVISTA_DIR']+'/data/lamps/henear.dat',rad=3)
     wcal.fit()
     w=wcal.wave(image=np.array(spec.data.shape))
 
