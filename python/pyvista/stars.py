@@ -21,8 +21,7 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False):
            tv  : TV instance from which user will mark stars
            stars =   : existing star table
            auto=  (bool) : if True, recentroid from existing position
-           radius= (int): radius to use for centroiding and for size of circles 
-                     (default=3)
+           radius= (int): radius to use for centroiding and for size of circles (default=3)
            color= (char) : color for circles (default='m')
     """
 
