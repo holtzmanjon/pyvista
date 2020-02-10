@@ -43,28 +43,27 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
         print('Instrument: {:s}'.format(inst))
         try : red = imred.Reducer(inst=group['inst'],dir=group['rawdir'],verbose=verbose,nfowler=group['nfowler'])
         except KeyError : red = imred.Reducer(inst=group['inst'],dir=group['rawdir'],verbose=verbose)
-        comb = imred.Combiner(reducer=red,verbose=verbose)
         reddir = group['reddir']+'/'
         try: os.makedirs(reddir)
         except FileExistsError : pass
 
         #create superbiases if biases given
         if 'biases' in group : 
-            sbias = mkcal(group['biases'],'bias',comb,reddir,clobber=clobber,display=display)
+            sbias = mkcal(group['biases'],'bias',red,reddir,clobber=clobber,display=display)
         else: 
             print('no bias frames given')
             sbias = None
 
         #create superdarks if darks given
         if 'darks' in group : 
-            sdark = mkcal(group['darks'],'dark',comb,reddir,clobber=clobber,display=display,sbias=sbias)
+            sdark = mkcal(group['darks'],'dark',red,reddir,clobber=clobber,display=display,sbias=sbias)
         else: 
             print('no dark frames given')
             sdark = None
 
         #create superflats if darks given
         if 'flats' in group : 
-            sflat = mkcal(group['flats'],'flat',comb,reddir,clobber=clobber,display=display,sbias=sbias,sdark=sdark)
+            sflat = mkcal(group['flats'],'flat',red,reddir,clobber=clobber,display=display,sbias=sbias,sdark=sdark)
         else: 
             print('no flat frames given')
             sflat = None
@@ -91,7 +90,7 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                     # combine frames
                     try : superbias = sbias[wavecal['bias']]
                     except KeyError: superbias = None
-                    arcs=comb.sum(wavecal['frames'],return_list=True, superbias=superbias, crbox=[5,1], display=display)
+                    arcs=red.sum(wavecal['frames'],return_list=True, superbias=superbias, crbox=[5,1], display=display)
 
                     print('  extract wavecal')
                     # loop over channels
@@ -258,7 +257,7 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
 #            out=trace.extract2d(frame,plot=t)
 
 
-def mkcal(cals,caltype,comb,reddir,sbias=None,sdark=None,clobber=False,**kwargs) :
+def mkcal(cals,caltype,reducer,reddir,sbias=None,sdark=None,clobber=False,**kwargs) :
     """ Make calibration frames given input lists
  
         Args :
@@ -284,12 +283,12 @@ def mkcal(cals,caltype,comb,reddir,sbias=None,sdark=None,clobber=False,**kwargs)
                 make=True
             else :
                 make=False
-                if len(comb.reducer.channels)==1 :
+                if len(reducer.channels)==1 :
                     try : scal= CCDData.read(reddir+calname+'.fits')
                     except FileNotFoundError : make=True
                 else :
                     scal=[]
-                    for channel in comb.reducer.channels :
+                    for channel in reducer.channels :
                         try : scal.append(CCDData.read(reddir+calname+'_'+channel+'.fits'))
                         except FileNotFoundError : make=True
             if make :
@@ -313,16 +312,16 @@ def mkcal(cals,caltype,comb,reddir,sbias=None,sdark=None,clobber=False,**kwargs)
                 except :
                     # make calibration product from raw data frames
                     if caltype == 'bias' :
-                        scal = comb.superbias(cal['frames'],**kwargs)
+                        scal = reducer.mksuperbias(cal['frames'],**kwargs)
                     elif caltype == 'dark' :
-                        scal = comb.superdark(cal['frames'],superbias=superbias,**kwargs)
+                        scal = reducer.mksuperdark(cal['frames'],superbias=superbias,**kwargs)
                     elif caltype == 'flat' :
-                        scal = comb.superflat(cal['frames'],superbias=superbias,superdark=superdark,**kwargs)
+                        scal = reducer.mksuperflat(cal['frames'],superbias=superbias,superdark=superdark,**kwargs)
                         try: 
-                            if cal['specflat'] : scal = comb.specflat(scal)
+                            if cal['specflat'] : scal = reducer.mkspecflat(scal)
                         except: pass
-                        comb.reducer.scatter(scal,scat=comb.reducer.scat,**kwargs)
-                comb.reducer.write(scal,reddir+calname,overwrite=True)
+                        reducer.scatter(scal,scat=reducer.scat,**kwargs)
+                reducer.write(scal,reddir+calname,overwrite=True)
 
 #            if make :
 #                scal=[]
