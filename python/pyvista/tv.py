@@ -267,10 +267,10 @@ class TV:
             elif event.key == 'a' and subPlotNr == 0 :
                 # toggle axes on and off
                 if self.axis :
-                    rect = 0., 0.05, 1., 0.95
+                    rect = 0., 0.05, 0.7, 0.95
                     self.ax.axis('off')
                 else :
-                    rect = 0.05, 0.15, 0.95, 0.85
+                    rect = 0.05, 0.15, 0.65, 0.85
                     self.ax.axis('on')
                 self.ax.set_position(rect)
                 self.axis = not self.axis
@@ -577,6 +577,7 @@ class TV:
         print('Hit key near star center, "q" to quit')
         while key != 'q' :
             key,x,y=self.tvmark()
+            if key == 'q' : return
             self.plotax1.cla()
             g=image.gfit(self.img,x,y,size=size,fwhm=fwhm,scale=scale,plot=self.plotax1,sub=False,pafixed=pafixed)
             xfwhm=g[0].x_stddev*2.354*scale
