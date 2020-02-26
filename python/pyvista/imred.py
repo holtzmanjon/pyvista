@@ -90,8 +90,9 @@ class Reducer() :
 
         # output setup if verbose
         if self.verbose :
+            if inst is not None : print('INSTRUMENT: {:s}'.format(inst))
             for form in self.formstr :
-                print('  will use format:  {:s}/{:s}.{:s}.fits'.format(self.dir,self.root,form))
+                print('  will use format:  {:s}/{:s}{:s}.fits*'.format(self.dir,self.root,form))
             print('         gain:  {}    rn: {}'.format(self.gain,self.rn))
             print('  Biastype : {:d}'.format(self.biastype))
             print('  Bias box: ')
@@ -140,6 +141,9 @@ class Reducer() :
             try : im=CCDData.read(file,hdu=ext,unit='adu')
             except : raise RuntimeError('Error reading file: {:s}'.format(file))
             im.header['FILE'] = os.path.basename(file)
+            if 'OBJECT' not in im.header :
+                try: im.header['OBJECT'] = im.header['OBJNAME']
+                except KeyError : im.header['OBJECT'] = im.header['FILE']
 
             # Add uncertainty (will be in error if there is an overscan, but redo with overscan subraction later)
             data=copy.copy(im.data)
@@ -178,6 +182,7 @@ class Reducer() :
                     display.tvbox(0,0,box=biasbox)
                     if ichan %2 == 0 : ax=display.plotax1
                     else : ax=display.plotax2
+                    ax.cla()
                     ax.plot(np.mean(im.data[:,biasbox.xmin:biasbox.xmax],axis=1))
                     ax.text(0.05,0.95,'Overscan mean',transform=ax.transAxes)
                     ax.set_xlabel('Row')
@@ -339,9 +344,9 @@ class Reducer() :
             display.clear()
             display.tv(im)
             points=np.array(points)
-            display.ax.scatter(points[:,1],points[:,0],color='r',s=1)
+            display.ax.scatter(points[:,1],points[:,0],color='r',s=3)
             points_gd=np.array(points_gd)
-            display.ax.scatter(points_gd[:,1],points_gd[:,0],color='g',s=1)
+            display.ax.scatter(points_gd[:,1],points_gd[:,0],color='g',s=3)
             input("  See image with scattered light points. Hit any key to continue".format(im))
             display.clear()
             display.tv(im)
