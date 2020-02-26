@@ -7,9 +7,7 @@ from astropy.nddata import CCDData
 def gauss2d(data, coords,fwhm=1,back=0,noise=False,rn=0) :
     """ Add 2d gaussians to data given input coords, fwhm, noise"""
     if type(coords[0]) is not list : coords=[coords]
-    pix = np.mgrid[0:data.shape[0],0:data.shape[1]]
-    ypix = pix[0]
-    xpix = pix[1]
+    ypix,xpix = np.mgrid[0:data.shape[0],0:data.shape[1]]
     sig2 = (fwhm/2.354)**2
     for coord in coords: 
         amp = coord[0]/2./np.pi/sig2
