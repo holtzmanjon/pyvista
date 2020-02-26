@@ -151,7 +151,8 @@ class WaveCal() :
                 nold=nbd
                 self.model=fitter(mod,self.pix-self.pix0,self.y,self.waves*self.waves_order,weights=self.weights)
                 diff=self.waves-self.wave(pixels=[self.pix,self.y])
-                print('  rms: {:8.3f}'.format(diff.std()))
+                gd = np.where(self.weights > 0)[0]
+                print('  rms: {:8.3f}'.format(diff[gd].std()))
                 bd = np.where(abs(diff) > 3*diff.std())[0]
                 nbd = len(bd)
                 print('rejecting {:d} points from {:d} total: '.format(nbd,len(self.waves)))
@@ -160,10 +161,11 @@ class WaveCal() :
             if self.ax is not None : 
                 self.ax[1].cla()
                 scat=self.ax[1].scatter(self.waves,diff,marker='o',c=self.y,s=2)
+                scat=self.ax[1].scatter(self.waves[bd],diff[bd],marker='o',c='r',s=2)
                 xlim=self.ax[1].get_xlim()
                 self.ax[1].set_ylim(diff.min()-0.5,diff.max()+0.5)
                 self.ax[1].plot(xlim,[0,0],linestyle=':')
-                self.ax[1].text(0.1,0.9,'rms: {:8.3f}'.format(diff.std()),transform=self.ax[1].transAxes)
+                self.ax[1].text(0.1,0.9,'rms: {:8.3f}'.format(diff[gd].std()),transform=self.ax[1].transAxes)
                 cb_ax = self.fig.add_axes([0.94,0.05,0.02,0.4])
                 cb = self.fig.colorbar(scat,cax=cb_ax)
                 cb.ax.set_ylabel('Row')
@@ -260,15 +262,18 @@ class WaveCal() :
                 print('  cross correlating with reference spectrum using lags: ', lags)
                 fitpeak,shift = image.xcorr(self.spectrum.data,spectrum.data,lags)
                 if shift.ndim == 1 :
+                    pixshift=(fitpeak+lags[0])[0]
                     print('  Derived pixel shift from input wcal: ',fitpeak+lags[0])
                     if display is not None :
                         display.plotax1.cla()
                         display.plotax1.text(0.05,0.95,'spectrum and reference',transform=display.plotax1.transAxes)
-                        display.plotax1.plot(spectrum.data[0,:],color='m')
-                        display.plotax1.plot(self.spectrum.data[0,:],color='g')
+                        for row in range(spectrum.data.shape[0]) :
+                            display.plotax1.plot(spectrum.data[row,:],color='m')
+                            display.plotax1.plot(self.spectrum.data[row,:],color='g')
                         display.plotax1.set_xlabel('Pixel')
                         display.plotax2.cla()
-                        display.plotax2.text(0.05,0.95,'cross correlation',transform=display.plotax2.transAxes)
+                        display.plotax2.text(0.05,0.95,'cross correlation: {:8.3f}'.format(pixshift),
+                                             transform=display.plotax2.transAxes)
                         display.plotax2.plot(lags,shift)
                         display.plotax1.set_xlabel('Lag')
                         plt.draw()
@@ -387,7 +392,7 @@ class WaveCal() :
                 diff=self.wave(pixels=[x,y])-np.array(waves)
                 ax[1].cla()
                 ax[1].scatter(np.array(waves),diff,s=2,c=y)
-                ax[1].text(0.1,0.9,'form previous fit, rms: {:8.3f}'.format(diff.std()),transform=ax[1].transAxes)
+                ax[1].text(0.1,0.9,'from previous fit, rms: {:8.3f}'.format(diff.std()),transform=ax[1].transAxes)
                 xlim=ax[1].get_xlim()
                 ax[1].plot(xlim,[0,0],linestyle=':')
                 ax[1].set_ylim(diff.min()-0.5,diff.max()+0.5)
@@ -580,6 +585,7 @@ class Trace() :
             spec[self.rows[1]:] = 0.  
         except: pass
         fitpeak,shift = image.xcorr(self.spectrum,spec,lags)
+        pixshift=(fitpeak+lags[0])[0]
         print('  traces shift: ', fitpeak+lags[0])
         if plot is not None :
             plot.clear()
@@ -590,7 +596,8 @@ class Trace() :
             plot.plotax1.plot(im[:,self.sc0]/im[:,self.sc0].max())
             plot.plotax1.set_xlabel('row')
             plot.plotax2.cla()
-            plot.plotax2.text(0.05,0.95,'cross correlation',transform=plot.plotax2.transAxes)
+            plot.plotax2.text(0.05,0.95,'cross correlation {:8.3f}'.format(pixshift),
+                              transform=plot.plotax2.transAxes)
             plot.plotax2.plot(lags,shift)
             plot.plotax2.set_xlabel('lag')
             plt.draw()
@@ -609,6 +616,7 @@ class Trace() :
         mask = np.zeros([len(self.model),hd.data.shape[1]],dtype=bool)
 
         if plot is not None:
+            plot.clear()
             plot.tv(hd)
 
         for i,model in enumerate(self.model) :
