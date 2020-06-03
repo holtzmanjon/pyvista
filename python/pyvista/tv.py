@@ -7,9 +7,9 @@ import matplotlib
 import scipy.stats
 from astropy.wcs import wcs
 from astropy.nddata import support_nddata
-from pyvista import cmap
-from pyvista import mmm
-from pyvista import image
+from . import cmap
+from . import mmm
+from . import image
 try:
    import autopy
 except:
