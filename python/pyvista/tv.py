@@ -276,6 +276,13 @@ class TV:
                 self.axis = not self.axis
                 plt.draw()
 
+            elif event.key == '#' :
+                xlim = self.ax.get_xlim()
+                ylim = self.ax.get_ylim()
+                for ix in range(int(xlim[0]),int(xlim[1])) :
+                    for iy in range(int(ylim[0]),int(ylim[1])) :
+                        self.ax.text(ix,iy,'{:d}'.format(int(self.aximage.get_array()[iy,ix])))
+
             elif event.key == 'h' or event.key == '?' :
                 # print help
                 print('Asynchronous commands: ')
