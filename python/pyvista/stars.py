@@ -4,15 +4,17 @@ import copy
 import numpy as np
 import pdb
 import astropy
+import os
+import subprocess
+import tempfile
+import multiprocessing as mp
 from astropy.io import fits
-from astropy.table import Table
-from astropy.table import Column
+from astropy.table import Table, Column, vstack
 from astropy.nddata import support_nddata
 from astropy.time import Time
 from pyvista import mmm
 from astropy.stats import sigma_clipped_stats
-from photutils import CircularAperture, CircularAnnulus
-from photutils import aperture_photometry
+from photutils import CircularAperture, CircularAnnulus,aperture_photometry
 
 def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False):
     """ Interactive mark stars on TV, or recenter current list 
@@ -29,10 +31,6 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False):
     if new: tv.tvclear()
     try: dateobs=Time(tv.hdr['DATE-OBS'],format='fits')
     except: dateobs=None
-    #try: exptime=tv.hdr['EXPTIME']
-    #except: exptime=None
-    #try: filt=tv.hdr['FILTER']
-    #except: filt=None
     cards=['EXPTIME','FILTER','AIRMASS']
     types=['f4','S','f4']
     if stars == None :
@@ -42,10 +40,6 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False):
         if dateobs is not None :
             stars.add_column(Column([],name='MJD',dtype=('f8')))
             stars['MJD'].info.format = '.6f'
-        #if exptime is not None :
-        #    stars.add_column(Column([],name='EXPTIME',dtype=('f4')))
-        #if filt is not None :
-        #    stars.add_column(Column([],name='FILTER',dtype=('S')))
         for icard,card in enumerate(cards) :
             try: stars.add_column(Column([],name=card,dtype=(types[icard])))
             except: pass
@@ -57,8 +51,6 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False):
                 star['x'] = x
                 star['y'] = y
                 if dateobs is not None : star['MJD'] = dateobs.mjd
-                #if exptime is not None : star['EXPTIME'] = exptime
-                #if filt is not None : star['FILTER'] = filt
                 for icard,card in enumerate(cards) :
                     try: star[card] = tv.hdr[card]
                     except: pass
@@ -94,8 +86,16 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False):
         #if filt is not None :
         #    stars[len(stars)-1]['FILTER'] = filt
         istar+=1
+
     return stars
 
+@support_nddata
+def add_coord(data,stars,wcs=None) :
+
+    if wcs is not None :
+        ra,dec=wcs.wcs_pix2world(stars['x'],stars['y'],0)
+        stars['RA'] = ra
+        stars['DEC'] = dec
 
 @support_nddata
 def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,tv=None,gain=1,rn=0,mag=True,utils=True) :
@@ -149,18 +149,23 @@ def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,tv=None,gain=1,rn=0,m
         # get sky if requested
         if skyrad is not None :
             if utils :
-                sky_aperture = CircularAnnulus((star['x'],star['y']),r_in=skyrad[0], r_out=skyrad[1]) 
-                sky_mask = sky_aperture.to_mask(method='center')
-                mask=sky_mask.data
-                skymean, skymedian, skysig = sigma_clipped_stats(sky_mask.multiply(data)[mask>0])
-                sky=skymean
-                sigsq=skysig**2
+                try :
+                    sky_aperture = CircularAnnulus((star['x'],star['y']),
+                                        r_in=skyrad[0], r_out=skyrad[1]) 
+                    sky_mask = sky_aperture.to_mask(method='center')
+                    mask=sky_mask.data
+                    skymean, skymedian, skysig = sigma_clipped_stats(
+                                        sky_mask.multiply(data)[mask>0])
+                    sky=skymean
+                    sigsq=skysig**2
+                except :
+                    sky = 0.
+                    sigsq = 0.
             else :
                 gd = np.where((dist2 > skyrad[0]**2) & 
                               (dist2 < skyrad[1]**2) ) 
                 sky,skysig,skyskew,nsky = mmm.mmm(data[gd[0],gd[1]].flatten())
                 sigsq=skysig**2/nsky
-            print(sky,skysig)
             if tv is not None :
                 tv.tvcirc(star['x'],star['y'],skyrad[0],color='g')
                 tv.tvcirc(star['x'],star['y'],skyrad[1],color='g')
@@ -206,7 +211,8 @@ def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,tv=None,gain=1,rn=0,m
             if mag : 
                 stars[istar][ename] = (
                     1.086*(stars[istar][ename]/stars[istar][name]) )
-                stars[istar][name] = -2.5 * np.log10(stars[istar][name])
+                try : stars[istar][name] = -2.5 * np.log10(stars[istar][name])
+                except : stars[istar][name] = 99.999
 
             if tv is not None :
                 tv.tvcirc(star['x'],star['y'],r,color='b')
@@ -224,13 +230,18 @@ def save(file,stars) :
     """ Save internal photometry list to FITS table"""
     stars.write(file,overwrite=True)
 
-def centroid(data,x,y,r) :
+def centroid(data,x,y,r,verbose=True) :
     """ Get centroid in input data around input position, with given radius
     """
     # create arrays of pixel numbers for centroiding
-    pix = np.mgrid[0:data.shape[0],0:data.shape[1]]
-    ypix = pix[0]
-    xpix = pix[1]
+    ys=int(y-2*r)
+    ye=int(y+2*r)
+    xs=int(x-2*r)
+    xe=int(x+2*r)
+    tmpdata=data[ys:ye,xs:xe]
+    pix = np.mgrid[0:tmpdata.shape[0],0:tmpdata.shape[1]]
+    ypix = pix[0]+ys
+    xpix = pix[1]+xs
 
     xold=0
     yold=0
@@ -239,39 +250,74 @@ def centroid(data,x,y,r) :
         dist2 = (xpix-round(x))**2 + (ypix-round(y))**2
         # get pixels to use for background, and get background
         gd = np.where((dist2 < r**2) & (dist2 > (r-1)**2))
-        back = np.median(data[gd[0],gd[1]])
+        back = np.median(tmpdata[gd[0],gd[1]])
         # get the centroid
         gd = np.where(dist2 < r**2)
-        norm=np.sum(data[gd[0],gd[1]]-back)
-        x = np.sum((data[gd[0],gd[1]]-back)*xpix[gd[0],gd[1]]) / norm
-        y = np.sum((data[gd[0],gd[1]]-back)*ypix[gd[0],gd[1]]) / norm
+        norm=np.sum(tmpdata[gd[0],gd[1]]-back)
+        x = np.sum((tmpdata[gd[0],gd[1]]-back)*xpix[gd[0],gd[1]]) / norm
+        y = np.sum((tmpdata[gd[0],gd[1]]-back)*ypix[gd[0],gd[1]]) / norm
         if round(x) == xold and round(y) == yold : break
         xold = round(x)
         yold = round(y)
+        if verbose: print(iter,x,y)
         iter+=1
     return x,y
 
-def process(file,inst,tab,bias=None,dark=None,flat=None,disp=None,
+def process_all(files,red,tab,bias=None,dark=None,flat=None,threads=8) :
+    """ multi-threaded processing of files
+    """
+
+    pars=[]
+    for file in files :
+        pars.append((file,red,tab,bias,dark,flat))
+
+    if threads == 0 :
+        output=[]
+        for par in pars :
+            output.append(process_thread(par))
+    else :
+        pool = mp.Pool(threads)
+        output = pool.map_async(process_thread, pars).get()
+        pool.close()
+        pool.join()
+
+    all=[]
+    for out in output :
+        all=vstack([all,out])
+    return all
+
+def process_thread(pars) :
+
+    file = pars[0] 
+    red = pars[1] 
+    tab = pars[2]
+    bias = pars[3]
+    dark = pars[4]
+    flat = pars[5]
+
+    rcent=15
+    rad=[10,15,20]
+    skyrad=[25,30]
+    cards=['EXPTIME','FILTER','AIRMASS']
+
+    return process(file,red,tab,bias=bias,dark=dark,flat=flat,rcent=rcent,rad=rad,skyrad=skyrad,cards=cards)
+
+def process(file,red,tab,bias=None,dark=None,flat=None,disp=None,
             rcent=7,rad=[3,5,7],skyrad=[10,15],cards=['EXPTIME','FILTER','AIRMASS']):
+
     """ Process and do photometry on input file
     """
 
-    red = imred.Reducer(inst,dir='./')
-
     # work in temporary directory
-    with tempfile.TemporaryDirectory() as tempdir :
+    try:
+      with tempfile.TemporaryDirectory() as tempdir :
 
         cwd = os.getcwd()
         os.chdir(tempdir)
 
-        # get WCS: requires good starting guess in FITS header!
-        # output file into current directory
-        cmd=('imwcs -wi 5000 -c ua2 '+file).split()
-        subprocess.call(cmd)
-
         # process file
-        name=os.path.splitext(os.path.basename(file))[0]+'w.fits'
-        a=red.reduce(name,superdark=dark,superbias=bias,superflat=flat)
+        a=red.reduce(file,superdark=dark,superbias=bias,superflat=flat,solve=True)
+        dateobs=Time(a.header['DATE-OBS'],format='fits')
 
         # get x,y positions from RA/DEC and load into photometry table
         x,y=a.wcs.wcs_world2pix(tab['RA'],tab['DEC'],0)
@@ -282,15 +328,27 @@ def process(file,inst,tab,bias=None,dark=None,flat=None,disp=None,
         # re-centroid stars
         if disp is not None :
             disp.tv(a)
-            stars.mark(disp,phot,exit=True,auto=False,color='r',new=True,rad=rcent)
-        stars.mark(disp,phot,exit=True,auto=True,color='g',rad=rcent)
+            mark(disp,phot,exit=True,auto=False,color='r',new=True,rad=rcent)
+            mark(disp,phot,exit=True,auto=True,color='g',rad=rcent)
+        else :
+            for star in phot :
+                x,y = centroid(a.data,star['x'],star['y'],rcent)
+                star['x'] = x
+                star['y'] = y
 
         # do photometry 
-        phot=stars.photom(a,phot,rad=rad,skyrad=skyrad)
-        phot.add_column(Column([date+'_'+name]*len(tab),name='FILE',dtype=str))
+        try : phot=photom(a,phot,rad=rad,skyrad=skyrad)
+        except : pass
+        phot.add_column(Column([file]*len(tab),name='FILE',dtype=str))
         for card in cards :
             phot[card] = [a.header[card]]*len(tab)
-        phot['MJD'] = Time(a.header['DATE-OBS'],format='fits').mjd
+        pdb.set_trace()
+        phot['MJD'] = [Time(a.header['DATE-OBS'],format='fits').mjd]*len(tab)
+    except :
+        print('Error in process')
+        pdb.set_trace()
+        phot=copy.copy(tab)
 
+    os.chdir(cwd)
     return phot
 

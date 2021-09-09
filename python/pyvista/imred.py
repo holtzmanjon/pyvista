@@ -1,18 +1,22 @@
 import numpy as np
 import astropy
+from photutils import DAOStarFinder
 import code
 import copy
 from astropy import units
 from astropy.nddata import CCDData, NDData, StdDevUncertainty
 from astropy.nddata import NDData
-from astropy.io import fits
-from astropy.io import ascii
+from astropy.io import fits, ascii
+from astropy.wcs import WCS
 from astropy.modeling import models, fitting
 from astropy.convolution import convolve, Box1DKernel, Box2DKernel, Box2DKernel
 import ccdproc
 import scipy.signal
 import yaml
+import subprocess
 import sys
+import tempfile
+from pyvista import stars
 
 import warnings
 from astropy.utils.exceptions import AstropyWarning
@@ -60,9 +64,11 @@ class Reducer() :
         # Read instrument configuation from YAML configuration file 
         if inst is not None :
             if inst.find('/') < 0 :
-                config = yaml.load(open(ROOT+'/data/'+inst+'/'+inst+'_config.yml','r'), Loader=yaml.FullLoader)
+                config = yaml.load(open(ROOT+'/data/'+inst+'/'+
+                              inst+'_config.yml','r'), Loader=yaml.FullLoader)
             else :
-                config = yaml.load(open(inst+'_config.yml','r'), Loader=yaml.FullLoader)
+                config = yaml.load(open(inst+'_config.yml','r'), 
+                              Loader=yaml.FullLoader)
             self.channels=config['channels']
             self.formstr=config['formstr']
             self.gain=config['gain']
@@ -82,7 +88,8 @@ class Reducer() :
             except : pass
            
             # Add bad pixel mask if it exists
-            try: self.mask=fits.open(ROOT+'/data/'+inst+'/'+inst+'_mask.fits')[0].data.astype(bool)
+            try: self.mask=fits.open(ROOT+'/data/'+inst+'/'+
+                                inst+'_mask.fits')[0].data.astype(bool)
             except: pass
 
         # save number of chips for convenience
@@ -395,6 +402,45 @@ class Reducer() :
                  ims[i].data[bd[0],bd[1]] = val
                  ims[i].uncertainty.array[bd[0],bd[1]] = np.inf
 
+    def platesolve(self,im,thresh=500,scale=0.46,seeing=2,display=None) :
+        """ try to get plate solution with imwcs
+        """
+        if self.verbose : print('  plate solving ....')
+        ra=im.header['RA'].replace(' ',':')
+        dec=im.header['DEC'].replace(' ',':')
+        tmpfile=tempfile.mkstemp()
+        im.write(tmpfile[1]+'.fits')
+        daofind=DAOStarFinder(fwhm=seeing/scale,threshold=thresh)
+        objs=daofind(im.data-np.median(im.data))
+        objs.sort(['mag'])
+        gd=np.where((objs['xcentroid']>50)&(objs['ycentroid']>50)&
+                    (objs['xcentroid']<im.data.shape[1]-50)&
+                    (objs['ycentroid']<im.data.shape[0]-50))[0]
+        if display is not None :
+            display.tv(im)
+            objs['x'] = objs['xcentroid']
+            objs['y'] = objs['ycentroid']
+            stars.mark(display,objs,exit=True)
+        flip=True
+        if flip : 
+            arg=''
+            objs['xcentroid'] = im.data.shape[1]-1-objs['xcentroid']
+        else : arg=''
+        objs['xcentroid','ycentroid','mag'][gd].write(
+                    tmpfile[1]+'.txt',format='ascii.fast_commented_header')
+        cmd=('imwcs -vw {:s} -d {:s}.txt -c ua2 -j {:s} {:s} -p {:.2f} {:s}.fits'.
+                format(arg,tmpfile[1],ra,dec,scale,tmpfile[1])).split()
+        ret = subprocess.call(cmd)
+        header=fits.open(os.path.basename(tmpfile[1])+'w.fits')[0].header
+        if flip :
+            header['CD1_1'] *= -1
+            header['CD2_1'] *= -1
+        w=WCS(header)
+        im.wcs=w
+        os.remove(tmpfile[1]+'.fits')
+        os.remove(os.path.basename(tmpfile[1]+'w.fits'))
+        return im
+
     def display(self,display,id) :
 
         im = self.reduce(id)
@@ -403,7 +449,8 @@ class Reducer() :
         for i, im in enumerate(ims) :
             display.tv(im)
 
-    def reduce(self,num,crbox=None,superbias=None,superdark=None,superflat=None,scat=None,badpix=None,return_list=False,display=None) :
+    def reduce(self,num,crbox=None,superbias=None,superdark=None,superflat=None,
+               scat=None,badpix=None,solve=False,return_list=False,display=None) :
         """ Full reduction
         """
         im=self.rd(num)
@@ -415,6 +462,7 @@ class Reducer() :
         im=self.flat(im,superflat=superflat,display=display)
         self.badpix_fix(im,val=badpix)
         self.trim(im)
+        if solve : im=self.platesolve(im,display=display)
         if return_list and type(im) is not list : im=[im]
         return im
 
