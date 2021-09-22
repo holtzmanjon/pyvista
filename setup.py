@@ -2,15 +2,18 @@ from setuptools import setup
 
 setup(
     name='astro-pyvista',
-    version='0.1.0',    
+    version='0.1.1',    
     description='Astronomical image processing',
     url='https://github.com/holtzmanjon/pyvista',
     author='Jon Holtzman',
     author_email='holtz@nmsu.edu',
-    license='BSD 2-clause',
-    packages=['pyvista','tools'],
-    package_dir={"pyvista": "python/pyvista", "tools" : "python/tools/python/tools"},
+    license='MIT',
+#    packages=['pyvista','tools'],
+#    package_dir={"pyvista": "python/pyvista", "tools" : "python/tools/python/tools"},
+    packages=['pyvista'],
+    package_dir={"": "python"},
     install_requires=[
+                      'holtz-tools',                     
                       'numpy',                     
                       ],
 
