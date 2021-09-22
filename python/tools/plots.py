@@ -1,8 +1,8 @@
 #import matplotlib.colors as colors
 import matplotlib.pyplot as plt
-from scipy import spatial
+from scipy.spatial import KDTree
 from scipy.stats import gaussian_kde
-import struct
+from tools import struct
 import numpy as np
 import sys
 import pdb
@@ -16,6 +16,8 @@ _index = 0
 _data = None
 _button = None
 _id_cols = ['APOGEE_ID']
+_new_data = True
+_axes = None
 _data_x = None
 _data_y = None
 _block = 0
@@ -27,34 +29,40 @@ def event(fig) :
     '''
     global _block
     def onpress(event) :
-        global _index, _block, _x, _y, _button
+        global _index, _block, _x, _y, _button, _new_data, tree, _axes
         _button = event.key
         inv = event.inaxes.transData.inverted()
         _x,_y = inv.transform((event.x,event.y))
-        print(_x, _y)
-        #A[spatial.KDTree(A).query([event.x,event.y])[1]]
-        #distance,index = spatial.KDTree(A).query([event.x,event.y])
+        #print(_x, _y)
+        #A[KDTree(A).query([event.x,event.y])[1]]
+        #distance,index = KDTree(A).query([event.x,event.y])
         if _data_x is not None and _data_y is not None :
-            print('Transform', len(_data_x))
-            A = event.inaxes.transData.transform(zip(_data_x,_data_y))
-            print('KDTree')
-            tree=spatial.KDTree(A)
-            print('query')
+            #print('Transform', len(_data_x))
+            # n key will reset transformation, e.g. if limits changed interactively
+            if _button == 'n' or _new_data or event.inaxes != _axes :
+                A = event.inaxes.transData.transform(list(zip(_data_x,_data_y)))
+                #print('KDTree')
+                tree=KDTree(A)
+                _new_data = False
+                _axes = event.inaxes
+            #print('query')
             distance,index = tree.query([event.x,event.y])
             _index = [index]
-            print('_index: ',_index,_data_x[_index],_data_y[_index])
             if _data is not None :
                 struct.list(_data,ind=_index,cols=_id_cols)
+            else :
+                print('_index: ',_index,_data_x[_index],_data_y[_index])
         if _block == 1 :
             _block = 0
             fig.canvas.stop_event_loop()
     cid = fig.canvas.mpl_connect('key_press_event',onpress)
 
-def mark(fig) :
+def mark(fig,index=True) :
     global _block, _x, _y, _button
     _block = 1
-    fig.canvas.start_event_loop(-1)
-    return _x, _y, _button
+    fig.canvas.start_event_loop(0)
+    if index :return _x, _y, _button, _index[0]
+    else : return _x, _y, _button
 
 
 def plotc(ax,x,y,z,yerr=None,xr=None,yr=None,zr=None,size=5,cmap='rainbow',colorbar=False,xt=None,yt=None,zt=None,label=None,linewidth=0,marker='o',draw=True,orientation='vertical',labelcolor='k',tit=None,nxtick=None,nytick=None,rasterized=None,alpha=None) :
@@ -87,7 +95,7 @@ def plotc(ax,x,y,z,yerr=None,xr=None,yr=None,zr=None,size=5,cmap='rainbow',color
       aximage
 
     """
-    global _data_x, _data_y
+    global _data_x, _data_y, _new_data
 
     set_limits_ticks(ax,xr,yr,nxtick,nytick)
     if xt is not None : ax.set_xlabel(xt) 
@@ -106,8 +114,9 @@ def plotc(ax,x,y,z,yerr=None,xr=None,yr=None,zr=None,size=5,cmap='rainbow',color
         cb=plt.colorbar(scat,ax=ax,orientation=orientation)
         cb.ax.set_ylabel(zt)
     if draw : plt.draw()
-    _data_x = x[np.isfinite(x)]
-    _data_y = y[np.isfinite(y)]
+    _data_x = np.array(x)[np.isfinite(x)]
+    _data_y = np.array(y)[np.isfinite(y)]
+    _new_data = True
     return scat
 
 def set_limits_ticks(ax,xr,yr,nxtick=None,nytick=None) :
@@ -177,7 +186,7 @@ def plotp(ax,x,y,z=None,typeref=None,types=None,xr=None,yr=None,zr=None,marker='
         labelcolor=  : color for label
        
     '''
-    global _data_x, _data_y
+    global _data_x, _data_y, _new_data
 
     set_limits_ticks(ax,xr,yr,nxtick,nytick)
     if xt is not None : ax.set_xlabel(xt) 
@@ -244,6 +253,7 @@ def plotp(ax,x,y,z=None,typeref=None,types=None,xr=None,yr=None,zr=None,marker='
         ax.scatter(x,y,marker=marker,s=size,linewidth=linewidth,facecolors=facecolors,edgecolors=color,linewidths=linewidths,alpha=alpha,label=label,rasterized=rasterized)
         _data_x = x[np.isfinite(x)]
         _data_y = y[np.isfinite(y)]
+        _new_data = True
         if xerr is not None or yerr is not None :
             ax.errorbar(x,y,marker=marker,xerr=xerr,yerr=yerr,fmt='none',capsize=0,ecolor=color)
 
@@ -263,11 +273,10 @@ def plotl(ax,x,y,xr=None,yr=None,color=None,xt=None,yt=None,draw=True,label=None
     if xt is not None : ax.set_xlabel(xt) 
     if yt is not None : ax.set_ylabel(yt)
     if tit is not None : ax.set_title(tit)
-    if ls is None : ls='-'
     if semilogy :
-        line = ax.semilogy(x,y,color=color,label=label,ls=ls,linewidth=linewidth,linestyle=linestyle,alpha=alpha)
+        line = ax.semilogy(x,y,color=color,label=label,linewidth=linewidth,linestyle=linestyle,alpha=alpha)
     else :
-        line = ax.plot(x,y,color=color,label=label,ls=ls,linewidth=linewidth,linestyle=linestyle,alpha=alpha)
+        line = ax.plot(x,y,color=color,label=label,linewidth=linewidth,linestyle=linestyle,alpha=alpha)
     if draw : plt.draw()
     return line
     
@@ -282,7 +291,7 @@ def ax(subplot=111) :
     fig=plt.figure()
     return fig.add_subplot(subplot)
 
-def multi(nx,ny,figsize=None,hspace=1,wspace=1,sharex=False,sharey=False,squeeze=True,xtickrot=None) :
+def multi(nx,ny,figsize=None,hspace=1,wspace=1,sharex=False,sharey=False,squeeze=True,xtickrot=None,brokenx=False) :
     '''
     Returns figure and axes array for grid of nx by ny plots, suppressing appropriate axes if requested by hspace and wspace
 
@@ -323,6 +332,23 @@ def multi(nx,ny,figsize=None,hspace=1,wspace=1,sharex=False,sharey=False,squeeze
                 for j in range(ny) : 
                     ticklabels = ticklabels + ax[j,i].get_yticklabels()
         plt.setp(ticklabels, visible=False)
+    if brokenx & (nx>1) :
+        for i in range(0,nx) :
+          for j in range(0,ny) :
+            if ny == 1 : tmpax=ax[i]
+            else : tmpax=ax[j,i]
+            if i > 0 : 
+                tmpax.spines['left'].set_visible(False)
+                tmpax.tick_params(labelleft=False,left=False)  # don't put tick labels at the top
+            tmpax.spines['right'].set_visible(False)
+            tmpax.spines['top'].set_visible(False)
+            tmpax.tick_params(labeltop=False)  # don't put tick labels at the top
+            d=0.02
+            if i < nx-1 :
+                tmpax.plot([1-d,1+d],[-d,d],transform=tmpax.transAxes,color='k',clip_on=False)
+            if i > 0 :
+                tmpax.plot([-d,+d],[-d,d],transform=tmpax.transAxes,color='k',clip_on=False)
+
     if xtickrot is not None :
       for i in range(nx) :
         for j in range(0,ny) : 
