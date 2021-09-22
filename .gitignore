@@ -1,3 +1,6 @@
 *.pyc
 doc/build
 dist
+python/astro_pyvista.egg-info/
+python/pyvista/__pycache__/
+
