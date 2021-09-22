@@ -4,6 +4,7 @@ Utilities for numpy structured arrays
 
 import numpy as np
 import glob
+import os
 import sys
 import pdb
 import copy
@@ -185,6 +186,7 @@ def concat(files,hdu=1,verbose=False,fixfield=False) :
 
         if file == allfiles[0] :
             app=a
+            dt=a.dtype.descr
         else :
             app,dt=append(app,a)
         ntot+=len(a)
@@ -219,7 +221,7 @@ def wrfits(a,file) :
     write input structure to FITS file
     '''
     tab=fits.BinTableHDU.from_columns(a)
-    tab.writeto(file,clobber=True)
+    tab.writeto(file,overwrite=True)
 
 
 def dict2struct(d) :
