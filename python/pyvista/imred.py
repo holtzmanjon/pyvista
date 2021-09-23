@@ -73,14 +73,51 @@ class Reducer() :
             self.formstr=config['formstr']
             self.gain=config['gain']
             self.rn=config['rn']/np.sqrt(nfowler)
+            try : self.namp=config['namp']
+            except : self.namp = 1
             self.crbox=config['crbox']
             self.biastype=config['biastype']
             self.biasbox=[]
             for box in config['biasbox'] :
-                self.biasbox.append(image.BOX(xr=box[0],yr=box[1]) )
+                if self.namp == 1 :
+                    self.biasbox.append(image.BOX(xr=box[0],yr=box[1]) )
+                else :
+                    ampbox=[]
+                    for amp in box : 
+                        ampbox.append(image.BOX(xr=amp[0],yr=amp[1]) )
+                    self.biasbox.append(ampbox)
+            self.biasregion=[]
+            try :
+              for box in config['biasregion'] :
+                if self.namp == 1 :
+                    self.biasregion.append(image.BOX(xr=box[0],yr=box[1]) )
+                else :
+                    ampbox=[]
+                    for amp in box : 
+                        ampbox.append(image.BOX(xr=amp[0],yr=amp[1]) )
+                    self.biasregion.append(ampbox)
+            except: pass
             self.trimbox=[]
             for box in config['trimbox'] :
-                self.trimbox.append(image.BOX(xr=box[0],yr=box[1]) )
+                if self.namp == 1 :
+                    self.trimbox.append(image.BOX(xr=box[0],yr=box[1]) )
+                else :
+                    ampbox=[]
+                    for amp in box : 
+                        ampbox.append(image.BOX(xr=amp[0],yr=amp[1]) )
+                    self.trimbox.append(ampbox)
+            self.outbox=[]
+            try :
+                for box in config['outbox'] :
+                    if self.namp == 1 :
+                        self.outbox.append(image.BOX(xr=box[0],yr=box[1]) )
+                    else :
+                        ampbox=[]
+                        for amp in box : 
+                            ampbox.append(image.BOX(xr=amp[0],yr=amp[1]) )
+                        self.outbox.append(ampbox)
+            except: self.outbox=self.trimbox
+         
             self.normbox=[]
             for box in config['normbox'] :
                 self.normbox.append(image.BOX(xr=box[0],yr=box[1]) )
@@ -104,10 +141,14 @@ class Reducer() :
             print('  Biastype : {:d}'.format(self.biastype))
             print('  Bias box: ')
             for box in self.biasbox :
-                box.show()
+                if self.namp == 1 : box.show()
+                else :
+                    for amp in box : amp.show()
             print('  Trim box: ')
             for box in self.trimbox :
-                box.show()
+                if self.namp == 1 : box.show()
+                else :
+                    for amp in box : amp.show()
             print('  Norm box: ')
             for box in self.normbox :
                 box.show()
@@ -178,19 +219,28 @@ class Reducer() :
 
         if type(im) is not list : ims=[im]
         else : ims = im
-       
-        for ichan,(im,gain,rn,biasbox) in enumerate(zip(ims,self.gain,self.rn,self.biasbox)) :
+    
+        for ichan,(im,gain,rn,biasbox,biasregion) in enumerate(zip(ims,self.gain,self.rn,self.biasbox,self.biasregion)) :
             if display is not None : 
                 display.tv(im)
-            if self.biastype == 0 :
-                b=biasbox.mean(im.data)
+            if self.namp == 1 : 
+                ampboxes = [biasbox]
+                databoxes = [biasregion]
+            else :
+                ampboxes = biasbox
+                databoxes = biasregion
+            im.data = im.data.astype(float)
+            for databox,ampbox in zip(databoxes,ampboxes) :
+              if self.biastype == 0 :
+                b=ampbox.mean(im.data)
                 if self.verbose: print('  subtracting overscan: ', b)
                 if display is not None : 
-                    display.tvbox(0,0,box=biasbox)
+                    display.tvbox(0,0,box=ampbox)
+                    if type(databox) == image.BOX : display.tvbox(0,0,box=databox,color='g')
                     if ichan %2 == 0 : ax=display.plotax1
                     else : ax=display.plotax2
                     ax.cla()
-                    ax.plot(np.mean(im.data[:,biasbox.xmin:biasbox.xmax],axis=1))
+                    ax.plot(np.mean(im.data[:,ampbox.xmin:ampbox.xmax],axis=1))
                     ax.text(0.05,0.95,'Overscan mean',transform=ax.transAxes)
                     ax.set_xlabel('Row')
                     display.fig.canvas.draw_idle()
@@ -199,7 +249,11 @@ class Reducer() :
                     if get == 'i' : code.interact(local=locals())
                     elif get == 'q' : quit()
                     elif get == 'p' : pdb.set_trace()
-                im.data = im.data.astype(float)-b
+                if type(databox) == image.BOX :
+                    im.data[databox.ymin:databox.ymax,databox.xmin:databox.xmax] = \
+                            im.data[databox.ymin:databox.ymax,databox.xmin:databox.xmax].astype(float)-b
+                else : 
+                    im.data = im.data.astype(float)-b
                 im.header.add_comment('subtracted overscan: {:f}'.format(b))
             #elif det.biastype == 1 :
             #    over=np.median(hdu[ext].data[:,det.biasbox.xmin:det.biasbox.xmax],axis=1)
@@ -213,17 +267,41 @@ class Reducer() :
             data[data<0] = 0.
             im.uncertainty = StdDevUncertainty(np.sqrt( data/gain + (rn/gain)**2 ))
 
-    def trim(self,im) :
+    def trim(self,im,image=False) :
         """ Trim image by masking non-trimmed pixels
             Need to preserve image size to match reference/calibration frames, etc.
         """
         if type(im) is not list : ims=[im]
         else : ims = im
 
-        for  im,trimbox in zip(ims,self.trimbox) :
+        outim = []
+        for  im,trimbox,outbox in zip(ims,self.trimbox,self.outbox) :
+            if self.namp == 1 : 
+                boxes = [trimbox]
+                outboxes = [outbox]
+            else : 
+                boxes = trimbox
+                outboxes = outbox
             tmp = np.ones(im.mask.shape,dtype=bool)
-            trimbox.setval(tmp,False)
+            for box in boxes :
+                box.setval(tmp,False)
             im.mask = np.logical_or(im.mask,tmp)
+            if image :
+                xmax=0 
+                ymax=0 
+                for box,outbox in zip(boxes,outboxes) :
+                    xmax = np.max([xmax,outbox.xmax])
+                    ymax = np.max([ymax,outbox.ymax])
+                z=np.zeros([ymax+1,xmax+1]) 
+                out = CCDData(z,z,z,unit='adu')
+                for box,outbox in zip(boxes,outboxes) :
+                    pdb.set_trace()
+                    out.data[outbox.ymin:outbox.ymax,outbox.xmin:outbox.xmax] = im.data[box.ymin:box.ymax,box.xmin:box.xmax]
+                    out.uncertainty.array[outbox.ymin:outbox.ymax,outbox.xmin:outbox.xmax] = im.uncertainty.array[box.ymin:box.ymax,box.xmin:box.xmax]
+                    out.mask[outbox.ymin:outbox.ymax,outbox.xmin:outbox.xmax] = im.mask[box.ymin:box.ymax,box.xmin:box.xmax]
+            outim.append(out)
+        return outim
+       
 
 
     def bias(self,im,superbias=None) :
@@ -461,7 +539,7 @@ class Reducer() :
         self.scatter(im,scat=scat,display=display)
         im=self.flat(im,superflat=superflat,display=display)
         self.badpix_fix(im,val=badpix)
-        self.trim(im)
+        im=self.trim(im,image=True)
         if solve : im=self.platesolve(im,display=display)
         if return_list and type(im) is not list : im=[im]
         return im

@@ -167,6 +167,19 @@ class BOX() :
         if self.nrow() == 0 or self.ncol() == 0 : return 0.
         data[self.ymin:self.ymax+1,self.xmin:self.xmax+1] = val
 
+    def getval(self,data):
+        """ Returns data in box
+
+            Args :
+                data : input data (CCDData or np.array)
+ 
+            Returns:
+                data in box
+        """
+        if self.nrow() <= 0 or self.ncol() <= 0 : return 0.
+        return data[self.ymin:self.ymax+1,self.xmin:self.xmax+1]
+
+
 @support_nddata
 def abx(data,box) :
     """
