@@ -95,11 +95,13 @@ class BOX() :
         """
         return(self.xmax-self.xmin+1)
 
-    def show(self):
+    def show(self,header=True):
         """ Prints box limits
         """
-        print('    SC    NC    SR    NR  Exp       Date     Name')
-        print('{:6d}{:6d}{:6d}{:6d} '.format(self.xmin,self.ncol(),self.ymin,self.nrow()))
+        #if header : print('    SC    NC    SR    NR  Exp       Date     Name')
+        if header : print('    SC    NC    SR    NR')
+        print('{:6d}{:6d}{:6d}{:6d} '.format(
+              self.xmin,self.ncol(),self.ymin,self.nrow()))
 
     def mean(self,data):
         """ Returns mean of data in box

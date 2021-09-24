@@ -41,7 +41,8 @@ ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../../'
 class Reducer() :
     """ Class for reducing images of a given instrument
     """
-    def __init__(self,inst=None,dir='./',root='*',formstr='{04d}',gain=1,rn=0.,verbose=True,nfowler=1) :
+    def __init__(self,inst=None,conf='',dir='./',root='*',formstr='{04d}',
+                 gain=1,rn=0.,verbose=True,nfowler=1) :
         """  Initialize reducer with information about how to reduce
         """
         self.dir=dir
@@ -64,10 +65,10 @@ class Reducer() :
         # Read instrument configuation from YAML configuration file 
         if inst is not None :
             if inst.find('/') < 0 :
-                config = yaml.load(open(ROOT+'/data/'+inst+'/'+
-                              inst+'_config.yml','r'), Loader=yaml.FullLoader)
+                config = yaml.load(open(ROOT+'/data/'+inst+'/'+inst+
+                              conf+'.yml','r'), Loader=yaml.FullLoader)
             else :
-                config = yaml.load(open(inst+'_config.yml','r'), 
+                config = yaml.load(open(inst+'.yml','r'), 
                               Loader=yaml.FullLoader)
             self.channels=config['channels']
             self.formstr=config['formstr']
@@ -136,21 +137,30 @@ class Reducer() :
 
         # output setup if verbose
         if self.verbose :
-            if inst is not None : print('INSTRUMENT: {:s}'.format(inst))
+            if inst is not None : 
+              print('INSTRUMENT: {:s}   config: {:s}'.format(inst,conf))
             for form in self.formstr :
-                print('  will use format:  {:s}/{:s}{:s}.fits*'.format(self.dir,self.root,form))
+                print('  will use format:  {:s}/{:s}{:s}.fits*'.format(
+                         self.dir,self.root,form))
             print('         gain:  {}    rn: {}'.format(self.gain,self.rn))
+            print('         scale:  {}   flip: {}'.format(self.scale,self.flip))
             print('  Biastype : {:d}'.format(self.biastype))
             print('  Bias box: ')
             for box in self.biasbox :
                 if self.namp == 1 : box.show()
                 else :
-                    for amp in box : amp.show()
+                    for i,amp in enumerate(box) :
+                        if i==0 : header = True
+                        else: header=False
+                        amp.show(header=header)
             print('  Trim box: ')
             for box in self.trimbox :
                 if self.namp == 1 : box.show()
                 else :
-                    for amp in box : amp.show()
+                    for i,amp in enumerate(box) :
+                        if i==0 : header = True
+                        else: header=False
+                        amp.show(header=header)
             print('  Norm box: ')
             for box in self.normbox :
                 box.show()
