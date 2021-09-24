@@ -3,6 +3,8 @@ channels  : ['']
 formstr   : ['{:04d}']
 gain      : [2.0]
 rn        : [3.7]
+scale     : .228
+flip      : False
 biastype  : 0
 crbox     : 'lacosmic'
 namp      : 4
