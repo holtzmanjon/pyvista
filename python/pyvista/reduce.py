@@ -5,18 +5,15 @@ import pickle
 import pdb
 import yaml
 import matplotlib.pyplot as plt
-from pyvista import imred
-from pyvista import image
-from pyvista import spectra
-from pyvista import tv
-from tools import plots
-from astropy import units
+from pyvista import imred, image, spectra, tv
+from tools import plots, html
+from astropy import units as u
 from astropy.nddata import CCDData, StdDevUncertainty
 import scipy.signal
 
 ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../../'
 
-def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,groups='all') :
+def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,groups='all',solve=False) :
     """ Reduce full night(s) of data given input configuration file
     """
 
@@ -46,6 +43,7 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
         reddir = group['reddir']+'/'
         try: os.makedirs(reddir)
         except FileExistsError : pass
+        fhtml = html.head(reddir+'/index.html')
 
         #create superbiases if biases given
         if 'biases' in group : 
@@ -144,6 +142,8 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
             objects = group['objects']
             if 'image' in objects :
                 # images
+                if display is None : plt.ioff()
+                fhtml.write('<TABLE BORDER=2>\n')
                 for obj in objects['image']:
                     try : superbias = sbias[obj['bias']]
                     except KeyError: superbias = None
@@ -151,10 +151,33 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                     except KeyError: superdark = None
                     try : superflat = sflat[obj['flat']]
                     except KeyError: superflat = None
-                    pdb.set_trace()
                     for iframe,id in enumerate(obj['frames']) : 
-                        frames=red.reduce(id,superbias=superbias,superdark=superdark,superflat=superflat,scat=red.scat,
-                                          return_list=True,crbox=red.crbox,display=display) 
+                        if display is not None : display.tvclear()
+                        frames=red.reduce(id,superbias=superbias,
+                                             superdark=superdark,
+                                             superflat=superflat,
+                                             scat=red.scat,
+                                             crbox=red.crbox,
+                                             trim=True,
+                                             solve=solve,
+                                             return_list=True,
+                                             display=display)
+                        name=frames[0].header['FILE']
+                        fhtml.write('<TR><TD>{:s}'.format(name))
+                        for frame in frames :
+                            red.write(frame,reddir+name,overwrite=True)
+                            fig=plt.figure(figsize=(12,12))
+                            vmin,vmax=tv.minmax(frame.data)
+                            plt.imshow(frame.data,vmin=vmin,vmax=vmax,
+                                       interpolation='nearest',origin='lower')
+                            plt.axis('off')
+                            fig.savefig(reddir+name+'.png')
+                            fhtml.write(('<TD>'+
+                                '<a href={:s}.png><IMG src={:s}.png size=500>'+
+                                '</a>').format(name,name))
+                fhtml.write('</TABLE>')
+                html.tail(fhtml) 
+                plt.ion()
             elif 'extract1d' in objects :
                 # 1D spectra
                 traces=pickle.load(open(ROOT+'/data/'+inst+'/'+inst+'_traces.pkl','rb'))
@@ -181,12 +204,14 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                     for iframe,id in enumerate(obj['frames']) : 
                         if display is not None : display.clear() 
                         print("extracting object {}".format(id))
-                        frames=red.reduce(id,superbias=superbias,superdark=superdark,superflat=superflat,scat=red.scat,
+                        frames=red.reduce(id,superbias=superbias,superdark=superdark,
+                                          superflat=superflat,scat=red.scat,
                                           return_list=True,crbox=red.crbox,display=display) 
                         if 'skyframes' in obj :
                             id = obj['skyframes'][iframe]
-                            skyframes=red.reduce(id,superbias=superbias,superdark=superdark,superflat=superflat,scat=red.scat,
-                                              return_list=True,crbox=red.crbox,display=display) 
+                            skyframes=red.reduce(id,superbias=superbias,superdark=superdark,
+                                                 superflat=superflat,scat=red.scat,
+                                                 return_list=True,crbox=red.crbox,display=display) 
                             for iframe,(frame,skyframe) in enumerate(zip(frames,skyframes)) : 
                                 header = frame.header
                                 frames[iframe]= frame.subtract(skyframe)
@@ -284,12 +309,12 @@ def mkcal(cals,caltype,reducer,reddir,sbias=None,sdark=None,clobber=False,**kwar
             else :
                 make=False
                 if len(reducer.channels)==1 :
-                    try : scal= CCDData.read(reddir+calname+'.fits')
+                    try : scal= CCDData.read(reddir+calname+'.fits',unit=u.dimensionless_unscaled)
                     except FileNotFoundError : make=True
                 else :
                     scal=[]
                     for channel in reducer.channels :
-                        try : scal.append(CCDData.read(reddir+calname+'_'+channel+'.fits'))
+                        try : scal.append(CCDData.read(reddir+calname+'_'+channel+'.fits',unit=u.dimensionless_unscaled))
                         except FileNotFoundError : make=True
             if make :
                 try :

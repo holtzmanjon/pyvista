@@ -3,7 +3,7 @@ import astropy
 from photutils import DAOStarFinder
 import code
 import copy
-from astropy import units
+from astropy import units as u
 from astropy.nddata import CCDData, NDData, StdDevUncertainty
 from astropy.nddata import NDData
 from astropy.io import fits, ascii
@@ -73,6 +73,8 @@ class Reducer() :
             self.formstr=config['formstr']
             self.gain=config['gain']
             self.rn=config['rn']/np.sqrt(nfowler)
+            self.scale=config['scale']
+            self.flip=config['flip']
             try : self.namp=config['namp']
             except : self.namp = 1
             self.crbox=config['crbox']
@@ -186,7 +188,7 @@ class Reducer() :
 
             # read the file into a CCDData object
             if self.verbose : print('  Reading file: {:s}'.format(file)) 
-            try : im=CCDData.read(file,hdu=ext,unit='adu')
+            try : im=CCDData.read(file,hdu=ext,unit=u.dimensionless_unscaled)
             except : raise RuntimeError('Error reading file: {:s}'.format(file))
             im.header['FILE'] = os.path.basename(file)
             if 'OBJECT' not in im.header :
@@ -223,6 +225,9 @@ class Reducer() :
         for ichan,(im,gain,rn,biasbox,biasregion) in enumerate(zip(ims,self.gain,self.rn,self.biasbox,self.biasregion)) :
             if display is not None : 
                 display.tv(im)
+                if ichan %2 == 0 : ax=display.plotax1
+                else : ax=display.plotax2
+                ax.cla()
             if self.namp == 1 : 
                 ampboxes = [biasbox]
                 databoxes = [biasregion]
@@ -237,18 +242,11 @@ class Reducer() :
                 if display is not None : 
                     display.tvbox(0,0,box=ampbox)
                     if type(databox) == image.BOX : display.tvbox(0,0,box=databox,color='g')
-                    if ichan %2 == 0 : ax=display.plotax1
-                    else : ax=display.plotax2
-                    ax.cla()
                     ax.plot(np.mean(im.data[:,ampbox.xmin:ampbox.xmax],axis=1))
                     ax.text(0.05,0.95,'Overscan mean',transform=ax.transAxes)
                     ax.set_xlabel('Row')
                     display.fig.canvas.draw_idle()
                     plt.draw()
-                    get=input("  See bias box and cross section. Hit any key to continue")
-                    if get == 'i' : code.interact(local=locals())
-                    elif get == 'q' : quit()
-                    elif get == 'p' : pdb.set_trace()
                 if type(databox) == image.BOX :
                     im.data[databox.ymin:databox.ymax,databox.xmin:databox.xmax] = \
                             im.data[databox.ymin:databox.ymax,databox.xmin:databox.xmax].astype(float)-b
@@ -261,15 +259,20 @@ class Reducer() :
             #    over=convolve(over,boxcar,boundary='extend')
             #    over=image.stretch(over,ncol=hdu[ext].data.shape[1])
             #    hdu[ext].data -= over
+            if display is not None :
+                get=input("  See bias box and cross section. Hit any key to continue")
+                if get == 'i' : code.interact(local=locals())
+                elif get == 'q' : sys.exit()
+                elif get == 'p' : pdb.set_trace()
 
             # Add uncertainty (redo from scratch after overscan)
             data=copy.copy(im.data)
             data[data<0] = 0.
             im.uncertainty = StdDevUncertainty(np.sqrt( data/gain + (rn/gain)**2 ))
 
-    def trim(self,im,image=False) :
+    def trim(self,im,trimimage=False) :
         """ Trim image by masking non-trimmed pixels
-            Need to preserve image size to match reference/calibration frames, etc.
+            May need to preserve image size to match reference/calibration frames, etc.
         """
         if type(im) is not list : ims=[im]
         else : ims = im
@@ -286,21 +289,24 @@ class Reducer() :
             for box in boxes :
                 box.setval(tmp,False)
             im.mask = np.logical_or(im.mask,tmp)
-            if image :
+            if trimimage :
                 xmax=0 
                 ymax=0 
                 for box,outbox in zip(boxes,outboxes) :
                     xmax = np.max([xmax,outbox.xmax])
                     ymax = np.max([ymax,outbox.ymax])
                 z=np.zeros([ymax+1,xmax+1]) 
-                out = CCDData(z,z,z,unit='adu')
+                out = CCDData(z,z,z,unit=u.dimensionless_unscaled,header=im.header)
                 for box,outbox in zip(boxes,outboxes) :
-                    pdb.set_trace()
-                    out.data[outbox.ymin:outbox.ymax,outbox.xmin:outbox.xmax] = im.data[box.ymin:box.ymax,box.xmin:box.xmax]
-                    out.uncertainty.array[outbox.ymin:outbox.ymax,outbox.xmin:outbox.xmax] = im.uncertainty.array[box.ymin:box.ymax,box.xmin:box.xmax]
-                    out.mask[outbox.ymin:outbox.ymax,outbox.xmin:outbox.xmax] = im.mask[box.ymin:box.ymax,box.xmin:box.xmax]
-            outim.append(out)
-        return outim
+                    out.data[outbox.ymin:outbox.ymax+1,outbox.xmin:outbox.xmax+1] =  \
+                            im.data[box.ymin:box.ymax+1,box.xmin:box.xmax+1]
+                    out.uncertainty.array[outbox.ymin:outbox.ymax+1,outbox.xmin:outbox.xmax+1] = \
+                            im.uncertainty.array[box.ymin:box.ymax+1,box.xmin:box.xmax+1]
+                    out.mask[outbox.ymin:outbox.ymax+1,outbox.xmin:outbox.xmax+1] = \
+                            im.mask[box.ymin:box.ymax+1,box.xmin:box.xmax+1]
+                outim.append(out)
+        if trimimage: return outim
+        else : return im
        
 
 
@@ -336,7 +342,7 @@ class Reducer() :
          out=[]
          for im,dark in zip(ims,superdarks) :
              if self.verbose : print('  subtracting superdark...')
-             out.append(ccdproc.subtract_dark(im,dark,exposure_time='EXPTIME',exposure_unit=units.s))
+             out.append(ccdproc.subtract_dark(im,dark,exposure_time='EXPTIME',exposure_unit=u.s))
          if len(out) == 1 : return out[0]
          else : return out
 
@@ -452,12 +458,13 @@ class Reducer() :
         if type(im) is not list : ims=[im]
         else : ims = im
         out=[]
-        for i,im in enumerate(ims) :
+        for i,(im,gain,rn) in enumerate(zip(ims,self.gain,self.rn)) :
             if display is not None : 
                 display.tv(im)
             if crbox == 'lacosmic':
                 if self.verbose : print('  zapping CRs with ccdproc.cosmicray_lacosmic')
-                im= ccdproc.cosmicray_lacosmic(im)
+                im= ccdproc.cosmicray_lacosmic(im,gain_apply=False,
+                       gain=gain*u.dimensionless_unscaled,readnoise=rn*u.dimensionless_unscaled)
             else :
                 if self.verbose : print('  zapping CRs with filter [{:d},{:d}]...'.format(*crbox))
                 image.zap(im,crbox,nsig=nsig)
@@ -480,7 +487,7 @@ class Reducer() :
                  ims[i].data[bd[0],bd[1]] = val
                  ims[i].uncertainty.array[bd[0],bd[1]] = np.inf
 
-    def platesolve(self,im,thresh=500,scale=0.46,seeing=2,display=None) :
+    def platesolve(self,im,scale=0.46,seeing=2,display=None,flip=True) :
         """ try to get plate solution with imwcs
         """
         if self.verbose : print('  plate solving ....')
@@ -488,7 +495,8 @@ class Reducer() :
         dec=im.header['DEC'].replace(' ',':')
         tmpfile=tempfile.mkstemp()
         im.write(tmpfile[1]+'.fits')
-        daofind=DAOStarFinder(fwhm=seeing/scale,threshold=thresh)
+        mad=np.median(np.abs(im-np.median(im)))
+        daofind=DAOStarFinder(fwhm=seeing/scale,threshold=10*mad)
         objs=daofind(im.data-np.median(im.data))
         objs.sort(['mag'])
         gd=np.where((objs['xcentroid']>50)&(objs['ycentroid']>50)&
@@ -499,7 +507,6 @@ class Reducer() :
             objs['x'] = objs['xcentroid']
             objs['y'] = objs['ycentroid']
             stars.mark(display,objs,exit=True)
-        flip=True
         if flip : 
             arg=''
             objs['xcentroid'] = im.data.shape[1]-1-objs['xcentroid']
@@ -517,6 +524,9 @@ class Reducer() :
         im.wcs=w
         os.remove(tmpfile[1]+'.fits')
         os.remove(os.path.basename(tmpfile[1]+'w.fits'))
+        if display is not None :
+            input("  See plate solve stars. Hit any key to continue")
+            display.tvclear()
         return im
 
     def display(self,display,id) :
@@ -528,7 +538,7 @@ class Reducer() :
             display.tv(im)
 
     def reduce(self,num,crbox=None,superbias=None,superdark=None,superflat=None,
-               scat=None,badpix=None,solve=False,return_list=False,display=None) :
+               scat=None,badpix=None,solve=False,return_list=False,display=None,trim=False) :
         """ Full reduction
         """
         im=self.rd(num)
@@ -539,8 +549,8 @@ class Reducer() :
         self.scatter(im,scat=scat,display=display)
         im=self.flat(im,superflat=superflat,display=display)
         self.badpix_fix(im,val=badpix)
-        im=self.trim(im,image=True)
-        if solve : im=self.platesolve(im,display=display)
+        im=self.trim(im,trimimage=trim)
+        if solve : im=self.platesolve(im[0],display=display,scale=self.scale,flip=self.flip)
         if return_list and type(im) is not list : im=[im]
         return im
 
@@ -598,7 +608,7 @@ class Reducer() :
             sum = np.sum(np.array(datacube),axis=0)
             sig = np.sqrt(np.sum(np.array(varcube),axis=0))
             mask = np.any(maskcube,axis=0)
-            out.append(CCDData(sum,uncertainty=StdDevUncertainty(sig),mask=mask,unit='adu'))
+            out.append(CCDData(sum,uncertainty=StdDevUncertainty(sig),mask=mask,unit=u.dimensionless_unscaled))
         
         # return the frame
         if len(out) == 1 : 
@@ -634,7 +644,8 @@ class Reducer() :
             if self.verbose: print('  calculating uncertainty....')
             sig = 1.253 * np.sqrt(np.mean(np.array(varcube),axis=0)/nframe)
             mask = np.any(maskcube,axis=0)
-            comb=CCDData(med,header=allcube[im][chip].header,uncertainty=StdDevUncertainty(sig),mask=mask,unit='adu')
+            comb=CCDData(med,header=allcube[im][chip].header,uncertainty=StdDevUncertainty(sig),
+                         mask=mask,unit=u.dimensionless_unscaled)
             if normalize: comb.meta['MEANNORM'] = np.array(allnorm).mean()
             out.append(comb)
 
