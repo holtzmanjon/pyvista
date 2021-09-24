@@ -616,7 +616,7 @@ def minmax(data,mask=None, low=3,high=10):
     else :
         gd = np.where(np.isfinite(data))
     #std=scipy.stats.median_absolute_deviation(data[gd])
-    std=np.median(np.abs(data[gd]-data[gd].mean()))
+    std=np.median(np.abs(data[gd]-np.median(data[gd])))
     min = np.median(data[gd])-low*std
     max = np.median(data[gd])+high*std
     return min,max
