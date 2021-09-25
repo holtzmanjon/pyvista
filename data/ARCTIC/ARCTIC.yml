@@ -5,7 +5,7 @@ gain      : [2.0]
 rn        : [3.7]
 scale     : .228
 flip      : False
-biastype  : 0
+biastype  : 1
 crbox     : 'lacosmic'
 biasbox   : 
    - [[2052,2090],[20,2028]]
