@@ -246,30 +246,47 @@ class Reducer() :
                 databoxes = biasregion
             im.data = im.data.astype(float)
             for databox,ampbox in zip(databoxes,ampboxes) :
+              if display is not None :
+                  display.tvbox(0,0,box=ampbox)
+                  if type(databox) == image.BOX : 
+                      display.tvbox(0,0,box=databox,color='g')
+                  ax.plot(np.arange(databox.ymin,databox.ymax),
+                          np.mean(im.data[databox.ymin:databox.ymax,
+                                          ampbox.xmin:ampbox.xmax],
+                          axis=1))
               if self.biastype == 0 :
                 b=ampbox.mean(im.data)
                 if self.verbose: print('  subtracting overscan: ', b)
                 if display is not None : 
-                    display.tvbox(0,0,box=ampbox)
-                    if type(databox) == image.BOX : display.tvbox(0,0,box=databox,color='g')
-                    ax.plot(np.mean(im.data[:,ampbox.xmin:ampbox.xmax],axis=1))
+                    ax.plot([databox.ymin,databox.ymax],[b,b],color='k')
                     ax.text(0.05,0.95,'Overscan mean',transform=ax.transAxes)
                     ax.set_xlabel('Row')
                     display.fig.canvas.draw_idle()
                     plt.draw()
                 if type(databox) == image.BOX :
-                    im.data[databox.ymin:databox.ymax,databox.xmin:databox.xmax] = \
-                            im.data[databox.ymin:databox.ymax,databox.xmin:databox.xmax].astype(float)-b
+                    im.data[databox.ymin:databox.ymax+1,
+                            databox.xmin:databox.xmax] = \
+                            im.data[databox.ymin:databox.ymax+1,
+                                    databox.xmin:databox.xmax].astype(float)-b
                 else : 
                     im.data = im.data.astype(float)-b
                 im.header.add_comment('subtracted overscan: {:f}'.format(b))
-            #elif det.biastype == 1 :
-            #    over=np.median(hdu[ext].data[:,det.biasbox.xmin:det.biasbox.xmax],axis=1)
-            #    boxcar = Box1DKernel(10)
-            #    over=convolve(over,boxcar,boundary='extend')
-            #    over=image.stretch(over,ncol=hdu[ext].data.shape[1])
-            #    hdu[ext].data -= over
+              elif self.biastype == 1 :
+                over=np.median(im.data[databox.ymin:databox.ymax+1,
+                               ampbox.xmin:ampbox.xmax],axis=1)
+                boxcar = Box1DKernel(10)
+                over=convolve(over,boxcar,boundary='extend')
+                if display is not None : 
+                    ax.plot(np.arange(databox.ymin,databox.ymax+1),
+                            over,color='k')
+                over=image.stretch(over,ncol=databox.ncol())
+                if self.verbose: print('  subtracting overscan vector ')
+                im.data[databox.ymin:databox.ymax+1,
+                        databox.xmin:databox.xmax+1] = \
+                    im.data[databox.ymin:databox.ymax+1,
+                            databox.xmin:databox.xmax+1].astype(float) - over
             if display is not None :
+                display.tv(im)
                 get=input("  See bias box and cross section. Hit any key to continue")
                 if get == 'i' : code.interact(local=locals())
                 elif get == 'q' : sys.exit()
@@ -315,7 +332,9 @@ class Reducer() :
                     out.mask[outbox.ymin:outbox.ymax+1,outbox.xmin:outbox.xmax+1] = \
                             im.mask[box.ymin:box.ymax+1,box.xmin:box.xmax+1]
                 outim.append(out)
-        if trimimage: return outim
+        if trimimage: 
+            if len(outim) == 1 : return outim[0]
+            else : return outim
         else : return im
        
 
@@ -384,14 +403,16 @@ class Reducer() :
                  min,max=tv.minmax(row,low=5,high=5)
                  display.plotax1.set_ylim(min,max)
                  display.plotax1.set_xlabel('row')
-                 display.plotax1.text(0.05,0.95,'Column {:d}'.format(col),transform=display.plotax1.transAxes)
+                 display.plotax1.text(0.05,0.95,'Column {:d}'.format(col),
+                     transform=display.plotax1.transAxes)
                  display.plotax2.cla()
                  row = int(dim[0]/2)
                  col = corr.data[row,:]
                  min,max=tv.minmax(col,low=10,high=10)
                  display.plotax2.plot(col)
                  display.plotax2.set_xlabel('col')
-                 display.plotax2.text(0.05,0.95,'Row {:d}'.format(row),transform=display.plotax2.transAxes)
+                 display.plotax2.text(0.05,0.95,'Row {:d}'.format(row),
+                     transform=display.plotax2.transAxes)
                  display.plotax2.set_ylim(min,max)
                  input("  See flat-fielded image and original with - key. Hit any key to continue")
          if len(out) == 1 : return out[0]
@@ -553,36 +574,41 @@ class Reducer() :
         """
         im=self.rd(num)
         self.overscan(im,display=display)
-        im=self.crrej(im,crbox=crbox,display=display)
         im=self.bias(im,superbias=superbias)
         im=self.dark(im,superdark=superdark)
         self.scatter(im,scat=scat,display=display)
         im=self.flat(im,superflat=superflat,display=display)
         self.badpix_fix(im,val=badpix)
+        if trim and display is not None: display.tvclear()
+      
         im=self.trim(im,trimimage=trim)
-        if solve : im=self.platesolve(im[0],display=display,scale=self.scale,flip=self.flip)
+        im=self.crrej(im,crbox=crbox,display=display)
+        if solve : 
+            im=self.platesolve(im,display=display,scale=self.scale,flip=self.flip)
         if return_list and type(im) is not list : im=[im]
         return im
 
-    def write(self,im,name,overwrite=True,trim=False) :
+    def write(self,im,name,overwrite=True,png=False) :
         """ write out image, deal with multiple channels 
         """
 
         if type(im) is not list : ims=[im]
         else : ims = im
-        for image,trimbox in zip(ims,self.trimbox) :
-            if trim :
-                image.data = image.data[trimbox.ymin:trimbox.ymin+trimbox.nrow(),
-                                        trimbox.xmin:trimbox.xmin+trimbox.ncol()]
-                image.uncertainty.array = image.uncertainty.array[trimbox.ymin:trimbox.ymin+trimbox.nrow(),
-                                                                  trimbox.xmin:trimbox.xmin+trimbox.ncol()]
-                if image.mask is not None :
-                    image.mask = image.mask[trimbox.ymin:trimbox.ymin+trimbox.nrow(),
-                                            trimbox.xmin:trimbox.xmin+trimbox.ncol()]
-        if self.nchip > 1 :
-            for i,frame in enumerate(im) : frame.write(name+'_'+self.channels[i]+'.fits',overwrite=overwrite)
-        else :
-            im.write(name+'.fits',overwrite=overwrite)
+        for i,frame in enumerate(ims) : 
+            if self.nchip > 1 : outname = name.replace('.fits','')+'_'+self.channels[i]+'.fits'
+            else : outname = name
+            frame.write(name,overwrite=overwrite)
+            if png :
+                fig=plt.figure(figsize=(12,9))
+                vmin,vmax=tv.minmax(frame.data)
+                plt.imshow(frame.data,vmin=vmin,vmax=vmax,
+                           cmap='Greys_r',interpolation='nearest',origin='lower')
+                plt.colorbar(shrink=0.8)
+                plt.axis('off')
+                fig.tight_layout()
+                fig.savefig(name+'.png')
+                plt.close()
+ 
 
     def getcube(self,ims,**kwargs) :
         """ Read images into data cube
