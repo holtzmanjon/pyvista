@@ -1,6 +1,7 @@
 import copy
 import numpy as np
 import os
+import multiprocessing as mp
 import pickle
 import pdb
 import yaml
@@ -13,7 +14,8 @@ import scipy.signal
 
 ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../../'
 
-def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,groups='all',solve=False) :
+def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
+        groups='all',solve=False,htmlfile='index.html',threads=0) :
     """ Reduce full night(s) of data given input configuration file
     """
 
@@ -21,6 +23,10 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
     f=open(ymlfile,'r')
     d=yaml.load(f, Loader=yaml.FullLoader)
     f.close()
+
+    if display is None : plt.ioff()
+    if display and threads > 0 :
+        raise ValueError('no multiprocessing with display!')
 
     if type(groups) is not list : groups = [groups]
 
@@ -37,31 +43,41 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
 
         # set up Reducer, Combiner, and output directory
         inst = group['inst']
+        try : conf = group['conf']
+        except : conf=''
         print('Instrument: {:s}'.format(inst))
-        try : red = imred.Reducer(inst=group['inst'],dir=group['rawdir'],verbose=verbose,nfowler=group['nfowler'])
-        except KeyError : red = imred.Reducer(inst=group['inst'],dir=group['rawdir'],verbose=verbose)
+        try : red = imred.Reducer(inst=inst,conf=conf,dir=group['rawdir'],
+                                  verbose=verbose,nfowler=group['nfowler'])
+        except KeyError : red = imred.Reducer(inst=group['inst'],conf=conf,
+                                  dir=group['rawdir'],verbose=verbose)
         reddir = group['reddir']+'/'
         try: os.makedirs(reddir)
         except FileExistsError : pass
-        fhtml = html.head(reddir+'/index.html')
+        if htmlfile is not None : fhtml = html.head(reddir+'/'+htmlfile)
+        else : fhtml = None
 
         #create superbiases if biases given
         if 'biases' in group : 
-            sbias = mkcal(group['biases'],'bias',red,reddir,clobber=clobber,display=display)
+            sbias = mkcal(group['biases'],'bias',red,reddir,
+                          clobber=clobber,display=display,html=fhtml)
         else: 
             print('no bias frames given')
             sbias = None
 
         #create superdarks if darks given
         if 'darks' in group : 
-            sdark = mkcal(group['darks'],'dark',red,reddir,clobber=clobber,display=display,sbias=sbias)
+            sdark = mkcal(group['darks'],'dark',red,reddir,
+                          clobber=clobber,display=display,sbias=sbias,
+                          html=fhtml)
         else: 
             print('no dark frames given')
             sdark = None
 
         #create superflats if darks given
         if 'flats' in group : 
-            sflat = mkcal(group['flats'],'flat',red,reddir,clobber=clobber,display=display,sbias=sbias,sdark=sdark)
+            sflat = mkcal(group['flats'],'flat',red,reddir,
+                          clobber=clobber,display=display,
+                          sbias=sbias,sdark=sdark,html=fhtml)
         else: 
             print('no flat frames given')
             sflat = None
@@ -88,7 +104,9 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                     # combine frames
                     try : superbias = sbias[wavecal['bias']]
                     except KeyError: superbias = None
-                    arcs=red.sum(wavecal['frames'],return_list=True, superbias=superbias, crbox=[5,1], display=display)
+                    arcs=red.sum(wavecal['frames'],return_list=True, 
+                                 superbias=superbias, crbox=[5,1], 
+                                 display=display)
 
                     print('  extract wavecal')
                     # loop over channels
@@ -103,15 +121,19 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                             # extract and ID lines
                             if wavecal['wavecal_type'] == 'echelle' :
                                 arcec=wtrace.extract(arc,plot=display)
-                                wcal.identify(spectrum=arcec, rad=3, display=display, plot=plot,file=file)
+                                wcal.identify(spectrum=arcec, rad=3, 
+                                          display=display, plot=plot,file=file)
                             elif wavecal['wavecal_type'] == 'longslit' :
                                 r0=wtrace.rows[0]
                                 r1=wtrace.rows[1]
                                 # 1d for inspection
                                 wtrace.pix0 +=30
                                 arcec=wtrace.extract(arc,plot=display,rad=20)
-                                arcec.data=arcec.data - scipy.signal.medfilt(arcec.data,kernel_size=[1,101])
-                                wcal.identify(spectrum=arcec, rad=7, plot=plot, display=display,lags=range(-500,500),file=file)
+                                arcec.data = arcec.data - \
+                                   scipy.signal.medfilt(arcec.data,kernel_size=[1,101])
+                                wcal.identify(spectrum=arcec, rad=7, plot=plot,
+                                              display=display,
+                                              lags=range(-500,500),file=file)
                                 wcal.fit()
 
                                 print("doing 2D wavecal...")
@@ -120,7 +142,9 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                                 arcec.data=arcec.data - scipy.signal.medfilt(arcec.data,kernel_size=[1,101])
                                 # smooth vertically for better S/N, then sample accordingly
                                 image.smooth(arcec,[5,1])
-                                wcal.identify(spectrum=arcec, rad=3, display=display, plot=plot, nskip=5,lags=range(-50,50))
+                                wcal.identify(spectrum=arcec, rad=3, 
+                                              display=display, plot=plot, 
+                                              nskip=5,lags=range(-50,50))
    
                             wcal.fit()
                             delattr(wcal,'ax')
@@ -142,18 +166,35 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
             objects = group['objects']
             if 'image' in objects :
                 # images
-                if display is None : plt.ioff()
-                fhtml.write('<TABLE BORDER=2>\n')
                 for obj in objects['image']:
+                    if html is not None : 
+                        try : fhtml.write('<BR><h3>{:s}</h3>\n'.format(obj['id']))
+                        except KeyError : pass
+                        fhtml.write('<br><TABLE BORDER=2>\n')
                     try : superbias = sbias[obj['bias']]
                     except KeyError: superbias = None
                     try : superdark = sdark[obj['dark']]
                     except KeyError: superdark = None
                     try : superflat = sflat[obj['flat']]
                     except KeyError: superflat = None
-                    for iframe,id in enumerate(obj['frames']) : 
+
+                    if threads > 0  :
+                        # if multiprocessing, do all frames in this object in parallel
+                        pars=[]
+                        for id in obj['frames'] :
+                            pars.append((red,id,superbias,superdark,superflat,red.scat,red.crbox,True,solve,reddir))
+                        pool = mp.Pool(threads)
+                        output = pool.map_async(process_thread, pars).get()
+                        pool.close()
+                        pool.join()
+                    else :
+                        output = obj['frames']
+
+                    for iframe,(id,frames) in enumerate(zip(obj['frames'],output)) : 
                         if display is not None : display.tvclear()
-                        frames=red.reduce(id,superbias=superbias,
+                        if threads == 0 :
+                            # if not multiprocessing, then do the reduction
+                            frames=red.reduce(id,superbias=superbias,
                                              superdark=superdark,
                                              superflat=superflat,
                                              scat=red.scat,
@@ -162,21 +203,16 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
                                              solve=solve,
                                              return_list=True,
                                              display=display)
-                        name=frames[0].header['FILE']
-                        fhtml.write('<TR><TD>{:s}'.format(name))
-                        for frame in frames :
-                            red.write(frame,reddir+name,overwrite=True)
-                            fig=plt.figure(figsize=(12,12))
-                            vmin,vmax=tv.minmax(frame.data)
-                            plt.imshow(frame.data,vmin=vmin,vmax=vmax,
-                                       interpolation='nearest',origin='lower')
-                            plt.axis('off')
-                            fig.savefig(reddir+name+'.png')
-                            fhtml.write(('<TD>'+
-                                '<a href={:s}.png><IMG src={:s}.png size=500>'+
-                                '</a>').format(name,name))
-                fhtml.write('</TABLE>')
-                html.tail(fhtml) 
+                            name=frames[0].header['FILE']
+                            red.write(frames,reddir+name,overwrite=True,png=True)
+                        else : name=frames[0].header['FILE']
+                        if html is not None : 
+                            fhtml.write('<TR><TD>{:s}'.format(name))
+                            for frame in frames :
+                                fhtml.write(('<TD><a href={:s}.png><IMG src={:s}.png width=500>'+
+                                '</a>\n').format(name,name))
+                    if html is not None : fhtml.write('</TABLE>')
+                if html is not None : html.tail(fhtml) 
                 plt.ion()
             elif 'extract1d' in objects :
                 # 1D spectra
@@ -282,7 +318,8 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,g
 #            out=trace.extract2d(frame,plot=t)
 
 
-def mkcal(cals,caltype,reducer,reddir,sbias=None,sdark=None,clobber=False,**kwargs) :
+def mkcal(cals,caltype,reducer,reddir,sbias=None,sdark=None,clobber=False,
+          html=None,**kwargs) :
     """ Make calibration frames given input lists
  
         Args :
@@ -295,6 +332,8 @@ def mkcal(cals,caltype,reducer,reddir,sbias=None,sdark=None,clobber=False,**kwar
     # we will loop over (possibly) multiple individual cal products of this type
     # These may or may not be combined, depending on "use" tag
     outcal={}
+    if html is not None :
+        html.write('<br><h3>{:s}</h3><br><TABLE BORDER=2>\n'.format(caltype))
     for cal in cals :
         calname = cal['id']
         try : superbias = sbias[cal['bias']]
@@ -309,12 +348,15 @@ def mkcal(cals,caltype,reducer,reddir,sbias=None,sdark=None,clobber=False,**kwar
             else :
                 make=False
                 if len(reducer.channels)==1 :
-                    try : scal= CCDData.read(reddir+calname+'.fits',unit=u.dimensionless_unscaled)
+                    try : scal= CCDData.read(reddir+calname+'.fits',
+                                             unit=u.dimensionless_unscaled)
                     except FileNotFoundError : make=True
                 else :
                     scal=[]
                     for channel in reducer.channels :
-                        try : scal.append(CCDData.read(reddir+calname+'_'+channel+'.fits',unit=u.dimensionless_unscaled))
+                        try : scal.append(
+                                CCDData.read(reddir+calname+'_'+channel+'.fits',
+                                             unit=u.dimensionless_unscaled))
                         except FileNotFoundError : make=True
             if make :
                 try :
@@ -347,31 +389,20 @@ def mkcal(cals,caltype,reducer,reddir,sbias=None,sdark=None,clobber=False,**kwar
                         except: pass
                         reducer.scatter(scal,scat=reducer.scat,**kwargs)
                 reducer.write(scal,reddir+calname,overwrite=True)
-
-#            if make :
-#                scal=[]
-#                tot=[]
-#                for cal in cals :
-#                    print(' '+cal['id'])
-#                    if os.path.exists(reddir+calname+'.fits') and not clobber :
-#                        out=CCDData.read(reddir++calname+'.fits')
-#                    else :
-#                    if cal['use'] :
-#                        # we may have multiple channels to combine
-#                        if type(out) is not list : out=[out]
-#                        for i in range(len(out)) :
-#                            try:
-#                                scal[i] = scal[i].add(out[i].multiply(out[i].header['MEANNORM']))
-#                                tot[i]+=out[i].header['MEANNORM']
-#                            except:
-#                                scal.append( copy.deepcopy(out[i].multiply(out[i].header['MEANNORM'])) )
-#                                tot.append(out[i].header['MEANNORM'])
-#                if darkflat is not None :
-#                    if type(darkflat) is not list : darkflat=[darkflat]
-#                    for i in range(len(scal)) : scal[i]=scal[i].subtract(darkflat[i])
-#                for i in range(len(scal)) : scal[i] = scal[i].divide(tot[i])
-#                if len(scal) is 1 : scal= scal[0]
-#                comb.reducer.write(scal,reddir+calname,overwrite=True)
+                fig=plt.figure(figsize=(12,9))
+                vmin,vmax=tv.minmax(scal.data)
+                plt.imshow(scal.data,vmin=vmin,vmax=vmax,
+                           cmap='Greys_r',
+                           interpolation='nearest',origin='lower')
+                plt.colorbar(shrink=0.8)
+                plt.axis('off')
+                fig.tight_layout()
+                fig.savefig(reddir+calname+'.png')
+                plt.close()
+                if html is not None :
+                    html.write(
+                      '<TR><TD>{:s}<TD><A HREF={:s}.png><IMG SRC={:s}.png WIDTH=500></A>\n'.
+                      format(calname,calname,calname))
             else : print('  already made!')
         except RuntimeError :
             print('error processing {:s} frames'.format(caltype))
@@ -381,5 +412,22 @@ def mkcal(cals,caltype,reducer,reddir,sbias=None,sdark=None,clobber=False,**kwar
 
         outcal[calname] = scal
 
+    if html is not None : html.write('</TABLE>\n')
+
     return outcal
+
+def process_thread(pars) :
+
+    red,id,superbias,superdark,superflat,scat,crbox,trim,solve,reddir = pars
+    frames= red.reduce(id, superbias=superbias,
+                          superdark=superdark,
+                          superflat=superflat,
+                          scat=red.scat,
+                          crbox=red.crbox,
+                          trim=True,
+                          solve=solve,
+                          return_list=True,display=None)
+    name=frames[0].header['FILE']
+    red.write(frames,reddir+name,overwrite=True,png=True)
+    return frames
 
