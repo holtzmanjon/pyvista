@@ -32,13 +32,16 @@
         frames : [49,51,52,53,54,55]
     objects :
       image :
-        - frames : [56,57]
+        - id : 'r frames'
+          frames : [56,57]
           flat : "twiflat_r"
           flat_type : "2d"
-        - frames : [58,59]
+        - id : 'g frames'
+          frames : [58,59]
           flat : "twiflat_g"
           flat_type : "2d"
-        - frames : [60,61]
+        - id : 'z frames'
+          frames : [60,61]
           flat : "twiflat_z"
           flat_type : "2d"
 
@@ -83,7 +86,8 @@
         #  bias : "bias"
         #  flat : "twiflat_u"
         #  flat_type : "2d"
-        - frames : [76] #,65,66,67]
+        - id : 'g frames'
+          frames : [76] #,65,66,67]
           bias : "bias"
           flat : "twiflat_g"
           flat_type : "2d"
