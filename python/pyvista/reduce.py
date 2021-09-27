@@ -388,17 +388,7 @@ def mkcal(cals,caltype,reducer,reddir,sbias=None,sdark=None,clobber=False,
                             if cal['specflat'] : scal = reducer.mkspecflat(scal)
                         except: pass
                         reducer.scatter(scal,scat=reducer.scat,**kwargs)
-                reducer.write(scal,reddir+calname,overwrite=True)
-                fig=plt.figure(figsize=(12,9))
-                vmin,vmax=tv.minmax(scal.data)
-                plt.imshow(scal.data,vmin=vmin,vmax=vmax,
-                           cmap='Greys_r',
-                           interpolation='nearest',origin='lower')
-                plt.colorbar(shrink=0.8)
-                plt.axis('off')
-                fig.tight_layout()
-                fig.savefig(reddir+calname+'.png')
-                plt.close()
+                reducer.write(scal,reddir+calname+'.fits',overwrite=True,png=True)
                 if html is not None :
                     html.write(
                       '<TR><TD>{:s}<TD><A HREF={:s}.png><IMG SRC={:s}.png WIDTH=500></A>\n'.

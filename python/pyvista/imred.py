@@ -74,8 +74,10 @@ class Reducer() :
             self.formstr=config['formstr']
             self.gain=config['gain']
             self.rn=config['rn']/np.sqrt(nfowler)
-            self.scale=config['scale']
-            self.flip=config['flip']
+            try :self.scale=config['scale']
+            except : self.scale = None
+            try : self.flip=config['flip']
+            except : self.flip = None
             try : self.namp=config['namp']
             except : self.namp = 1
             self.crbox=config['crbox']
@@ -99,7 +101,7 @@ class Reducer() :
                     for amp in box : 
                         ampbox.append(image.BOX(xr=amp[0],yr=amp[1]) )
                     self.biasregion.append(ampbox)
-            except: pass
+            except: self.biasregion=[None]
             self.trimbox=[]
             for box in config['trimbox'] :
                 if self.namp == 1 :
@@ -231,7 +233,6 @@ class Reducer() :
 
         if type(im) is not list : ims=[im]
         else : ims = im
-    
         for ichan,(im,gain,rn,biasbox,biasregion) in enumerate(zip(ims,self.gain,self.rn,self.biasbox,self.biasregion)) :
             if display is not None : 
                 display.tv(im)
@@ -250,10 +251,9 @@ class Reducer() :
                   display.tvbox(0,0,box=ampbox)
                   if type(databox) == image.BOX : 
                       display.tvbox(0,0,box=databox,color='g')
-                  ax.plot(np.arange(databox.ymin,databox.ymax),
+                      ax.plot(np.arange(databox.ymin,databox.ymax),
                           np.mean(im.data[databox.ymin:databox.ymax,
-                                          ampbox.xmin:ampbox.xmax],
-                          axis=1))
+                          ampbox.xmin:ampbox.xmax], axis=1))
               if self.biastype == 0 :
                 b=ampbox.mean(im.data)
                 if self.verbose: print('  subtracting overscan: ', b)
