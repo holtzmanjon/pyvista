@@ -1,9 +1,15 @@
 import astropy.units as u
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 import pdb
 import astropy.constants as c
+import scipy
 from astropy.modeling.models import BlackBody
+from astropy.io import ascii
+from astropy.table import Table
+
+ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../../'
 
 
 class Object:
@@ -116,7 +122,7 @@ class Mirror :
             
         else :
             # read data file depending on mirror coating type
-            try: dat=ascii.read(os.environ['ETC_DIR']+'/data/mirror/'+self.type+'.txt')
+            try: dat=ascii.read(ROOT+'/data/etc/mirror/'+self.type+'.txt')
             except FileNotFoundError :
                 raise ValueError('unknown coating type: {:s}',self.type)
             wav=dat['col1']
@@ -180,17 +186,25 @@ class Atmosphere :
             return np.ones(len(wave))*self.transmission
         else :
             raise ValueError('need to implement atmosphere {:s}',self.name)
+
+    def emission(self,wave,moonphase) :
+            dat=Table.read(ROOT+'/data/etc/sky/sky_{:3.1f}.fits'.format(moonphase))
+            wav=dat['lam']*u.nm
+            flux=dat['flux']/u.s/u.m**2/u.arcsec**2/u.micron
+            interp=scipy.interpolate.interp1d(wav.to(u.nm),flux)
+            return (interp(wave.to(u.nm))/u.s/u.m**2/u.arcsec**2/u.micron).to(1/u.s/u.cm**2/u.AA/u.arcsec**2)
             
 class Observation :
     """ Object representing an observation
     """
-    def __init__(self,obj=None,atmos=None,telescope=None,instrument=None,wave=np.arange(3000,10000,1)*u.AA,seeing=1) :
+    def __init__(self,obj=None,atmos=None,telescope=None,instrument=None,wave=np.arange(3000,10000,1)*u.AA,seeing=1,phase=0.) :
         self.obj = obj
         self.atmos = atmos
         self.telescope = telescope
         self.instrument = instrument
         self.wave=wave
         self.seeing=seeing
+        self.phase=phase
         
     def photonflux(self) :
         """ Return photon flux
@@ -205,6 +219,17 @@ class Observation :
         """ Return integral of photon flux
         """
         return np.trapz(self.photonflux(),self.wave)
+
+    def back_photonflux(self) :
+        """ Return photon flux
+        """
+        photflux = (self.atmos.emission(self.wave,self.phase)* 
+                self.telescope.area()*self.telescope.throughput(self.wave)*
+                self.instrument.throughput(self.wave)*self.instrument.filter(self.wave) )
+        return photflux
+
+    def back_counts(self) :
+        return np.trapz(self.back_photonflux(),self.wave)
 
     def sn(self,t) :
         """ Calculate S/N given exposure time
@@ -236,13 +261,13 @@ class Observation :
         return t, t_wave
                 
 
-def signal(wave=np.arange(4000,8000,5)*u.AA) :  
+def signal(wave=np.arange(4000,8000,5)*u.AA,teff=7000,mag=10,diam=3.5,it=0.8,at=0.8,phase=0.0) :  
 
     # set up object, telescope, instrument, atmosphere
-    obj=Object(type='bb',teff=6000,mag=20)
-    tel=Telescope(diameter=0.6*u.m,mirrors=[1.0])
-    inst=Instrument(efficiency=0.5)
-    atmos=Atmosphere(transmission=0.8)
+    obj=Object(type='bb',teff=teff,mag=mag)
+    tel=Telescope(diameter=diam*u.m,mirrors=[1.])
+    inst=Instrument(efficiency=it)
+    atmos=Atmosphere(transmission=at)
 
     obs=Observation(obj=obj,atmos=atmos,telescope=tel,instrument=inst,wave=wave)
     plt.plot(wave,obs.photonflux())
@@ -260,9 +285,23 @@ def signal(wave=np.arange(4000,8000,5)*u.AA) :
     plt.plot(wave,photflux)
     photflux*=inst.filter(wave,trans=0.8)
     plt.plot(wave,photflux)
-
+    counts=obs.counts()
     print(counts)
+
+    back = atmos.emission(wave,phase)
+    plt.plot(wave,back)
+    back*=tel.throughput(wave)*tel.area()
+    plt.plot(wave,back)
+    back*=atmos.throughput(wave)
+    plt.plot(wave,back)
+    back*=inst.throughput(wave)
+    plt.plot(wave,back)
+    back*=inst.filter(wave,trans=0.8)
+    plt.plot(wave,back)
+    back_counts=obs.back_counts()
+    print(back_counts)
     pdb.set_trace()
+
     sn,sn_wave = obs.sn(t=1*u.s)
     t,t_wave = obs.exptime(sn=100)
     plt.figure()
