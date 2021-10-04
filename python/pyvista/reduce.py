@@ -299,8 +299,9 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                                     input("  hit a key to continue")
                             #ec.write(reddir+ec.header['FILE'].replace('.fits','.ec.fits'),overwrite=True)
                             comb=wcal.scomb(ec,10.**np.arange(3.5,4.0,5.5e-6),average=False,usemask=False)
-                            plots.plotl(ax[0],10.**np.arange(3.5,4.0,5.5e-6),comb.data,color='k')
-                            plots.plotl(ax[1],10.**np.arange(3.5,4.0,5.5e-6),comb.data/comb.uncertainty.array,color='k')
+                            if plot is not None :
+                                plots.plotl(ax[0],10.**np.arange(3.5,4.0,5.5e-6),comb.data,color='k')
+                                plots.plotl(ax[1],10.**np.arange(3.5,4.0,5.5e-6),comb.data/comb.uncertainty.array,color='k')
                             out = spectra.SpecData(ec,wave=w)
                             out.write(reddir+ec.header['FILE'].replace('.fits','.ec.fits'))
                             out = spectra.SpecData(comb,wave=w)
