@@ -8,6 +8,7 @@ import scipy
 from astropy.modeling.models import BlackBody
 from astropy.io import ascii
 from astropy.table import Table
+from tools import plots
 
 ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../../'
 
@@ -79,10 +80,10 @@ class Telescope :
             self.diameter=3.5*u.m
             self.mirrors=['Al','Al','Al']
             self.eps=0.4
-        elif name == 'TMO' :
+        elif name == 'TM61' :
             self.diameter=0.6*u.m
             self.mirrors=['Al','Al']
-            self.eps=0.4
+            self.eps=0.33
         elif name == '' :
             self.diameter=diameter
             self.eps=0.
@@ -250,63 +251,72 @@ class Observation :
         a = S**2
         b = -sn**2*S
         c = -sn**2*npix*self.instrument.detector.rn**2
-        t = (-b + np.sqrt(b**2 - 4*a*c)) / 2 / a
+        with np.errstate(divide='ignore',invalid='ignore'):
+            t = (-b + np.sqrt(b**2 - 4*a*c)) / 2 / a
         #t = sn**2 / self.counts()
 
         S = self.photonflux().value
         a = S**2
         b = -sn**2*S
-        t_wave = (-b + np.sqrt(b**2 - 4*a*c)) / 2 / a
+        with np.errstate(divide='ignore',invalid='ignore'):
+            t_wave = (-b + np.sqrt(b**2 - 4*a*c)) / 2 / a
         #t_wave = sn**2 / self.photonflux()
         return t, t_wave
                 
 
-def signal(wave=np.arange(4000,8000,5)*u.AA,teff=7000,mag=10,diam=3.5,it=0.8,at=0.8,phase=0.0) :  
+def signal(wave=np.arange(4000,8000,5)*u.AA,teff=7000,mag=10,telescope='ARC3.5M',it=0.8,at=0.8,phase=0.0,sn=100,ft=0.8) :  
 
     # set up object, telescope, instrument, atmosphere
+    print('Object: mag={:f}, SED: blackbody Teff={:f}'.format(mag,teff))
     obj=Object(type='bb',teff=teff,mag=mag)
-    tel=Telescope(diameter=diam*u.m,mirrors=[1.])
+    print('Telescope: {:s}'.format(telescope))
+    tel=Telescope(name=telescope)
+    print('Instrument: efficency={:f}'.format(it))
     inst=Instrument(efficiency=it)
+    print('Filter: transmission={:f}'.format(ft))
+    print('Atmosphere: transmission={:f}'.format(at))
     atmos=Atmosphere(transmission=at)
 
+    fig,ax=plots.multi(1,2,hspace=0.001)
+
     obs=Observation(obj=obj,atmos=atmos,telescope=tel,instrument=inst,wave=wave)
-    plt.plot(wave,obs.photonflux())
+    plots.plotl(ax[0],wave,obs.photonflux())
     counts=obs.counts()
-    print(obs.counts())
 
     #individual components for plotting, demonstrating use of object methods
     photflux=obj.photflux(wave)
-    plt.plot(wave,photflux)
+    plots.plotl(ax[0],wave,photflux,xt='Wavelength',yt='photon flux')
     photflux*=tel.throughput(wave)*tel.area()
-    plt.plot(wave,photflux)
+    plots.plotl(ax[0],wave,photflux)
     photflux*=atmos.throughput(wave)
-    plt.plot(wave,photflux)
+    plots.plotl(ax[0],wave,photflux)
     photflux*=inst.throughput(wave)
-    plt.plot(wave,photflux)
-    photflux*=inst.filter(wave,trans=0.8)
-    plt.plot(wave,photflux)
+    plots.plotl(ax[0],wave,photflux)
+    photflux*=inst.filter(wave,trans=ft)
+    plots.plotl(ax[0],wave,photflux)
     counts=obs.counts()
-    print(counts)
 
     back = atmos.emission(wave,phase)
-    plt.plot(wave,back)
+    plots.plotl(ax[0],wave,back)
     back*=tel.throughput(wave)*tel.area()
-    plt.plot(wave,back)
+    plots.plotl(ax[0],wave,back)
     back*=atmos.throughput(wave)
-    plt.plot(wave,back)
+    plots.plotl(ax[0],wave,back)
     back*=inst.throughput(wave)
-    plt.plot(wave,back)
+    plots.plotl(ax[0],wave,back)
     back*=inst.filter(wave,trans=0.8)
-    plt.plot(wave,back)
+    plots.plotl(ax[0],wave,back)
     back_counts=obs.back_counts()
-    print(back_counts)
-    pdb.set_trace()
 
-    sn,sn_wave = obs.sn(t=1*u.s)
-    t,t_wave = obs.exptime(sn=100)
-    plt.figure()
-    plt.plot(wave,sn_wave)
-    plt.plot(wave,t_wave)
+    print('star counts: {:f}   background counts: {:f}'.format(counts,back_counts))
+
+    sn1,sn1_wave = obs.sn(t=1*u.s)
+    print('S/N: ',sn1)
+    t,t_wave = obs.exptime(sn=sn)
+    print('exptime for SN={:f}  : {:f}'.format(sn,t))
+    plots.plotl(ax[1],wave,sn1_wave,xt='Wavelength',yt='S/N and t',label='S/N')
+    plots.plotl(ax[1],wave,t_wave,label='t for S/N={:f}'.format(sn))
+    ax[1].legend()
     return counts
 
 
