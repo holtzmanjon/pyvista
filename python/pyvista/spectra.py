@@ -491,8 +491,8 @@ class Trace() :
         ncol = hd.data.shape[1]
         if sc0 is None : self.sc0 = int(ncol/2)
         else : self.sc0 = sc0
-        self.spectrum = hd[:,self.sc0]
-        self.spectrum.data[self.spectrum.data<0] = 0.
+        self.spectrum = hd.data[:,self.sc0]
+        self.spectrum[self.spectrum<0] = 0.
         rows = np.arange(nrow)
         ypos = np.zeros(ncol)
         ysum = np.zeros(ncol)
@@ -501,7 +501,7 @@ class Trace() :
 
         # we want to handle multiple traces, so make sure srows is iterable
         if type(srows ) is int or type(srows) is float : srows=[srows]
-        oldmodel=copy.copy(self.model)
+        #oldmodel=copy.copy(self.model)
         self.model=[]
         if plot is not None : 
             plot.clear()
@@ -550,12 +550,12 @@ class Trace() :
             model=(fitter(mod,cols[gd],ypos[gd]))
             if len(gd) < 10 : 
                 print('  failed trace for row: {:d}, using old model'.format(irow))
-                model=copy.copy(oldmodel[irow])
+                #model=copy.copy(oldmodel[irow])
             self.model.append(model)
 
             if plot : 
                 plot.ax.scatter(cols,ypos,marker='o',color='r',s=4) 
-                plot.ax.scatter(cols[gd],ypos[gd],marker='o',color='g',s=4) 
+                plot.ax.scatter(cols[gd],ypos[gd],marker='o',color='g',s=10) 
                 plot.ax.plot(cols,model(cols),color='m')
                 #plt.pause(0.05)
 
@@ -586,7 +586,6 @@ class Trace() :
         except: pass
         fitpeak,shift = image.xcorr(self.spectrum,spec,lags)
         pixshift=(fitpeak+lags[0])[0]
-        print('  traces shift: ', fitpeak+lags[0])
         if plot is not None :
             plot.clear()
             plot.tv(im)
