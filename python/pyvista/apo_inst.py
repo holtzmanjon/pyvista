@@ -57,7 +57,7 @@ def dis() :
 
 def arces() :
     ered=imred.Reducer(inst='ARCES',dir='UT191020/ARCES/')
-    ecomb=imred.Combiner(reducer=ered)
+
     flat=ecomb.sum([11,15])
     thar=ecomb.sum([19,20])
 
@@ -65,18 +65,19 @@ def arces() :
 
     apertures=np.loadtxt('newap')[:,1]
     #traces=trace(flat,apertures/4)
-    traces=Trace()
-    traces.trace(flat,apertures/4,sc0=1024,thresh=1000,plot=t)
+    traces=Trace(inst='ARCES')
+    traces.trace(flat,apertures/4,sc0=1024,thresh=40,plot=t)
     ec=traces.extract(thar,scat=True)
 
-    wcal=spectra.WaveCal(type='chebyshev2D',orders=54+np.arange(107),spectrum=ec)
+    wcal=spectra.WaveCal(type='chebyshev2D',orders=54+np.arange(107))
+    wcal.set_spectrum(ec)
     wav=readmultispec.readmultispec('w131102.0004.ec.fits')['wavelen']
     new=ec.data*0.
     new[:,204:1855]=wav
-    wcal.identify(ec,wav=new,file=os.environ['PYVISTA_DIR']+'/data/lamps/thar_arces',xmin=201,xmax=1849,thresh=200,rad=3,plot=t)
+    wcal.identify(ec,wav=new,file='thar_arces',xmin=201,xmax=1849,thresh=10,rad=3,plot=t)
     wcal.fit()
 
-    wcal.identify(ec,file=os.environ['PYVISTA_DIR']+'/data/lamps/thar_arces',xmin=150,xmax=1900,thresh=200,rad=3,plot=t)
+    wcal.identify(ec,file='thar_arces',xmin=150,xmax=1900,thresh=10,rad=3,plot=t)
     wcal.fit()
 
     w=wcal.wave(image=np.array(ec.data.shape))
