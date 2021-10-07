@@ -181,7 +181,7 @@ class Reducer() :
         for form,gain,rn in zip(self.formstr,self.gain,self.rn) :
             # find the files that match the directory/format
             if type(num) is int :
-                search=self.dir+'/'+self.root+form.format(num)+'.fits*'
+                search=self.dir+'/'+self.root+form.format(num)+'.f*'
             elif type(num) is str or type(num) is np.str_ :
                 if num.find('/') >= 0 :
                     search=num+'*'
@@ -524,7 +524,7 @@ class Reducer() :
         if self.verbose : print('  plate solving ....')
         ra=im.header['RA'].replace(' ',':')
         dec=im.header['DEC'].replace(' ',':')
-        tmpfile=tempfile.mkstemp()
+        tmpfile=tempfile.mkstemp(dir='./')
         im.write(tmpfile[1]+'.fits')
         mad=np.median(np.abs(im-np.median(im)))
         daofind=DAOStarFinder(fwhm=seeing/scale,threshold=10*mad)
@@ -537,24 +537,69 @@ class Reducer() :
             display.tv(im)
             objs['x'] = objs['xcentroid']
             objs['y'] = objs['ycentroid']
-            stars.mark(display,objs,exit=True)
+            stars.mark(display,objs[gd],exit=True)
+        objs.write(os.path.basename(tmpfile[1])+'xy.fits')
+        rad=15*(float(ra.split(':')[0])+float(ra.split(':')[1])/60.+float(ra.split(':')[2])/3600.)
+        decd=(float(dec.split(':')[0])+float(dec.split(':')[1])/60.+float(dec.split(':')[2])/3600.)
+        cmd=('/usr/local/astrometry/bin/solve-field'+
+            ' --scale-units arcsecperpix --scale-low {:f} --scale-high {:f}'+
+            ' -X xcentroid -Y ycentroid -w 4800 -e 3000 --overwrite'+
+            ' --ra 329 --dec 55 --radius 3 {:s}xy.fits').format(
+              .9*scale,1.1*scale,os.path.basename(tmpfile[1]))
+        print(cmd)
+        ret = subprocess.call(cmd.split())
+        header=fits.open(os.path.basename(tmpfile[1])+'xy.wcs')[0].header
+        w=WCS(header)
+        im.wcs=w
+
+        """
+        cmd='/usr/local/astrometry/bin/new-wcs -i {:s}.fits -w {:s}xy.wcs -o {:s}w.fits'.format(tmpfile[1],os.path.basename(tmpfile[1]),os.path.basename(tmpfile[1]))
+        ret = subprocess.call(cmd.split())
+        pdb.set_trace()
+
         if flip : 
             arg=''
             objs['xcentroid'] = im.data.shape[1]-1-objs['xcentroid']
         else : arg=''
         objs['xcentroid','ycentroid','mag'][gd].write(
                     tmpfile[1]+'.txt',format='ascii.fast_commented_header')
+        cmd=("imcat -c ua2 {:s}.fits".format(tmpfile[1])).split()
+        ret = subprocess.check_output(cmd)
+        def parse(ret) :
+            tmp= ret.split(b'\n')
+            x=[]
+            y=[]
+            for t in tmp[0:-1] :
+              l=t.split()
+              x.append(float(l[6]))
+              y.append(float(l[7]))
+            return x,y
+        x,y=parse(ret)
+        for xx,yy in zip(x,y) :
+            display.tvcirc(xx,yy,rad=5,color='r')
         cmd=('imwcs -vw {:s} -d {:s}.txt -c ua2 -j {:s} {:s} -p {:.2f} {:s}.fits'.
                 format(arg,tmpfile[1],ra,dec,scale,tmpfile[1])).split()
+        cmd=('imwcs -vw {:s} -h 200 -d {:s}.txt -c ua2 -j {:s} {:s} {:s}.fits'.
+                format(arg,tmpfile[1],ra,dec,tmpfile[1])).split()
         ret = subprocess.call(cmd)
+        print(cmd)
         header=fits.open(os.path.basename(tmpfile[1])+'w.fits')[0].header
         if flip :
             header['CD1_1'] *= -1
             header['CD2_1'] *= -1
         w=WCS(header)
         im.wcs=w
+        pdb.set_trace() 
+        cmd=("imcat -c ua2 {:s}w.fits".format(os.path.basename(tmpfile[1]))).split()
+        ret = subprocess.check_output(cmd)
+        x,y=parse(ret)
+        for xx,yy in zip(x,y) :
+            display.tvcirc(xx,yy,rad=5,color='g')
+
+        """
         os.remove(tmpfile[1]+'.fits')
-        os.remove(os.path.basename(tmpfile[1]+'w.fits'))
+        for f in glob.glob(os.path.basename(tmpfile[1])+'*') :
+            os.remove(f)
         if display is not None :
             input("  See plate solve stars. Hit any key to continue")
             display.tvclear()
@@ -569,7 +614,7 @@ class Reducer() :
             display.tv(im)
 
     def reduce(self,num,crbox=None,superbias=None,superdark=None,superflat=None,
-               scat=None,badpix=None,solve=False,return_list=False,display=None,trim=False) :
+               scat=None,badpix=None,solve=False,return_list=False,display=None,trim=False,seeing=None) :
         """ Full reduction
         """
         im=self.rd(num)
@@ -584,7 +629,7 @@ class Reducer() :
         im=self.trim(im,trimimage=trim)
         im=self.crrej(im,crbox=crbox,display=display)
         if solve : 
-            im=self.platesolve(im,display=display,scale=self.scale,flip=self.flip)
+            im=self.platesolve(im,display=display,scale=self.scale,flip=self.flip,seeing=seeing)
         if return_list and type(im) is not list : im=[im]
         return im
 
