@@ -15,6 +15,8 @@ from astropy.time import Time
 from pyvista import mmm
 from astropy.stats import sigma_clipped_stats
 from photutils import CircularAperture, CircularAnnulus,aperture_photometry
+from tools import plots
+import matplotlib.pyplot as plt
 
 def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False):
     """ Interactive mark stars on TV, or recenter current list 
@@ -98,7 +100,7 @@ def add_coord(data,stars,wcs=None) :
         stars['DEC'] = dec
 
 @support_nddata
-def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,tv=None,gain=1,rn=0,mag=True,utils=True) :
+def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,disp=None,gain=1,rn=0,mag=True,utils=True) :
     """ Aperture photometry of input image with current star list
     """
 
@@ -166,9 +168,9 @@ def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,tv=None,gain=1,rn=0,m
                               (dist2 < skyrad[1]**2) ) 
                 sky,skysig,skyskew,nsky = mmm.mmm(data[gd[0],gd[1]].flatten())
                 sigsq=skysig**2/nsky
-            if tv is not None :
-                tv.tvcirc(star['x'],star['y'],skyrad[0],color='g')
-                tv.tvcirc(star['x'],star['y'],skyrad[1],color='g')
+            if disp is not None :
+                disp.tvcirc(star['x'],star['y'],skyrad[0],color='g')
+                disp.tvcirc(star['x'],star['y'],skyrad[1],color='g')
         else : 
             sky =0.
             skysig= 0.
@@ -214,8 +216,8 @@ def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,tv=None,gain=1,rn=0,m
                 try : stars[istar][name] = -2.5 * np.log10(stars[istar][name])
                 except : stars[istar][name] = 99.999
 
-            if tv is not None :
-                tv.tvcirc(star['x'],star['y'],r,color='b')
+            if disp is not None :
+                disp.tvcirc(star['x'],star['y'],r,color='b')
         stars[istar]['sky'] = sky
         stars[istar]['skysig'] = skysig
            
@@ -263,13 +265,14 @@ def centroid(data,x,y,r,verbose=True) :
         iter+=1
     return x,y
 
-def process_all(files,red,tab,bias=None,dark=None,flat=None,threads=8) :
+def process_all(files,red,tab,bias=None,dark=None,flat=None,threads=8, disp=None, solve=True,
+            seeing=15,rad=[3,5,7],skyrad=[10,15],cards=['EXPTIME','FILTER','AIRMASS']):
     """ multi-threaded processing of files
     """
 
     pars=[]
     for file in files :
-        pars.append((file,red,tab,bias,dark,flat))
+        pars.append((file,red,tab,bias,dark,flat,solve,seeing,rad,skyrad,cards))
 
     if threads == 0 :
         output=[]
@@ -294,29 +297,30 @@ def process_thread(pars) :
     bias = pars[3]
     dark = pars[4]
     flat = pars[5]
+    solve = pars[6]
+    seeing= pars[7]
+    rad= pars[8]
+    skyrad= pars[9]
+    cards= pars[10]
 
-    rcent=15
-    rad=[10,15,20]
-    skyrad=[25,30]
-    cards=['EXPTIME','FILTER','AIRMASS']
+    return process(file,red,tab,bias=bias,dark=dark,flat=flat,
+                   rad=rad,skyrad=skyrad,seeing=seeing,cards=cards)
 
-    return process(file,red,tab,bias=bias,dark=dark,flat=flat,rcent=rcent,rad=rad,skyrad=skyrad,cards=cards)
-
-def process(file,red,tab,bias=None,dark=None,flat=None,disp=None,
-            rcent=7,rad=[3,5,7],skyrad=[10,15],cards=['EXPTIME','FILTER','AIRMASS']):
+def process(file,red,tab,bias=None,dark=None,flat=None,disp=None, solve=True,
+            seeing=15,rad=[3,5,7],skyrad=[10,15],cards=['EXPTIME','FILTER','AIRMASS']):
 
     """ Process and do photometry on input file
     """
 
     # work in temporary directory
+    cwd = os.getcwd()
     try:
-      with tempfile.TemporaryDirectory() as tempdir :
+      with tempfile.TemporaryDirectory(dir='./') as tempdir :
 
-        cwd = os.getcwd()
         os.chdir(tempdir)
 
         # process file
-        a=red.reduce(file,superdark=dark,superbias=bias,superflat=flat,solve=True)
+        a=red.reduce(file,superdark=dark,superbias=bias,superflat=flat,solve=solve,seeing=seeing,display=disp)
         dateobs=Time(a.header['DATE-OBS'],format='fits')
 
         # get x,y positions from RA/DEC and load into photometry table
@@ -328,27 +332,109 @@ def process(file,red,tab,bias=None,dark=None,flat=None,disp=None,
         # re-centroid stars
         if disp is not None :
             disp.tv(a)
-            mark(disp,phot,exit=True,auto=False,color='r',new=True,rad=rcent)
-            mark(disp,phot,exit=True,auto=True,color='g',rad=rcent)
+            mark(disp,phot,exit=True,auto=False,color='r',new=True,rad=seeing/red.scale)
+            mark(disp,phot,exit=True,auto=True,color='g',rad=seeing/red.scale)
         else :
             for star in phot :
-                x,y = centroid(a.data,star['x'],star['y'],rcent)
+                x,y = centroid(a.data,star['x'],star['y'],seeing/red.scale)
                 star['x'] = x
                 star['y'] = y
 
         # do photometry 
-        try : phot=photom(a,phot,rad=rad,skyrad=skyrad)
+        try : phot=photom(a,phot,rad=rad,skyrad=skyrad,disp=disp)
         except : pass
         phot.add_column(Column([file]*len(tab),name='FILE',dtype=str))
         for card in cards :
             phot[card] = [a.header[card]]*len(tab)
-        pdb.set_trace()
         phot['MJD'] = [Time(a.header['DATE-OBS'],format='fits').mjd]*len(tab)
-    except :
-        print('Error in process')
-        pdb.set_trace()
-        phot=copy.copy(tab)
+    #except :
+    #    print('Error in process')
+    #    pdb.set_trace()
+    #    phot=copy.copy(tab)
+        os.chdir(cwd)
+    except OSError : pass
 
-    os.chdir(cwd)
     return phot
 
+def diffphot(tab,aper='aper35.0',yr=0.02) :
+    """ Make differential photometry plots
+           including airmass detrending
+    """
+    nstars = len(set(tab['id']))
+    nmjd = len(set(tab['MJD']))
+    dat = np.zeros([nmjd,nstars])
+    daterr = np.zeros([nmjd,nstars])
+    x = np.zeros([nmjd])
+    air = np.zeros([nmjd])
+
+    # two plots, one vs MJD and one vs airmass
+    fig,ax=plots.multi(nstars,nstars,figsize=(14,8))
+    airfig,airax=plots.multi(nstars,nstars,figsize=(14,8))
+
+    # loop over all MJDs
+    for i,mjd in enumerate(sorted(set(tab['MJD']))) :
+        # load up x, air, dat, and daterr arrays
+        x[i]=mjd
+        for j in range(nstars):
+            ii=np.where((tab['MJD'] == mjd) & (tab['id'] == j+1) ) [0]
+            dat[i,j] =  tab[aper][ii]
+            daterr[i,j] =  tab[aper+'err'][ii]
+            air[i] = tab['AIRMASS'][ii]
+
+    # make plots of all pairs of stars
+    for j in range(nstars) :
+        for k in range(j,nstars) :
+            diff=dat[:,j]-dat[:,k]
+            err = np.sqrt(daterr[:,j]**2+daterr[:,k]**2)
+            med=np.median(diff)
+            std=np.std(diff)
+            mad=np.median(np.abs(diff-med))
+
+            # airmass detrending fit
+            fit=np.polyfit(air,diff,1)
+            diff_fit=diff-fit[0]*(air-np.median(air))
+            med_fit=np.median(diff_fit)
+            std_fit=np.std(diff_fit)
+            mad_fit=np.median(np.abs(diff_fit-med_fit))
+
+            # plots
+            ax[j,k].scatter(x,diff,edgecolors='g',facecolors='none')
+            ax[j,k].errorbar(x,diff,yerr=err,fmt='none',color='g')
+            ax[j,k].scatter(x,diff_fit,color='b')
+            ax[j,k].errorbar(x,diff_fit,yerr=err,fmt='none',color='b')
+            ax[j,k].set_xlabel('MJD')
+            ax[j,k].set_ylim(med-yr,med+yr)
+            bd =np.where(diff>(med+yr))[0]
+            ax[j,k].scatter(x[bd],len(bd)*[med+yr-.01*yr],marker=6,color='r')
+            bd =np.where(diff<(med-yr))[0]
+            ax[j,k].scatter(x[bd],len(bd)*[med-yr+.01*yr],marker=7,color='r')
+            ax[j,k].text(0.,0.9,'std: {:.3f}  MAD: {:.3f}'.format(std,mad),transform=ax[j,k].transAxes,color='g')
+            ax[j,k].text(0.,0.1,'std: {:.3f}  MAD: {:.3f}'.format(std_fit,mad_fit),transform=ax[j,k].transAxes,color='b')
+
+            airax[j,k].scatter(air,diff,color='g')
+            airax[j,k].errorbar(air,diff,yerr=err,fmt='none',color='g')
+            airax[j,k].scatter(air,diff_fit,color='b')
+            airax[j,k].errorbar(air,diff_fit,yerr=err,fmt='none',color='b')
+            airax[j,k].set_ylim(med-yr,med+yr)
+            bd =np.where(diff>(med+yr))[0]
+            airax[j,k].scatter(air[bd],len(bd)*[med+yr-.01*yr],marker=6,color='r')
+            bd =np.where(diff<(med-yr))[0]
+            airax[j,k].scatter(air[bd],len(bd)*[med-yr+.01*yr],marker=7,color='r')
+            airax[j,k].set_xlabel('Airmass')
+            airax[j,k].text(0.,0.9,'std: {:.3f}  MAD: {:.3f}'.format(std,mad),transform=airax[j,k].transAxes,color='g')
+            airax[j,k].text(0.,0.1,'std: {:.3f}  MAD: {:.3f}'.format(std_fit,mad_fit),transform=airax[j,k].transAxes,color='b')
+
+    # remove unfilled plots
+    for j in range(nstars) :
+        for k in range(j) :
+            ax[j,k].set_visible(False)
+            airax[j,k].set_visible(False)
+
+    fig.tight_layout()
+    airfig.tight_layout()
+
+    pdb.set_trace()
+    plt.close()
+    plt.close()
+
+    return x,dat
