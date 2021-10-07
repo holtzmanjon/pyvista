@@ -5,7 +5,11 @@ gain      : [2.0]
 rn        : [10]
 biastype  : 0
 crbox     : 'lacosmic'
+scale     : 0.44
+flip     : False
 #biasbox   : [[[2052,2090],[20,2028]]]
+biasregion :
+    - [[0,4799],[0,3210]]
 biasbox   : 
     - [[100,4700],[3195,3205]]
 trimbox   : 
