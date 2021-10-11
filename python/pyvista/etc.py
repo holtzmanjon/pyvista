@@ -97,7 +97,7 @@ class Telescope :
         return (np.pi*(self.diameter/2)**2*(1-self.eps**2)).to(u.cm**2)
     
     def throughput(self,wave) :
-        """ Return telescope throughput
+        """ Return telescope throughput at input wavelengths
         """
         t=np.ones(len(wave))
         for mir in self.mirrors :
@@ -118,6 +118,8 @@ class Mirror :
         self.const = const
         
     def reflectivity(self,wave) :
+        """ Returns reflectivity at input wavelengths
+        """
         if self.type == 'const' :
             return np.ones(len(wave)) + self.const
             
@@ -134,20 +136,24 @@ class Mirror :
 class Instrument :
     """ class representing an Instrument
     """
-    def __init__(self,name='',efficiency=0.8,pixscale=1,dispersion=1*u.AA) :
+    def __init__(self,name='',efficiency=0.8,pixscale=1,dispersion=1*u.AA,rn=0) :
         self.name=name
         self.efficiency=efficiency
         self.pixscale=pixscale
         self.dispersion=dispersion
-        self.detector = Detector(efficiency=1.,rn=5)
+        self.detector = Detector(efficiency=1.,rn=rn)
             
     def throughput(self,wave) :
+        """ Returns instrument throughput at input wavelengths
+        """
         if self.name == '' :
             return np.ones(len(wave))*self.efficiency
         else :
             raise ValueError('need to implement instrument {:s}',self.name)
         
     def filter(self,wave,filter='',cent=5500*u.AA,wid=850*u.AA,trans=0.8) :
+        """ Returns filter throughput at input wavelengths
+        """
         if filter=='' :
             out = np.zeros(len(wave))
             out[np.where((wave>cent-wid/2)&(wave<cent+wid/2))] = trans
@@ -169,6 +175,8 @@ class Detector :
         self.rn=rn
     
     def throughput(self,wave) :
+        """ Returns detector efficiency at input wavelengths
+        """
         if self.name == '' :
             return np.ones(len(wave))*self.efficiency
         else :
@@ -183,12 +191,19 @@ class Atmosphere :
         self.transmission=transmission
     
     def throughput(self,wave) :
+        """ Returns atmospheric transmission at input wavelengths
+        """
         if self.name == '' :
             return np.ones(len(wave))*self.transmission
         else :
             raise ValueError('need to implement atmosphere {:s}',self.name)
 
     def emission(self,wave,moonphase) :
+        """ Returns atmospheric emission (photon flux) at input wavelengths
+        """
+        if moonphase is None :
+            return 0.
+        else :
             dat=Table.read(ROOT+'/data/etc/sky/sky_{:3.1f}.fits'.format(moonphase))
             wav=dat['lam']*u.nm
             flux=dat['flux']/u.s/u.m**2/u.arcsec**2/u.micron
@@ -217,12 +232,12 @@ class Observation :
         return photflux
     
     def counts(self) :
-        """ Return integral of photon flux
+        """ Return integrated photon flux
         """
         return np.trapz(self.photonflux(),self.wave)
 
     def back_photonflux(self) :
-        """ Return photon flux
+        """ Return photon flux for background
         """
         photflux = (self.atmos.emission(self.wave,self.phase)* 
                 self.telescope.area()*self.telescope.throughput(self.wave)*
@@ -230,6 +245,8 @@ class Observation :
         return photflux
 
     def back_counts(self) :
+        """ Return integrated photon flux for background
+        """
         return np.trapz(self.back_photonflux(),self.wave)
 
     def sn(self,t) :
@@ -243,9 +260,9 @@ class Observation :
 
     def exptime(self,sn) :
         """ Calculate exptime given S/N
-            sn**2 (St + BAt + Npix*rn**2)  = S**2*t**2
-            S**2 t**2 - sn**2*(S+BA)*t - sn**2*npix*rn**2
         """
+        #    sn**2 (St + BAt + Npix*rn**2)  = S**2*t**2
+        #    S**2 t**2 - sn**2*(S+BA)*t - sn**2*npix*rn**2
         S = self.counts().value
         npix = np.pi*self.seeing**2*self.instrument.pixscale**2
         a = S**2
@@ -263,50 +280,60 @@ class Observation :
         #t_wave = sn**2 / self.photonflux()
         return t, t_wave
                 
-
-def signal(wave=np.arange(4000,8000,5)*u.AA,teff=7000,mag=10,telescope='ARC3.5M',it=0.8,at=0.8,phase=0.0,sn=100,ft=0.8) :  
-
+def signal(wave=np.arange(4000,8000,1000)*u.AA,teff=7000,mag=10,telescope='ARC3.5M',it=0.8,at=0.8,phase=0.0,sn=100,ft=0.8,rn=0,plot=True) :  
+    """ Sets up input objects and observation for a S/N calculation
+    """
     # set up object, telescope, instrument, atmosphere
     print('Object: mag={:f}, SED: blackbody Teff={:f}'.format(mag,teff))
     obj=Object(type='bb',teff=teff,mag=mag)
-    print('Telescope: {:s}'.format(telescope))
-    tel=Telescope(name=telescope)
-    print('Instrument: efficency={:f}'.format(it))
+    if type(telescope) is str :
+        print('Telescope: {:s}'.format(telescope))
+        tel=Telescope(name=telescope)
+    else :
+        print('Telescope diameter: {:f}'.format(float(telescope.value)))
+        tel=Telescope(diameter=telescope,mirrors=[1.])
+    print('Instrument: efficency={:f} readout noise={:f}'.format(it,rn))
     inst=Instrument(efficiency=it)
     print('Filter: transmission={:f}'.format(ft))
     print('Atmosphere: transmission={:f}'.format(at))
     atmos=Atmosphere(transmission=at)
 
-    fig,ax=plots.multi(1,2,hspace=0.001)
+    if type(plot) is bool and plot :
+        fig,ax=plots.multi(1,2,hspace=0.001)
+    elif type(plot) is not bool:
+        ax = plot
+        plot = True
 
     obs=Observation(obj=obj,atmos=atmos,telescope=tel,instrument=inst,wave=wave)
-    plots.plotl(ax[0],wave,obs.photonflux())
+    if plot : plots.plotl(ax[0],wave,obs.photonflux())
     counts=obs.counts()
 
     #individual components for plotting, demonstrating use of object methods
     photflux=obj.photflux(wave)
-    plots.plotl(ax[0],wave,photflux,xt='Wavelength',yt='photon flux')
+    if plot : plots.plotl(ax[0],wave,photflux,xt='Wavelength',yt='photon flux')
     photflux*=tel.throughput(wave)*tel.area()
-    plots.plotl(ax[0],wave,photflux)
+    if plot : plots.plotl(ax[0],wave,photflux)
     photflux*=atmos.throughput(wave)
-    plots.plotl(ax[0],wave,photflux)
+    if plot : plots.plotl(ax[0],wave,photflux)
     photflux*=inst.throughput(wave)
-    plots.plotl(ax[0],wave,photflux)
+    if plot : plots.plotl(ax[0],wave,photflux)
     photflux*=inst.filter(wave,trans=ft)
-    plots.plotl(ax[0],wave,photflux)
+    if plot : plots.plotl(ax[0],wave,photflux)
     counts=obs.counts()
 
-    back = atmos.emission(wave,phase)
-    plots.plotl(ax[0],wave,back)
-    back*=tel.throughput(wave)*tel.area()
-    plots.plotl(ax[0],wave,back)
-    back*=atmos.throughput(wave)
-    plots.plotl(ax[0],wave,back)
-    back*=inst.throughput(wave)
-    plots.plotl(ax[0],wave,back)
-    back*=inst.filter(wave,trans=0.8)
-    plots.plotl(ax[0],wave,back)
-    back_counts=obs.back_counts()
+    if phase is not None :
+        back = atmos.emission(wave,phase)
+        if plot : plots.plotl(ax[0],wave,back)
+        back*=tel.throughput(wave)*tel.area()
+        if plot : plots.plotl(ax[0],wave,back)
+        back*=atmos.throughput(wave)
+        if plot : plots.plotl(ax[0],wave,back)
+        back*=inst.throughput(wave)
+        if plot : plots.plotl(ax[0],wave,back)
+        back*=inst.filter(wave,trans=0.8)
+        if plot : plots.plotl(ax[0],wave,back)
+        back_counts=obs.back_counts()
+    else: back_counts = 0.
 
     print('star counts: {:f}   background counts: {:f}'.format(counts,back_counts))
 
@@ -314,9 +341,10 @@ def signal(wave=np.arange(4000,8000,5)*u.AA,teff=7000,mag=10,telescope='ARC3.5M'
     print('S/N: ',sn1)
     t,t_wave = obs.exptime(sn=sn)
     print('exptime for SN={:f}  : {:f}'.format(sn,t))
-    plots.plotl(ax[1],wave,sn1_wave,xt='Wavelength',yt='S/N and t',label='S/N')
-    plots.plotl(ax[1],wave,t_wave,label='t for S/N={:f}'.format(sn))
-    ax[1].legend()
+    if plot : 
+        plots.plotl(ax[1],wave,sn1_wave,xt='Wavelength',yt='S/N and t',label='S/N')
+        plots.plotl(ax[1],wave,t_wave,label='t for S/N={:f}'.format(sn))
+        ax[1].legend()
     return counts
 
 
