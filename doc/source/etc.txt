@@ -1,0 +1,47 @@
+ETC module
+**********
+
+Introduction
+++++++++++++
+
+etc is a module with tools for exposure time calculation.
+
+It allows a user to set up Object, Atmosphere, Telescope,
+Instrument, and Observation objects, and then use the
+latter to calculate the flux from an object, an exposure time 
+given a desired S/N, or S/N given an exposure time.
+
+etc works in both a spectral mode, giving S/N per pixel
+(given a dispersion), and also an imaging mode, in which
+the spectrum is integrated over.
+
+Usage
++++++
+
+The user instatiates Object, Atmosphere, Telescope, and
+Instrument objects. 
+
+The Object object specifies a magnitude and SED.
+
+The Atmosphere object specifies a moon phase. Emission
+spectra are taken from the ESO sky calculator for moon
+phase (to the closest 0.1). 
+
+The Telescope object takes a telescope name or a
+diameter.
+
+The Instrument object takes an instrument name or a
+single, wavelength-independent throughput.
+
+These are then passed when an
+Observation object is instatiated.
+
+
+
+Module functions
+++++++++++++++++
+.. automodule:: pyvista.etc
+   :members:
+
+
+

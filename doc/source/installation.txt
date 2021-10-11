@@ -8,14 +8,26 @@ the project from gihub:
 
    git clone https://github.com/holtzmanjon/pyvista
 
-Note that pyvista has several dependencies for your Python environment:
+Note that pyvista has several dependencies for different packages
    - numpy
    - scipy
    - astropy
    - bz2
-   - autopy (optional but valuable, for keystroke controlled moves in the display)
+   - autopy (for tv: optional but valuable, for keystroke controlled moves in the display)
+   - ccdproc (required for imred)
+   - photutils (required for stars)
 
-Once downloaded, define an environment variable PYVISTA_DIR that refers to the top
+Installation into Python distribution
+-------------------------------------
+Once downloaded, you can install with the usual
+
+.. code-block::
+
+   python setup.py install
+
+Installation using environment variables
+----------------------------------------
+Alternatively, define an environment variable PYVISTA_DIR that refers to the top
 level pyvista directory, e.g.
 
 .. code-block:: 
@@ -46,6 +58,9 @@ In sh/bash:
 
 To keep these definitions across all new sessions, add these to your .cshrc/.tcshrc or
 .bashrc/.profile file.
+
+Installation using modules
+--------------------------
 
 Alternatively, use a package management system, e.g., modules, to set these
 variables when the package is loaded. There is a sample modules file in
