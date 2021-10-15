@@ -522,14 +522,13 @@ class Reducer() :
         """ try to get plate solution with imwcs
         """
         if self.verbose : print('  plate solving ....')
-        ra=im.header['RA'].replace(' ',':')
-        dec=im.header['DEC'].replace(' ',':')
-        tmpfile=tempfile.mkstemp(dir='./')
-        im.write(tmpfile[1]+'.fits')
-        mad=np.median(np.abs(im-np.median(im)))
+
+        # find stars
+        mad=np.nanmedian(np.abs(im-np.nanmedian(im)))
         daofind=DAOStarFinder(fwhm=seeing/scale,threshold=10*mad)
-        objs=daofind(im.data-np.median(im.data))
-        objs.sort(['mag'])
+        objs=daofind(im.data-np.nanmedian(im.data))
+        try: objs.sort(['mag'])
+        except: pdb.set_trace()
         gd=np.where((objs['xcentroid']>50)&(objs['ycentroid']>50)&
                     (objs['xcentroid']<im.data.shape[1]-50)&
                     (objs['ycentroid']<im.data.shape[0]-50))[0]
@@ -538,16 +537,23 @@ class Reducer() :
             objs['x'] = objs['xcentroid']
             objs['y'] = objs['ycentroid']
             stars.mark(display,objs[gd],exit=True)
+        tmpfile=tempfile.mkstemp(dir='./')
         objs.write(os.path.basename(tmpfile[1])+'xy.fits')
+
+        # solve with astrometry.net routines
+        ra=im.header['RA'].replace(' ',':')
+        dec=im.header['DEC'].replace(' ',':')
         rad=15*(float(ra.split(':')[0])+float(ra.split(':')[1])/60.+float(ra.split(':')[2])/3600.)
         decd=(float(dec.split(':')[0])+float(dec.split(':')[1])/60.+float(dec.split(':')[2])/3600.)
         cmd=('/usr/local/astrometry/bin/solve-field'+
             ' --scale-units arcsecperpix --scale-low {:f} --scale-high {:f}'+
             ' -X xcentroid -Y ycentroid -w 4800 -e 3000 --overwrite'+
-            ' --ra 329 --dec 55 --radius 3 {:s}xy.fits').format(
-              .9*scale,1.1*scale,os.path.basename(tmpfile[1]))
+            ' --ra {:f} --dec {:f} --radius 3 {:s}xy.fits').format(
+              .9*scale,1.1*scale,rad,decd,os.path.basename(tmpfile[1]))
         print(cmd)
         ret = subprocess.call(cmd.split())
+
+        # get WCS
         header=fits.open(os.path.basename(tmpfile[1])+'xy.wcs')[0].header
         w=WCS(header)
         im.wcs=w
@@ -557,6 +563,7 @@ class Reducer() :
         ret = subprocess.call(cmd.split())
         pdb.set_trace()
 
+        im.write(tmpfile[1]+'.fits')
         if flip : 
             arg=''
             objs['xcentroid'] = im.data.shape[1]-1-objs['xcentroid']
@@ -597,7 +604,6 @@ class Reducer() :
             display.tvcirc(xx,yy,rad=5,color='g')
 
         """
-        os.remove(tmpfile[1]+'.fits')
         for f in glob.glob(os.path.basename(tmpfile[1])+'*') :
             os.remove(f)
         if display is not None :
@@ -614,7 +620,7 @@ class Reducer() :
             display.tv(im)
 
     def reduce(self,num,crbox=None,superbias=None,superdark=None,superflat=None,
-               scat=None,badpix=None,solve=False,return_list=False,display=None,trim=False,seeing=None) :
+               scat=None,badpix=None,solve=False,return_list=False,display=None,trim=False,seeing=2) :
         """ Full reduction
         """
         im=self.rd(num)
