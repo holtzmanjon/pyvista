@@ -352,7 +352,7 @@ class Reducer() :
          else : superbiases = superbias
          out=[]
          for im,bias in zip(ims,superbiases) :
-             if self.verbose : print('  subtracting superbias...')
+             if self.verbose : print('  subtracting bias...')
              out.append(ccdproc.subtract_bias(im,bias))
          if len(out) == 1 : return out[0]
          else : return out
@@ -370,7 +370,7 @@ class Reducer() :
          else : superdarks = superdark
          out=[]
          for im,dark in zip(ims,superdarks) :
-             if self.verbose : print('  subtracting superdark...')
+             if self.verbose : print('  subtracting dark...')
              out.append(ccdproc.subtract_dark(im,dark,exposure_time='EXPTIME',exposure_unit=u.s))
          if len(out) == 1 : return out[0]
          else : return out
@@ -619,16 +619,16 @@ class Reducer() :
         for i, im in enumerate(ims) :
             display.tv(im)
 
-    def reduce(self,num,crbox=None,superbias=None,superdark=None,superflat=None,
+    def reduce(self,num,crbox=None,bias=None,dark=None,flat=None,
                scat=None,badpix=None,solve=False,return_list=False,display=None,trim=False,seeing=2) :
         """ Full reduction
         """
         im=self.rd(num)
         self.overscan(im,display=display)
-        im=self.bias(im,superbias=superbias)
-        im=self.dark(im,superdark=superdark)
+        im=self.bias(im,superbias=bias)
+        im=self.dark(im,superdark=dark)
         self.scatter(im,scat=scat,display=display)
-        im=self.flat(im,superflat=superflat,display=display)
+        im=self.flat(im,superflat=flat,display=display)
         self.badpix_fix(im,val=badpix)
         if trim and display is not None: display.tvclear()
       
@@ -768,20 +768,20 @@ class Reducer() :
            else : return out[0]
         else : return out
 
-    def mksuperbias(self,ims,display=None,scat=None) :
-        """ Driver for superbias combination (no superbias subraction no normalization)
+    def mkbias(self,ims,display=None,scat=None) :
+        """ Driver for superbias combination (no superbias subtraction no normalization)
         """
         return self.median(ims,display=display,div=False,scat=scat)
 
-    def mksuperdark(self,ims,superbias=None,display=None,scat=None) :
+    def mkdark(self,ims,bias=None,display=None,scat=None) :
         """ Driver for superdark combination (no normalization)
         """
-        return self.median(ims,superbias=superbias,display=display,div=False,scat=scat)
+        return self.median(ims,bias=bias,display=display,div=False,scat=scat)
 
-    def mksuperflat(self,ims,superbias=None,superdark=None,scat=None,display=None) :
+    def mkflat(self,ims,bias=None,dark=None,scat=None,display=None) :
         """ Driver for superflat combination (with superbias if specified, normalize to normbox
         """
-        return self.median(ims,superbias=superbias,superdark=superdark,normalize=True,scat=scat,display=display)
+        return self.median(ims,bias=bias,dark=dark,normalize=True,scat=scat,display=display)
 
     def mkspecflat(self,flats,wid=101) :
         """ Spectral flat takes out variation along wavelength direction
