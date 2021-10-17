@@ -1,7 +1,7 @@
 ---
 channels  : ['']
 formstr   : ['{:04d}']
-gain      : [2.0]
+gain      : [0.8]
 rn        : [10]
 biastype  : 0
 crbox     : 'lacosmic'
