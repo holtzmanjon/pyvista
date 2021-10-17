@@ -501,7 +501,11 @@ class TV:
         # img.changed()
         # plt.draw()
 
-            
+    def tvtext(self,x,y,text,color='m',ha='center',va='center') :
+        """ Annotates with text
+        """
+        self.ax.text(x,y,text,ha=ha,va=va,color=color)
+
     def tvcirc(self,x,y,rad=3,color='m') :
         """
         displays a circle on an image
