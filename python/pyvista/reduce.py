@@ -105,7 +105,7 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                     try : superbias = sbias[wavecal['bias']]
                     except KeyError: superbias = None
                     arcs=red.sum(wavecal['frames'],return_list=True, 
-                                 superbias=superbias, crbox=[5,1], 
+                                 bias=superbias, crbox=[5,1], 
                                  display=display)
 
                     print('  extract wavecal')
@@ -194,9 +194,9 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                         if display is not None : display.tvclear()
                         if threads == 0 :
                             # if not multiprocessing, then do the reduction
-                            frames=red.reduce(id,superbias=superbias,
-                                             superdark=superdark,
-                                             superflat=superflat,
+                            frames=red.reduce(id,bias=superbias,
+                                             dark=superdark,
+                                             flat=superflat,
                                              scat=red.scat,
                                              crbox=red.crbox,
                                              trim=True,
@@ -240,13 +240,13 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                     for iframe,id in enumerate(obj['frames']) : 
                         if display is not None : display.clear() 
                         print("extracting object {}".format(id))
-                        frames=red.reduce(id,superbias=superbias,superdark=superdark,
-                                          superflat=superflat,scat=red.scat,
+                        frames=red.reduce(id,bias=bias,dark=superdark,
+                                          flat=superflat,scat=red.scat,
                                           return_list=True,crbox=red.crbox,display=display) 
                         if 'skyframes' in obj :
                             id = obj['skyframes'][iframe]
-                            skyframes=red.reduce(id,superbias=superbias,superdark=superdark,
-                                                 superflat=superflat,scat=red.scat,
+                            skyframes=red.reduce(id,bias=superbias,dark=superdark,
+                                                 flat=superflat,scat=red.scat,
                                                  return_list=True,crbox=red.crbox,display=display) 
                             for iframe,(frame,skyframe) in enumerate(zip(frames,skyframes)) : 
                                 header = frame.header
@@ -314,7 +314,7 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
 #    if type(traces) is not list : traces = [traces]
 #    pdb.set_trace()
 #    for id in group['objects']['extract2d']['frames'] : 
-#        frames=red.reduce(id,superbias=sbias,superdark=sdark,superflat=sflat,scat=red.scat,return_list=True) 
+#        frames=red.reduce(id,bias=sbias,dark=sdark,flat=sflat,scat=red.scat,return_list=True) 
 #        for frame,trace in zip(frames,traces) :
 #            out=trace.extract2d(frame,plot=t)
 
@@ -380,11 +380,11 @@ def mkcal(cals,caltype,reducer,reddir,sbias=None,sdark=None,clobber=False,
                 except :
                     # make calibration product from raw data frames
                     if caltype == 'bias' :
-                        scal = reducer.mksuperbias(cal['frames'],**kwargs)
+                        scal = reducer.mkbias(cal['frames'],**kwargs)
                     elif caltype == 'dark' :
-                        scal = reducer.mksuperdark(cal['frames'],superbias=superbias,**kwargs)
+                        scal = reducer.mkdark(cal['frames'],bias=superbias,**kwargs)
                     elif caltype == 'flat' :
-                        scal = reducer.mksuperflat(cal['frames'],superbias=superbias,superdark=superdark,**kwargs)
+                        scal = reducer.mkflat(cal['frames'],bias=superbias,dark=superdark,**kwargs)
                         try: 
                             if cal['specflat'] : scal = reducer.mkspecflat(scal)
                         except: pass
@@ -410,9 +410,9 @@ def mkcal(cals,caltype,reducer,reddir,sbias=None,sdark=None,clobber=False,
 def process_thread(pars) :
 
     red,id,superbias,superdark,superflat,scat,crbox,trim,solve,reddir = pars
-    frames= red.reduce(id, superbias=superbias,
-                          superdark=superdark,
-                          superflat=superflat,
+    frames= red.reduce(id, bias=superbias,
+                          dark=superdark,
+                          flat=superflat,
                           scat=red.scat,
                           crbox=red.crbox,
                           trim=True,
