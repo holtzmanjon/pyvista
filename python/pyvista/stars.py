@@ -1,6 +1,7 @@
 # routines to deal with stellar images
 
 import copy
+import glob
 import numpy as np
 import pdb
 import astropy
@@ -12,13 +13,13 @@ from astropy.io import fits
 from astropy.table import Table, Column, vstack
 from astropy.nddata import support_nddata
 from astropy.time import Time
-from pyvista import mmm
+from pyvista import mmm, tv
 from astropy.stats import sigma_clipped_stats
 from photutils import CircularAperture, CircularAnnulus,aperture_photometry
 from tools import plots
 import matplotlib.pyplot as plt
 
-def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False):
+def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False):
     """ Interactive mark stars on TV, or recenter current list 
 
     Args : 
@@ -57,7 +58,9 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False):
                     try: star[card] = tv.hdr[card]
                     except: pass
         # display stars
-        for star in stars : tv.tvcirc(star['x'],star['y'],rad,color=color)
+        for star in stars : 
+            tv.tvcirc(star['x'],star['y'],rad,color=color)
+            if id : tv.tvtext(star['x'],star['y'],star['id'],color=color)
         if exit : return stars
 
     istar=len(stars)+1
@@ -320,7 +323,8 @@ def process(file,red,tab,bias=None,dark=None,flat=None,disp=None, solve=True,
         os.chdir(tempdir)
 
         # process file
-        a=red.reduce(file,superdark=dark,superbias=bias,superflat=flat,solve=solve,seeing=seeing,display=disp)
+        a=red.reduce(file,dark=dark,bias=bias,flat=flat,solve=solve,
+                     seeing=seeing,display=disp)
         dateobs=Time(a.header['DATE-OBS'],format='fits')
 
         # get x,y positions from RA/DEC and load into photometry table
@@ -332,7 +336,8 @@ def process(file,red,tab,bias=None,dark=None,flat=None,disp=None, solve=True,
         # re-centroid stars
         if disp is not None :
             disp.tv(a)
-            mark(disp,phot,exit=True,auto=False,color='r',new=True,rad=seeing/red.scale)
+            mark(disp,phot,exit=True,auto=False,color='r',new=True,
+                 rad=seeing/red.scale)
             mark(disp,phot,exit=True,auto=True,color='g',rad=seeing/red.scale)
         else :
             for star in phot :
@@ -342,7 +347,8 @@ def process(file,red,tab,bias=None,dark=None,flat=None,disp=None, solve=True,
 
         # do photometry 
         try : phot=photom(a,phot,rad=rad,skyrad=skyrad,disp=disp)
-        except : pass
+        except : 
+            print('Error with photom')
         phot.add_column(Column([file]*len(tab),name='FILE',dtype=str))
         for card in cards :
             phot[card] = [a.header[card]]*len(tab)
@@ -352,9 +358,40 @@ def process(file,red,tab,bias=None,dark=None,flat=None,disp=None, solve=True,
     #    pdb.set_trace()
     #    phot=copy.copy(tab)
         os.chdir(cwd)
-    except OSError : pass
+    except OSError : 
+        print('OSError')
 
     return phot
+
+def dostar(red,obj,date,filt='SR+D25',seeing=12,dark=None,flat=None,
+               rad=np.arange(5,45,5), skyrad=[50,60],clobber=False) :
+
+    if dark == None : print('No dark frame')
+    if flat == None : print('No flat frame')
+    
+    try : tab = Table.read(obj+'.fits')
+    except : tab=None
+
+    files= glob.glob(red.dir+'/*'+obj+'*'+filt+'*')
+    files.sort()
+    if tab == None :
+        print('no existing star table ....')
+        out = red.reduce(files[0],dark=dark,flat=flat,solve=True,seeing=seeing)
+        t=tv.TV()
+        t.tv(out)
+        print('mark desired stars...')
+        tab=mark(t,rad=seeing/red.scale)
+        add_coord(out,tab)
+        tab.write(obj+'.fits')
+       
+    if not os.path.exists(obj+'.'+date+'.fits') or clobber :
+        out = process_all(files,red,tab,flat=flat,dark=dark,seeing=seeing,
+                          rad=rad,skyrad=skyrad,threads=32)
+        out.write(obj+'.'+date+'.fits')
+    else :
+        out=Table.read(obj+'.'+date+'.fits')
+
+    diffphot(out)
 
 def diffphot(tab,aper='aper35.0',yr=0.02) :
     """ Make differential photometry plots
@@ -368,8 +405,8 @@ def diffphot(tab,aper='aper35.0',yr=0.02) :
     air = np.zeros([nmjd])
 
     # two plots, one vs MJD and one vs airmass
-    fig,ax=plots.multi(nstars,nstars,figsize=(14,8))
-    airfig,airax=plots.multi(nstars,nstars,figsize=(14,8))
+    fig,ax=plots.multi(nstars,nstars,figsize=(14,8),hspace=0.001,wspace=0.5)
+    airfig,airax=plots.multi(nstars,nstars,figsize=(14,8),hspace=0.001,wspace=0.5)
 
     # loop over all MJDs
     for i,mjd in enumerate(sorted(set(tab['MJD']))) :
@@ -408,8 +445,10 @@ def diffphot(tab,aper='aper35.0',yr=0.02) :
             ax[j,k].scatter(x[bd],len(bd)*[med+yr-.01*yr],marker=6,color='r')
             bd =np.where(diff<(med-yr))[0]
             ax[j,k].scatter(x[bd],len(bd)*[med-yr+.01*yr],marker=7,color='r')
-            ax[j,k].text(0.,0.9,'std: {:.3f}  MAD: {:.3f}'.format(std,mad),transform=ax[j,k].transAxes,color='g')
-            ax[j,k].text(0.,0.1,'std: {:.3f}  MAD: {:.3f}'.format(std_fit,mad_fit),transform=ax[j,k].transAxes,color='b')
+            ax[j,k].text(0.,0.9,'std: {:.3f}  MAD: {:.3f}'.format(std,mad),
+                         transform=ax[j,k].transAxes,color='g')
+            ax[j,k].text(0.,0.1,'std: {:.3f}  MAD: {:.3f}'.format(
+                      std_fit,mad_fit),transform=ax[j,k].transAxes,color='b')
 
             airax[j,k].scatter(air,diff,color='g')
             airax[j,k].errorbar(air,diff,yerr=err,fmt='none',color='g')
@@ -417,12 +456,16 @@ def diffphot(tab,aper='aper35.0',yr=0.02) :
             airax[j,k].errorbar(air,diff_fit,yerr=err,fmt='none',color='b')
             airax[j,k].set_ylim(med-yr,med+yr)
             bd =np.where(diff>(med+yr))[0]
-            airax[j,k].scatter(air[bd],len(bd)*[med+yr-.01*yr],marker=6,color='r')
+            airax[j,k].scatter(air[bd],len(bd)*[med+yr-.01*yr],
+                               marker=6,color='r')
             bd =np.where(diff<(med-yr))[0]
-            airax[j,k].scatter(air[bd],len(bd)*[med-yr+.01*yr],marker=7,color='r')
+            airax[j,k].scatter(air[bd],len(bd)*[med-yr+.01*yr],
+                               marker=7,color='r')
             airax[j,k].set_xlabel('Airmass')
-            airax[j,k].text(0.,0.9,'std: {:.3f}  MAD: {:.3f}'.format(std,mad),transform=airax[j,k].transAxes,color='g')
-            airax[j,k].text(0.,0.1,'std: {:.3f}  MAD: {:.3f}'.format(std_fit,mad_fit),transform=airax[j,k].transAxes,color='b')
+            airax[j,k].text(0.,0.9,'std: {:.3f}  MAD: {:.3f}'.format(std,mad),
+                            transform=airax[j,k].transAxes,color='g')
+            airax[j,k].text(0.,0.1,'std: {:.3f}  MAD: {:.3f}'.format(
+                    std_fit,mad_fit),transform=airax[j,k].transAxes,color='b')
 
     # remove unfilled plots
     for j in range(nstars) :
@@ -430,8 +473,10 @@ def diffphot(tab,aper='aper35.0',yr=0.02) :
             ax[j,k].set_visible(False)
             airax[j,k].set_visible(False)
 
-    fig.tight_layout()
-    airfig.tight_layout()
+    #fig.tight_layout()
+    #plt.draw()
+    #airfig.tight_layout()
+    #plt.draw()
 
     pdb.set_trace()
     plt.close()
