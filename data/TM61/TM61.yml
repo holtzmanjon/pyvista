@@ -1,6 +1,6 @@
 ---
 channels  : ['']
-formstr   : ['{:04d}']
+formstr   : [' {:d}']
 gain      : [0.8]
 rn        : [10]
 biastype  : 0
