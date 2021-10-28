@@ -131,7 +131,7 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                                 arcec=wtrace.extract(arc,plot=display,rad=20)
                                 arcec.data = arcec.data - \
                                    scipy.signal.medfilt(arcec.data,kernel_size=[1,101])
-                                wcal.identify(spectrum=arcec, rad=7, plot=plot,
+                                wcal.identify(spectrum=arcec, rad=3, plot=plot,
                                               display=display,
                                               lags=range(-500,500),file=file)
                                 wcal.fit()
@@ -147,8 +147,9 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                                               nskip=5,lags=range(-50,50))
    
                             wcal.fit()
-                            delattr(wcal,'ax')
-                            delattr(wcal,'fig')
+                            if plot is not None :
+                                delattr(wcal,'ax')
+                                delattr(wcal,'fig')
                             waves_channel.append(wcal)
                         waves_all.append(waves_channel)
                         if display is not None : display.clear()
@@ -240,7 +241,7 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                     for iframe,id in enumerate(obj['frames']) : 
                         if display is not None : display.clear() 
                         print("extracting object {}".format(id))
-                        frames=red.reduce(id,bias=bias,dark=superdark,
+                        frames=red.reduce(id,bias=superbias,dark=superdark,
                                           flat=superflat,scat=red.scat,
                                           return_list=True,crbox=red.crbox,display=display) 
                         if 'skyframes' in obj :
