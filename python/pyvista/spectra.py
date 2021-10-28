@@ -476,7 +476,7 @@ class Trace() :
         if model is not None : self.model=model
         if sc0 is not None : self.sc0=sc0
 
-    def trace(self,hd,srows,sc0=None,plot=None,thresh=20) :
+    def trace(self,hd,srows,sc0=None,plot=None,thresh=20,rows=True) :
         """ Trace a spectrum from starting position
         """
 
