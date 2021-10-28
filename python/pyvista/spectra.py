@@ -87,6 +87,7 @@ class WaveCal() :
         self.weights = None
         self.model = None
         self.ax = None
+        self.spectrum = None
 
     def wave(self,pixels=None,image=None) :
         """ Wavelength from pixel using wavelength solution model
@@ -112,7 +113,8 @@ class WaveCal() :
                     rows=np.zeros(len(cols))+row
                     try : order = self.orders[row]
                     except : order=self.orders[0]
-                    out[row,:] = self.model(cols-self.pix0,rows)/order
+                    try: out[row,:] = self.model(cols-self.pix0,rows)/order
+                    except: out[row,:] = self.model(cols-self.pix0)/self.orders[0]
             else :
                 out= self.model(cols-self.pix0)/self.orders[0]
             return out
@@ -192,7 +194,8 @@ class WaveCal() :
 
                     # replot spectrum with new fit wavelength scale
                     self.ax[0].cla()
-                    self.ax[0].plot(self.wave(image=self.spectrum.data.shape)[0,:],self.spectrum.data[0,:])
+                    #self.ax[0].plot(self.wave(image=self.spectrum.data.shape)[0,:],self.spectrum.data[0,:])
+                    self.ax[0].plot(self.wave(image=self.spectrum.data.shape[1]),self.spectrum.data[0,:])
                     # plot residuals
                     self.ax[1].cla()
                     self.ax[1].plot(self.waves[gd],diff[gd],'go')
@@ -281,6 +284,7 @@ class WaveCal() :
                     # single shift for all pixels
                     self.pix0 = self.pix0+fitpeak+lags[0]
                     wav=np.atleast_2d(self.wave(image=np.array(sz)))
+                    #wav=np.atleast_2d(self.wave(image=sz))
                 else :
                     # different shift for each row
                     wav=np.zeros(sz)
@@ -297,22 +301,26 @@ class WaveCal() :
                         wav[row,:] = self.model(cols-pix0)/order
                     # ensure we have 2D fit
                     self.type = 'chebyshev2D'
+                    self.model = None
                     self.orders = orders
                     print("")
             else :
                 # get dispersion guess from header cards if not given in disp
-                if disp is None: disp=hd.header['DISPDW']
+                if disp is None: disp=spectrum.header['DISPDW']
                 if wref is not None :
                     w0=wref[0]
                     pix0=wref[1]
                 else:
-                    w0=hd.header['DISPWC']
+                    w0=spectrum.header['DISPWC']
                     pix0=sz[1]/2 
                 wav=np.atleast_2d(w0+(pix-pix0)*disp)
 
         # open file with wavelengths and read
         if file is not None :
-            f=open(ROOT+'/data/lamps/'+file,'r')
+            if file.find('/') < 0 :
+                f=open(ROOT+'/data/lamps/'+file,'r')
+            else :
+                f=open(file,'r')
             lines=[]
             for line in f :
                 if line[0] != '#' :
@@ -370,10 +378,23 @@ class WaveCal() :
                 if isinstance(display,pyvista.tv.TV) :
                     if (peak > xmin+rad) and (peak < xmax-rad) : display.ax.scatter(peak,row,marker='o',color='r',s=2)
                 if ( (peak > xmin+rad) and (peak < xmax-rad) and 
-                     ((spectrum.data[row,peak-rad:peak+rad]/spectrum.uncertainty.array[row,peak-rad:peak+rad]).max() > thresh) ) :
-                    cent = (spectrum.data[row,peak-rad:peak+rad]*np.arange(peak-rad,peak+rad)).sum()/spectrum.data[row,peak-rad:peak+rad].sum()
-                    peak = int(cent)
-                    cent = (spectrum.data[row,peak-rad:peak+rad]*np.arange(peak-rad,peak+rad)).sum()/spectrum.data[row,peak-rad:peak+rad].sum()
+                     ((spectrum.data[row,peak-rad:peak+rad+1]/spectrum.uncertainty.array[row,peak-rad:peak+rad+1]).max() > thresh) ) :
+
+                    oldpeak = 0
+                    niter=0
+                    #plt.figure()
+                    xx = np.arange(peak-rad,peak+rad+1)
+                    #plt.plot(xx,spectrum.data[row,peak-rad:peak+rad+1])
+                    while peak != oldpeak and  niter<10:
+                      poly= np.polyfit(np.arange(peak-rad,peak+rad+1),spectrum.data[row,peak-rad:peak+rad+1],2)
+                      cent = -poly[1]/2/poly[0]
+                      #plt.plot(xx,poly[0]*xx**2+poly[1]*xx+poly[2])
+                      #plt.draw()
+                      #cent = (spectrum.data[row,peak-rad:peak+rad]*np.arange(peak-rad+1,peak+rad+1)).sum()/spectrum.data[row,peak-rad:peak+rad+1].sum()
+                      oldpeak = peak
+                      peak = int(cent)
+                      niter+=1
+                    if niter == 10 : continue
                     if display is not None and  isinstance(display,pyvista.tv.TV) :
                         display.ax.scatter(cent,row,marker='o',color='g',s=2)
                     if plot is not None :
@@ -465,8 +486,8 @@ class Trace() :
             self.rows = [[135,235],[295,395],[435,535],[560,660],[735,830]]
             self.lags = range(-75,75) 
         elif inst == 'DIS' :
-            if channel == 0 : self.rows=[[215,915]]
-            elif channel == 1 : self.rows=[[100,800]]
+            if channel == 0 : self.rows=[215,915]
+            elif channel == 1 : self.rows=[100,800]
             else : raise ValueError('need to specify channel')
             self.lags = range(-300,300) 
         elif inst == 'ARCES' :
@@ -549,7 +570,7 @@ class Trace() :
             gd = np.where((~ymask) & (ysum/np.sqrt(yvar)>thresh) & (np.abs(res)<1))[0]
             model=(fitter(mod,cols[gd],ypos[gd]))
             if len(gd) < 10 : 
-                print('  failed trace for row: {:d}, using old model'.format(irow))
+                print('  failed trace for row: {:d}'.format(irow))
                 #model=copy.copy(oldmodel[irow])
             self.model.append(model)
 
@@ -619,25 +640,30 @@ class Trace() :
             plot.tv(hd)
 
         for i,model in enumerate(self.model) :
-            print('  extracting aperture {:d}'.format(i),end='\r')
             cr=model(np.arange(ncols))+self.pix0
+            print('  extracting aperture {:d}'.format(i),end='\r')
             icr=np.round(cr).astype(int)
             rfrac=cr-icr+0.5   # add 0.5 because we rounded
             rlo=[]
             rhi=[]
             for col in range(ncols) :
-                r1=icr[col]-rad
-                r2=icr[col]+rad
-                # sum inner pixels directly, outer pixels depending on fractional pixel location of trace
-                if r1>=0 and r2<nrows :
-                    spec[i,col]=np.sum(hd.data[r1+1:r2,col])
-                    sig[i,col]=np.sum(hd.uncertainty.array[r1+1:r2,col]**2)
-                    spec[i,col]+=hd.data[r1,col]*(1-rfrac[col])
-                    sig[i,col]+=hd.uncertainty.array[r1,col]**2*(1-rfrac[col])
-                    spec[i,col]+=hd.data[r2,col]*rfrac[col]
-                    sig[i,col]+=hd.uncertainty.array[r2,col]**2*rfrac[col]
-                    sig[i,col]=np.sqrt(sig[i,col])
-                    mask[i,col] = np.any(hd.mask[r1:r2+1,col]) 
+                try :
+                    r1=icr[col]-rad
+                    r2=icr[col]+rad
+                    # sum inner pixels directly
+                    # outer pixels depending on fractional pixel location of trace
+                    if r1>=0 and r2<nrows :
+                        spec[i,col]=np.sum(hd.data[r1+1:r2,col])
+                        sig[i,col]=np.sum(hd.uncertainty.array[r1+1:r2,col]**2)
+                        spec[i,col]+=hd.data[r1,col]*(1-rfrac[col])
+                        sig[i,col]+=hd.uncertainty.array[r1,col]**2*(1-rfrac[col])
+                        spec[i,col]+=hd.data[r2,col]*rfrac[col]
+                        sig[i,col]+=hd.uncertainty.array[r2,col]**2*rfrac[col]
+                        sig[i,col]=np.sqrt(sig[i,col])
+                        mask[i,col] = np.any(hd.mask[r1:r2+1,col]) 
+                except : 
+                    print('      extraction failed')
+                    mask[i,col] = True
                 if plot is not None :
                     rlo.append(r1)
                     rhi.append(r2-1)
@@ -668,6 +694,8 @@ class Trace() :
         if plot is not None:
             plot.clear()
             plot.tv(hd)
+        if rows != None : self.rows = rows
+
         for model in self.model :
             if plot is not None :
                 plot.ax.plot([0,ncols],[self.rows[0],self.rows[0]],color='g')
