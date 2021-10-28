@@ -16,7 +16,7 @@ from astropy.time import Time
 from pyvista import mmm, tv
 from astropy.stats import sigma_clipped_stats
 from photutils import CircularAperture, CircularAnnulus,aperture_photometry
-from tools import plots
+from tools import plots,html
 import matplotlib.pyplot as plt
 
 def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False):
@@ -363,37 +363,43 @@ def process(file,red,tab,bias=None,dark=None,flat=None,disp=None, solve=True,
 
     return phot
 
-def dostar(red,obj,date,filt='SR+D25',seeing=12,dark=None,flat=None,
+def dostar(red,obj,date,filts=['SR+D25'],seeing=12,dark=None,flats=[None],
                rad=np.arange(5,45,5), skyrad=[50,60],clobber=False) :
 
     if dark == None : print('No dark frame')
-    if flat == None : print('No flat frame')
-    
     try : tab = Table.read(obj+'.fits')
     except : tab=None
 
-    files= glob.glob(red.dir+'/*'+obj+'*'+filt+'*')
-    files.sort()
-    if tab == None :
-        print('no existing star table ....')
-        out = red.reduce(files[0],dark=dark,flat=flat,solve=True,seeing=seeing)
-        t=tv.TV()
-        t.tv(out)
-        print('mark desired stars...')
-        tab=mark(t,rad=seeing/red.scale)
-        add_coord(out,tab)
-        tab.write(obj+'.fits')
-       
-    if not os.path.exists(obj+'.'+date+'.fits') or clobber :
-        out = process_all(files,red,tab,flat=flat,dark=dark,seeing=seeing,
-                          rad=rad,skyrad=skyrad,threads=32)
-        out.write(obj+'.'+date+'.fits')
-    else :
-        out=Table.read(obj+'.'+date+'.fits')
 
-    diffphot(out)
+    grid=[]
+    for filt,flat in zip(filts,flats) :
+        if flat == None : print('No flat frame')
+    
+        files= glob.glob(red.dir+'/*'+obj+'*'+filt+'*')
+        files.sort()
+        if tab == None :
+            print('no existing star table ....')
+            out = red.reduce(files[0],dark=dark,flat=flat,solve=True,seeing=seeing)
+            t=tv.TV()
+            t.tv(out)
+            print('mark desired stars...')
+            tab=mark(t,rad=seeing/red.scale)
+            add_coord(out,tab)
+            tab.write(obj+'.fits')
+      
+        sav='{:s}.{:s}.{:s}'.format(obj,date,filt) 
+        if not os.path.exists(sav+'.fits') or clobber :
+            out = process_all(files,red,tab,flat=flat,dark=dark,seeing=seeing,
+                              rad=rad,skyrad=skyrad,threads=32)
+            out.write(sav+'.fits',overwrite=True)
+        else :
+            out=Table.read(sav+'.fits')
 
-def diffphot(tab,aper='aper35.0',yr=0.02) :
+        diffphot(out,title=sav, hard=sav)
+        grid.append([sav+'_mjd.png',sav+'_air.png'])
+    html.htmltab(grid,file=obj+'.'+date+'.html')
+
+def diffphot(tab,aper='aper35.0',yr=0.02,title=None,hard=None) :
     """ Make differential photometry plots
            including airmass detrending
     """
@@ -472,6 +478,14 @@ def diffphot(tab,aper='aper35.0',yr=0.02) :
         for k in range(j) :
             ax[j,k].set_visible(False)
             airax[j,k].set_visible(False)
+
+    if title != None : 
+        fig.suptitle(title)
+        airfig.suptitle(title)
+
+    if hard != None :
+        fig.savefig(hard+'_mjd.png')
+        airfig.savefig(hard+'_air.png')
 
     #fig.tight_layout()
     #plt.draw()
