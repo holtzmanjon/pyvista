@@ -279,13 +279,17 @@ class TV:
             elif event.key == '#' :
                 xlim = self.ax.get_xlim()
                 ylim = self.ax.get_ylim()
+                if (xlim[1]-xlim[0]) > 32 or (ylim[1]-ylim[0]) > 32 :
+                    print('too many pixels to label, zoom in further first')
+                    return
                 for ix in range(int(xlim[0]),int(xlim[1])) :
                     for iy in range(int(ylim[0]),int(ylim[1])) :
                         self.ax.text(ix,iy,'{:d}'.format(int(self.aximage.get_array()[iy,ix])),ha='center',va='center')
                 plt.draw()
+                print('use $ to remove pixel label values')
 
             elif event.key == '$' :
-                for text in self.ax.texts : text.set_visible(not text.get_visible())
+                for text in self.ax.texts : text.set_visible(False)
                 plt.draw()
 
             elif event.key == 'h' or event.key == '?' :
