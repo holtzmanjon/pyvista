@@ -337,8 +337,6 @@ class Reducer() :
             else : return outim
         else : return im
        
-
-
     def bias(self,im,superbias=None) :
          """ Superbias subtraction
          """
@@ -631,8 +629,7 @@ class Reducer() :
         im=self.flat(im,superflat=flat,display=display)
         self.badpix_fix(im,val=badpix)
         if trim and display is not None: display.tvclear()
-      
-        im=self.trim(im,trimimage=trim)
+        if trim : im=self.trim(im,trimimage=trim)
         im=self.crrej(im,crbox=crbox,display=display)
         if solve : 
             im=self.platesolve(im,display=display,scale=self.scale,flip=self.flip,seeing=seeing)
@@ -648,7 +645,7 @@ class Reducer() :
         for i,frame in enumerate(ims) : 
             if self.nchip > 1 : outname = name.replace('.fits','')+'_'+self.channels[i]+'.fits'
             else : outname = name
-            frame.write(name,overwrite=overwrite)
+            frame.write(outname,overwrite=overwrite)
             if png :
                 fig=plt.figure(figsize=(12,9))
                 vmin,vmax=tv.minmax(frame.data)
@@ -695,7 +692,9 @@ class Reducer() :
             sum = np.sum(np.array(datacube),axis=0)
             sig = np.sqrt(np.sum(np.array(varcube),axis=0))
             mask = np.any(maskcube,axis=0)
-            out.append(CCDData(sum,uncertainty=StdDevUncertainty(sig),mask=mask,unit=u.dimensionless_unscaled))
+            out.append(CCDData(sum,header=allcube[0][chip].header,
+                       uncertainty=StdDevUncertainty(sig),
+                       mask=mask,unit=u.dimensionless_unscaled))
         
         # return the frame
         if len(out) == 1 : 

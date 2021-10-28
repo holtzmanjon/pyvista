@@ -15,6 +15,7 @@ from pyvista import tv
 from astropy.io import fits
 from astropy import units
 from astropy.nddata import CCDData, StdDevUncertainty
+from tools import plots
 import scipy.signal
 
 ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../../'
@@ -23,33 +24,68 @@ import readmultispec
 import os
 import pickle
 
-def dis() :
+def dis(lowres=True) :
     pdb.set_trace()
-    #dred=imred.Reducer(inst='DIS',dir='UT191019/DIS/')
-    dred=imred.Reducer(inst='DIS',dir='UT191027/DIS/')
-    dcomb=imred.Combiner(reducer=dred)
-    arc=dcomb.sum([1,2,3])
+    if lowres : dred=imred.Reducer(inst='DIS',dir='UT191019/DIS/')
+    else : dred=imred.Reducer(inst='DIS',dir='UT191027/DIS/')
+    arc=dred.sum([1,2,3])
 
     # define a flat trace model
     def model(x) : return(np.zeros(len(x))+500)
     traces=spectra.Trace(rad=10,model=[model],sc0=1024)
 
-    spec=traces.extract(arc[0])
-    spec.data-=scipy.signal.medfilt(spec.data[0,:],kernel_size=101)
+    fig,ax=plots.multi(1,2)
+    for chip in range(2) :
+        spec=traces.extract(arc[chip])
+        spec.data-=scipy.signal.medfilt(spec.data,kernel_size=101)
+        rad=10
+        if lowres :
+            degree=2
+            suffix='lowres'
+            disp=spec.header['DISPDW']
+            wref=[5015,1367]
+            disp=(5015-3888)/(1367-749)
+            thresh=40
+            rad=10
+            if chip==1 :
+              #wref=[7635,974]
+              #disp=(7635-6402)/(974-1508)
+              wref=[8377,653]
+              disp=(8377-6143)/(653-1622)
+              thresh=200
+              rad=3
+              degree=4
+        else :
+            suffix='hires'
+            wref=[5015,1481]
+            degree=2
+            disp=spec.header['DISPDW']
+            thresh=None
+            if chip==1 : 
+                disp=-1*disp
+                disp=-0.58
+                degree=4
+                wref=[6402,933]
+        wcal=spectra.WaveCal(type='chebyshev',degree=degree)
+        wcal.identify(spec,file='henear.dat',rad=rad,plot=fig,disp=disp,wref=wref,thresh=thresh)
+        wcal.fit()
+        wcal.wave(image=spec.shape[1])
+        if chip==0 : wcal.save(suffix+'blue.pkl')
+        elif chip==1 : wcal.save(suffix+'red.pkl')
 
-    wcal=spectra.WaveCal(type='chebyshev')
-    #wcal.set_spectrum(spec)
-    #f=open(os.environ['PYVISTA_DIR']+'/data/dis/dis_blue_lowres.pkl','rb')
-    f=open(os.environ['PYVISTA_DIR']+'/data/DIS/DIS_hires_6400_waves.pkl','rb')
-    wcal0=pickle.load(f)
-    wcal0.orders=[1]
-    wav=wcal0[0][0].wave(image=spec.shape)
 
-    wcal.identify(spec,wav=wav,file=os.environ['PYVISTA_DIR']+'/data/lamps/henear.dat',rad=3)
-    wcal.fit()
-    w=wcal.wave(image=np.array(spec.data.shape))
+    ##wcal.set_spectrum(spec)
+    ##f=open(os.environ['PYVISTA_DIR']+'/data/dis/dis_blue_lowres.pkl','rb')
+    #f=open(os.environ['PYVISTA_DIR']+'/data/DIS/DIS_hires_6400_waves.pkl','rb')
+    #wcal0=pickle.load(f)
+    #wcal0[0][0].orders=[1]
+    #wav=wcal0[0][0].wave(image=spec.shape)
+#
+#    wcal.identify(spec,wav=wav,file=os.environ['PYVISTA_DIR']+'/data/lamps/henear.dat',rad=3)
+#    wcal.fit()
+#    w=wcal.wave(image=np.array(spec.data.shape))
 
-    spec2d=traces.extract2d(arc[0],rows=range(200,900))
+    spec2d=traces.extract2d(arc[0],rows=[200,900])
     pdb.set_trace()
 
     star=dred.reduce(26)
@@ -95,7 +131,7 @@ def tspec() :
     b=tspec.reduce(22)
 
     t=tv.TV()
-    fig=plt.figure()
+    fig,ax=plots.multi(1,2)
 
     rows=[[135,235],[295,395],[435,535],[560,660],[735,830]]
     apers=[155,316,454,591,761]    
@@ -198,18 +234,20 @@ def echelle_model_deriv(w,ord,amp=1,alpha=1,wc=5500) :
 
     return np.array(deriv)
 
-def mktrace(ymlfile) :
+def mktrace(group,display=None) :
 
     # trace from scratch
+    red=imred.Reducer(inst=group['inst'],dir=group['rawdir'])
     try :
         traces=group['traces']
         print('create trace')
+        pdb.set_trace()
         if group['traces']['frame'] == 'sflat' : 
             a=sflat
         else :
-            a= red.reduce(group['traces']['frame'],superbias=sbias,superdark=sdark,superflat=sflat,scat=red.scat)
+            a= red.reduce(group['traces']['frame']) #,superbias=sbias,superdark=sdark,superflat=sflat,scat=red.scat)
         try : 
-            b= red.reduce(group['traces']['dark'],superbias=sbias,superdark=sdark,superflat=sflat,scat=red.scat)
+            b= red.reduce(group['traces']['dark']) #,superbias=sbias,superdark=sdark,superflat=sflat,scat=red.scat)
             a=a.subtract(b)
         except: pass
         if group['inst'] == 'TSPEC' :
@@ -231,10 +269,10 @@ def mktrace(ymlfile) :
                 trace.trace(im,ap,sc0=1024,plot=display)
                 traces.append(trace)
             traces=[[traces[0]],[traces[1]]]
-        pickle.dump(traces,open(group['inst']+'_trace.pkl','wb'))
+        pickle.dump(traces,open(group['inst']+'_traces.pkl','wb'))
     except:
         print('no trace frames given')
 
     # existing trace template
-    trace=pickle.load(open(group['inst']+'_trace.pkl','rb'))
+    trace=pickle.load(open(group['inst']+'_traces.pkl','rb'))
 

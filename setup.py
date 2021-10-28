@@ -13,8 +13,11 @@ setup(
     packages=['pyvista'],
     package_dir={"": "python"},
     install_requires=[
-                      'holtz-tools',                     
-                      'numpy',                     
+                      'holtz-tools',
+                      'astropy',
+                      'ccdproc',
+                      'photutils',
+                      'numpy',
                       ],
 
     classifiers=[
