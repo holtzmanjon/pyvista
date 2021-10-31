@@ -319,7 +319,7 @@ class TV:
                     # zoom in
                     xsize = ( xlim[1]-xlim[0] )/ 2.
                     ysize = ( ylim[1]-ylim[0] )/ 2.
-                elif event.button == 2 :
+                elif event.button == 3 :
                     # zoom out
                     xsize = ( xlim[1]-xlim[0] )* 2.
                     ysize = ( ylim[1]-ylim[0] )* 2.
