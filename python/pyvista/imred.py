@@ -52,6 +52,7 @@ class Reducer() :
         self.badpix=None
         self.scat=None
         self.mask=None
+        self.transpose=None
 
         # we will allow for instruments to have multiple channels, so everything goes in lists
         self.channels=['']
@@ -80,7 +81,10 @@ class Reducer() :
             except : self.flip = None
             try : self.namp=config['namp']
             except : self.namp = 1
-            self.crbox=config['crbox']
+            try :self.transpose=config['transpose']
+            except : self.scale = False
+            try : self.crbox=config['crbox']
+            except : self.crbox=None
             self.biastype=config['biastype']
             self.biasbox=[]
             for box in config['biasbox'] :
@@ -296,6 +300,13 @@ class Reducer() :
             data=copy.copy(im.data)
             data[data<0] = 0.
             im.uncertainty = StdDevUncertainty(np.sqrt( data/gain + (rn/gain)**2 ))
+
+    def imtranspose(self,im) :
+        """ Transpose a CCDData object
+        """
+        return CCDData(im.data.T,header=im.header,
+                       uncertainty=StdDevUncertainty(im.uncertainty.array.T),
+                       mask=im.mask.T,unit=u.dimensionless_unscaled)
 
     def trim(self,im,trimimage=False) :
         """ Trim image by masking non-trimmed pixels
@@ -608,6 +619,36 @@ class Reducer() :
             input("  See plate solve stars. Hit any key to continue")
             display.tvclear()
         return im
+
+    def noise(self,pairs,rows=None,cols=None,nbox=200,display=None) :
+        """ Noise characterization from image pairs
+        """
+        mean=[]
+        std=[]
+        for pair in pairs :
+            a=self.reduce(pair[0])
+            b=self.reduce(pair[1])
+            diff=a.data-b.data
+            avg=(a.data+b.data)/2
+            if display != None :
+                display.tv(avg)
+                display.tv(diff)
+            if rows is None : rows=np.arange(0,a.shape[0],nbox)
+            if cols is None : cols=np.arange(0,a.shape[1],nbox)
+            for irow,r0 in enumerate(rows[0:-1]) :
+                for icol,c0 in enumerate(cols[0:-1]) :
+                    if display != None :
+                        box = image.BOX(xr=[cols[icol],cols[icol+1]],
+                                yr=[rows[irow],rows[irow+1]]) 
+                        display.tvbox(0,0,box=box)
+                    print(r0,c0,box.median(avg),box.stdev(diff))
+                    mean.append(box.median(avg))
+                    std.append(box.stdev(diff))
+        mean=np.array(mean)
+        std=np.array(std)
+        plt.figure()
+        plt.plot(mean,std**2,'ro')
+
 
     def display(self,display,id) :
 
