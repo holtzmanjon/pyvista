@@ -6,6 +6,7 @@ import pickle
 import copy
 import scipy.signal
 import scipy.interpolate
+from scipy.optimize import curve_fit
 import numpy as np
 from astropy.modeling import models, fitting
 from astropy.nddata import CCDData, StdDevUncertainty
@@ -242,7 +243,8 @@ class WaveCal() :
         """
         return self.spectrum 
 
-    def identify(self,spectrum,file=None,wav=None,wref=None,disp=None,display=None,plot=None,rad=5,thresh=10,
+    def identify(self,spectrum,file=None,wav=None,wref=None,inter=False,
+                 disp=None,display=None,plot=None,rad=5,thresh=10,
                  xmin=None, xmax=None, lags=range(-300,300), nskip=1) :
         """ Given some estimate of wavelength solution and file with lines,
             identify peaks and centroid
@@ -304,6 +306,21 @@ class WaveCal() :
                     self.model = None
                     self.orders = orders
                     print("")
+            elif inter :
+                f,a=plots.multi(1,1)
+                a.plot(spectrum.data[0,:])
+                for i in range(2) :
+                    print('mark location of known line with m key')
+                    ret=plots.mark(f)
+                    w=input('wavelength of line: ')
+                    if i==0 :
+                        w0=float(w)
+                        pix0=ret[0]
+                    else :
+                        disp = (float(w)-w0)/(ret[0]-pix0)
+                print(w0,pix0,disp)
+                wav=np.atleast_2d(w0+(pix-pix0)*disp)
+                pdb.set_trace()
             else :
                 # get dispersion guess from header cards if not given in disp
                 if disp is None: disp=spectrum.header['DISPDW']
@@ -367,7 +384,8 @@ class WaveCal() :
         for row in range(0,nrow,nskip) :
             print('  identifying lines in row: ', row,end='\r')
             if plot is not None :
-                ax[0].plot(wav[row,:],spectrum.data[row,:])
+                #ax[0].plot(wav[row,:],spectrum.data[row,:])
+                ax[0].plot(spectrum.data[row,:])
                 #ax[0].set_yscale('log')
                 ax[0].set_ylim(1.,ax[0].get_ylim()[1])
                 ax[0].text(0.1,0.9,'row: {:d}'.format(row),transform=ax[0].transAxes)
@@ -375,6 +393,7 @@ class WaveCal() :
                 ax[0].set_ylabel('Intensity')
             for line in lines :
                 peak=abs(line-wav[row,:]).argmin()
+                peak=(spectrum.data[row,peak-rad:peak+rad+1]).argmax()+peak-rad
                 if isinstance(display,pyvista.tv.TV) :
                     if (peak > xmin+rad) and (peak < xmax-rad) : display.ax.scatter(peak,row,marker='o',color='r',s=2)
                 if ( (peak > xmin+rad) and (peak < xmax-rad) and 
@@ -382,23 +401,29 @@ class WaveCal() :
 
                     oldpeak = 0
                     niter=0
-                    #plt.figure()
                     xx = np.arange(peak-rad,peak+rad+1)
+                    yy = spectrum.data[row,peak-rad:peak+rad+1]
+                    #plt.figure()
                     #plt.plot(xx,spectrum.data[row,peak-rad:peak+rad+1])
+
                     while peak != oldpeak and  niter<10:
-                      poly= np.polyfit(np.arange(peak-rad,peak+rad+1),spectrum.data[row,peak-rad:peak+rad+1],2)
-                      cent = -poly[1]/2/poly[0]
-                      #plt.plot(xx,poly[0]*xx**2+poly[1]*xx+poly[2])
-                      #plt.draw()
-                      #cent = (spectrum.data[row,peak-rad:peak+rad]*np.arange(peak-rad+1,peak+rad+1)).sum()/spectrum.data[row,peak-rad:peak+rad+1].sum()
+                      p0 = [spectrum.data[row,peak],peak,rad]
+                      coeff, var_matrix = curve_fit(gauss, xx, yy, p0=p0)
+                      fit = gauss(xx,*coeff)
+                      cent = coeff[1]
                       oldpeak = peak
                       peak = int(cent)
                       niter+=1
+                      #plt.plot(xx,fit)
+                    #pdb.set_trace()
+                    #plt.close() 
                     if niter == 10 : continue
+                    #print(line,peak,*coeff)
                     if display is not None and  isinstance(display,pyvista.tv.TV) :
                         display.ax.scatter(cent,row,marker='o',color='g',s=2)
                     if plot is not None :
-                        ax[0].text(line,1.,'{:7.1f}'.format(line),rotation='vertical',va='top',ha='center')
+                        #ax[0].text(line,1.,'{:7.1f}'.format(line),rotation='vertical',va='top',ha='center')
+                        ax[0].plot([cent,cent],ax[0].get_ylim(),color='r')
                     x.append(cent)
                     y.append(row)
                     # we will fit for wavelength*order
@@ -412,7 +437,8 @@ class WaveCal() :
                 # if we have a solution already, see how good it is (after shift)
                 diff=self.wave(pixels=[x,y])-np.array(waves)
                 ax[1].cla()
-                ax[1].scatter(np.array(waves),diff,s=2,c=y)
+                #ax[1].scatter(np.array(waves),diff,s=2,c=y)
+                ax[1].scatter(x,diff,s=2,c=y)
                 ax[1].text(0.1,0.9,'from previous fit, rms: {:8.3f}'.format(diff.std()),transform=ax[1].transAxes)
                 xlim=ax[1].get_xlim()
                 ax[1].plot(xlim,[0,0],linestyle=':')
@@ -489,6 +515,9 @@ class Trace() :
             if channel == 0 : self.rows=[215,915]
             elif channel == 1 : self.rows=[100,800]
             else : raise ValueError('need to specify channel')
+            self.lags = range(-300,300) 
+        elif inst == 'KOSMOS' :
+            self.rows=[550,1450]
             self.lags = range(-300,300) 
         elif inst == 'ARCES' :
             self.lags = range(-10,10) 
@@ -896,3 +925,6 @@ def extract(hd,apertures) :
     return spec
 
 
+def gauss(x, *p):
+    A, mu, sigma = p
+    return A*np.exp(-(x-mu)**2/(2.*sigma**2))
