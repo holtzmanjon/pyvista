@@ -24,6 +24,28 @@ import readmultispec
 import os
 import pickle
 
+def kosmos():
+
+    kred=imred.Reducer('KOSMOS',dir='/home/holtz/raw/apo/oct21/Q4NM01/UT211030/kosmos')
+    wref=[7245,1701]
+    disp=-1.026
+
+    def model(x) : return(np.zeros(len(x))+1024)
+    traces=spectra.Trace(rad=5,model=[model],sc0=2048)
+    pickle.dump(open('KOSMOS_traces.pkl','wb'))
+    arc=kred.sum([15,16,17])
+    #ne=kred.reduce(16)
+    arc=kred.transpose(arc)
+    spec=traces.extract(arc)
+    spec.data-=scipy.signal.medfilt(spec.data,kernel_size=101)
+    kwav=spectra.WaveCal(degree=2)
+    fig=plt.figure()
+    kwav.identify(spec,file='henear.dat',wref=wref,disp=disp,plot=fig,rad=5,thresh=100)
+    pdb.set_trace()
+    kwav.fit()
+
+    return kwav,spec
+
 def dis(lowres=True) :
     pdb.set_trace()
     if lowres : dred=imred.Reducer(inst='DIS',dir='UT191019/DIS/')
