@@ -22,25 +22,37 @@ ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../../'
 
 import readmultispec
 import os
-import pickle
 
-def kosmos():
+def kosmos(blue=True):
 
-    kred=imred.Reducer('KOSMOS',dir='/home/holtz/raw/apo/oct21/Q4NM01/UT211030/kosmos')
-    wref=[7245,1701]
-    disp=-1.026
+    if blue :
+      kred=imred.Reducer('KOSMOS',dir='/home/holtz/raw/apo/oct21/Q4NM01/UT211031/kosmos')
+    else :
+      kred=imred.Reducer('KOSMOS',dir='/home/holtz/raw/apo/oct21/Q4NM01/UT211030/kosmos')
+
+    if blue :
+        wref=[6402,266]
+        disp=(6153-6402)/(614-266)
+        disp=(4319-6402)/(3093-266)
+        lamp='henearkr.dat'
+    else :
+        wref=[7245,1701]
+        disp=-1.026
+        lamp='henear.dat'
 
     def model(x) : return(np.zeros(len(x))+1024)
-    traces=spectra.Trace(rad=5,model=[model],sc0=2048)
-    pickle.dump(open('KOSMOS_traces.pkl','wb'))
-    arc=kred.sum([15,16,17])
+    traces=spectra.Trace('KOSMOS',rad=5,model=[model],sc0=2048)
+    pdb.set_trace()
+    if blue : arc=kred.sum([14,16,1001])
+    else : arc=kred.sum([15,16,17])
     #ne=kred.reduce(16)
-    arc=kred.transpose(arc)
+    arc=kred.imtranspose(arc)
     spec=traces.extract(arc)
+    spec2d=traces.extract2d(arc)
     spec.data-=scipy.signal.medfilt(spec.data,kernel_size=101)
     kwav=spectra.WaveCal(degree=2)
     fig=plt.figure()
-    kwav.identify(spec,file='henear.dat',wref=wref,disp=disp,plot=fig,rad=5,thresh=100)
+    kwav.identify(spec,file=lamp,wref=wref,disp=disp,plot=fig,rad=5,thresh=100)
     pdb.set_trace()
     kwav.fit()
 
@@ -116,31 +128,32 @@ def dis(lowres=True) :
 def arces() :
     ered=imred.Reducer(inst='ARCES',dir='UT191020/ARCES/')
 
-    flat=ecomb.sum([11,15])
-    thar=ecomb.sum([19,20])
+    flat=ered.sum([11,15])
+    thar=ered.sum([19,20])
 
     t=tv.TV()
 
     apertures=np.loadtxt('newap')[:,1]
     #traces=trace(flat,apertures/4)
-    traces=Trace(inst='ARCES')
+    traces=spectra.Trace(inst='ARCES')
     traces.trace(flat,apertures/4,sc0=1024,thresh=40,plot=t)
     ec=traces.extract(thar,scat=True)
 
-    wcal=spectra.WaveCal(type='chebyshev2D',orders=54+np.arange(107))
+    wcal=spectra.WaveCal(type='chebyshev2D',orders=54+np.arange(107),ydegree=3)
     wcal.set_spectrum(ec)
     wav=readmultispec.readmultispec('w131102.0004.ec.fits')['wavelen']
     new=ec.data*0.
     new[:,204:1855]=wav
-    wcal.identify(ec,wav=new,file='thar_arces',xmin=201,xmax=1849,thresh=10,rad=3,plot=t)
+    fig=plt.figure()
+    wcal.identify(ec,wav=new,file='thar_arces',xmin=201,xmax=1849,thresh=10,rad=3,display=t,plot=fig)
     wcal.fit()
 
-    wcal.identify(ec,file='thar_arces',xmin=150,xmax=1900,thresh=10,rad=3,plot=t)
+    wcal.identify(ec,file='thar_arces',xmin=150,xmax=1900,thresh=10,rad=3,display=t,plot=fig)
     wcal.fit()
 
     w=wcal.wave(image=np.array(ec.data.shape))
 
-    hr7950=ered.reduce(1,superflat=flat)
+    hr7950=ered.reduce(1,flat=flat)
     hr7950ec=traces.extract(hr7950,scat=True)
 
     return flat,thar,traces,ec,wcal,w
@@ -267,9 +280,9 @@ def mktrace(group,display=None) :
         if group['traces']['frame'] == 'sflat' : 
             a=sflat
         else :
-            a= red.reduce(group['traces']['frame']) #,superbias=sbias,superdark=sdark,superflat=sflat,scat=red.scat)
+            a= red.reduce(group['traces']['frame']) #,bias=sbias,dark=sdark,flat=sflat,scat=red.scat)
         try : 
-            b= red.reduce(group['traces']['dark']) #,superbias=sbias,superdark=sdark,superflat=sflat,scat=red.scat)
+            b= red.reduce(group['traces']['dark']) #,bias=sbias,dark=sdark,flat=sflat,scat=red.scat)
             a=a.subtract(b)
         except: pass
         if group['inst'] == 'TSPEC' :
@@ -291,6 +304,11 @@ def mktrace(group,display=None) :
                 trace.trace(im,ap,sc0=1024,plot=display)
                 traces.append(trace)
             traces=[[traces[0]],[traces[1]]]
+        elif group['inst'] == 'KOSMOS' :
+            apers=[940]
+            traces.trace(a,apers,sc0=2048,plot=display)
+            traces=[[traces]]
+
         pickle.dump(traces,open(group['inst']+'_traces.pkl','wb'))
     except:
         print('no trace frames given')
