@@ -22,6 +22,7 @@ import warnings
 from astropy.utils.exceptions import AstropyWarning
 warnings.simplefilter('ignore', category=AstropyWarning)
 
+import matplotlib
 import matplotlib.pyplot as plt
 import glob
 import bz2
@@ -86,6 +87,9 @@ class Reducer() :
             try : self.crbox=config['crbox']
             except : self.crbox=None
             self.biastype=config['biastype']
+            try : self.biasavg=config['biasavg']
+            except : self.biasavg=11
+            if self.biasavg %2 == 0 : self.biasavg += 1
             self.biasbox=[]
             for box in config['biasbox'] :
                 if self.namp == 1 :
@@ -269,17 +273,18 @@ class Reducer() :
                     plt.draw()
                 if type(databox) == image.BOX :
                     im.data[databox.ymin:databox.ymax+1,
-                            databox.xmin:databox.xmax] = \
+                            databox.xmin:databox.xmax+1] = \
                             im.data[databox.ymin:databox.ymax+1,
-                                    databox.xmin:databox.xmax].astype(float)-b
+                                    databox.xmin:databox.xmax+1].astype(float)-b
                 else : 
                     im.data = im.data.astype(float)-b
                 im.header.add_comment('subtracted overscan: {:f}'.format(b))
               elif self.biastype == 1 :
                 over=np.median(im.data[databox.ymin:databox.ymax+1,
                                ampbox.xmin:ampbox.xmax],axis=1)
-                boxcar = Box1DKernel(10)
-                over=convolve(over,boxcar,boundary='extend')
+                #boxcar = Box1DKernel(self.biasavg)
+                #over=convolve(over,boxcar,boundary='extend')
+                over=scipy.signal.medfilt(over,kernel_size=self.biasavg)
                 if display is not None : 
                     ax.plot(np.arange(databox.ymin,databox.ymax+1),
                             over,color='k')
@@ -688,6 +693,8 @@ class Reducer() :
             else : outname = name
             frame.write(outname,overwrite=overwrite)
             if png :
+                backend=matplotlib.get_backend()
+                matplotlib.use('Agg')
                 fig=plt.figure(figsize=(12,9))
                 vmin,vmax=tv.minmax(frame.data)
                 plt.imshow(frame.data,vmin=vmin,vmax=vmax,
@@ -697,6 +704,7 @@ class Reducer() :
                 fig.tight_layout()
                 fig.savefig(name+'.png')
                 plt.close()
+                matplotlib.use(backend)
  
 
     def getcube(self,ims,**kwargs) :
@@ -1032,8 +1040,8 @@ def mkmask(inst=None) :
     if inst == 'ARCES' :
         nrow=2068
         ncol=2128
-        badpix = [ image.BOX(yr=[0,2067],xr=[0,230]),      # left side
-                   image.BOX(yr=[0,2067],xr=[1900,2127]), # right side
+        badpix = [ image.BOX(yr=[0,2067],xr=[0,130]),      # left side
+                   image.BOX(yr=[0,2067],xr=[2000,2127]), # right side
                    image.BOX(yr=[802,2000],xr=[787,787]),
                    image.BOX(yr=[663,2000],xr=[1682,1682]),
                    image.BOX(yr=[219,2067],xr=[101,101]),

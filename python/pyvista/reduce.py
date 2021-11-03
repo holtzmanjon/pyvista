@@ -120,6 +120,7 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                             except KeyError : file = None
                             # extract and ID lines
                             if wavecal['wavecal_type'] == 'echelle' :
+                                shift=wtrace.find(arc,plot=display) 
                                 arcec=wtrace.extract(arc,plot=display)
                                 wcal.identify(spectrum=arcec, rad=3, 
                                           display=display, plot=plot,file=file)
@@ -128,6 +129,7 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                                 r1=wtrace.rows[1]
                                 # 1d for inspection
                                 wtrace.pix0 +=30
+                                if red.transpose : arc=red.imtranspose(arc)
                                 arcec=wtrace.extract(arc,plot=display,rad=20)
                                 arcec.data = arcec.data - \
                                    scipy.signal.medfilt(arcec.data,kernel_size=[1,101])
@@ -178,12 +180,14 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                     except KeyError: superdark = None
                     try : superflat = sflat[obj['flat']]
                     except KeyError: superflat = None
+                    try : trim = obj['trim']
+                    except KeyError: trim = False
 
                     if threads > 0  :
                         # if multiprocessing, do all frames in this object in parallel
                         pars=[]
                         for id in obj['frames'] :
-                            pars.append((red,id,superbias,superdark,superflat,red.scat,red.crbox,True,solve,reddir))
+                            pars.append((red,id,superbias,superdark,superflat,red.scat,red.crbox,trim,solve,reddir))
                         pool = mp.Pool(threads)
                         output = pool.map_async(process_thread, pars).get()
                         pool.close()
@@ -200,7 +204,7 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                                              flat=superflat,
                                              scat=red.scat,
                                              crbox=red.crbox,
-                                             trim=True,
+                                             trim=trim,
                                              solve=solve,
                                              return_list=True,
                                              display=display)
@@ -226,6 +230,8 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                     try : superflat = sflat[obj['flat']]
                     except KeyError: superflat = None
                     waves_all = wavedict[obj['wavecal']]
+                    try : trim = obj['trim']
+                    except KeyError: trim = False
 
                     if obj['flat_type'] == '1d' :
                         print('extracting 1d flat')
@@ -234,14 +240,29 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                             tmp=[]
                             for wtrace in trace :
                                 shift=wtrace.find(superflat,plot=display) 
-                                tmp.append(wtrace.extract(superflat,plot=display,medfilt=101))
+                                tmp.append(wtrace.extract(superflat,plot=display))
+                                #tmp.append(wtrace.extract(superflat,plot=display,medfilt=101))
                             ecflat.append(tmp)
                         superflat = None
+
+                    if threads > 0  :
+                        # if multiprocessing, do all frames in this object in parallel
+                        pars=[]
+                        for id in obj['frames'] :
+                            pars.append((red,id,superbias,superdark,superflat,red.scat,red.crbox,trim,solve,reddir))
+                        pool = mp.Pool(threads)
+                        output = pool.map_async(process_thread, pars).get()
+                        pool.close()
+                        pool.join()
+                    else :
+                        output = obj['frames']
+
                     # now frames
-                    for iframe,id in enumerate(obj['frames']) : 
+                    for iframe,(id,frames) in enumerate(zip(obj['frames'],output)) : 
                         if display is not None : display.clear() 
                         print("extracting object {}".format(id))
-                        frames=red.reduce(id,bias=superbias,dark=superdark,
+                        if threads == 0 :
+                            frames=red.reduce(id,bias=superbias,dark=superdark,
                                           flat=superflat,scat=red.scat,
                                           return_list=True,crbox=red.crbox,display=display) 
                         if 'skyframes' in obj :
@@ -275,11 +296,13 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                         for ichannel,(frame,wave,trace) in enumerate(zip(frames,waves_all,traces)) :
                             # loop over windows
                             for iwind,(wcal,wtrace) in enumerate(zip(wave,trace)) :
+                                if red.transpose : frame=red.imtranspose(frame)
+                                tmptrace=copy.deepcopy(wtrace)
                                 if retrace : 
                                     print('  retracing ....')
-                                    shift=wtrace.retrace(frame,plot=display,thresh=10) 
-                                else : shift=wtrace.find(frame,plot=display) 
-                                ec=wtrace.extract(frame,plot=display,rad=rad)
+                                    shift=tmptrace.retrace(frame,plot=display,thresh=10) 
+                                else : shift=tmptrace.find(frame,plot=display) 
+                                ec=tmptrace.extract(frame,plot=display,rad=rad)
                                 w=wcal.wave(image=np.array(ec.data.shape))
                                 if obj['flat_type'] == '1d' : 
                                     header=ec.header
@@ -299,15 +322,21 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                                     plt.pause(0.1)
                                     input("  hit a key to continue")
                             #ec.write(reddir+ec.header['FILE'].replace('.fits','.ec.fits'),overwrite=True)
-                            comb=wcal.scomb(ec,10.**np.arange(3.5,4.0,5.5e-6),average=False,usemask=False)
+                            comb=wcal.scomb(ec,10.**np.arange(3.5,4.0,5.5e-6),average=True,usemask=True)
                             if plot is not None :
                                 plots.plotl(ax[0],10.**np.arange(3.5,4.0,5.5e-6),comb.data,color='k')
                                 plots.plotl(ax[1],10.**np.arange(3.5,4.0,5.5e-6),comb.data/comb.uncertainty.array,color='k')
+                                plt.draw()
                             out = spectra.SpecData(ec,wave=w)
                             out.write(reddir+ec.header['FILE'].replace('.fits','.ec.fits'))
                             out = spectra.SpecData(comb,wave=w)
                             out.write(reddir+comb.header['FILE'])
-                        pdb.set_trace()
+                        if html is not None : 
+                            name=frames[0].header['FILE']
+                            fhtml.write('<TR><TD>{:s}'.format(name))
+                            for frame in frames :
+                                fhtml.write(('<TD><a href={:s}.png><IMG src={:s}.png width=500>'+
+                                '</a>\n').format(name,name))
             elif 'extract2d' in objects :
                 # 2D spectra
                 print('extract2d')
@@ -317,6 +346,7 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
 #    for id in group['objects']['extract2d']['frames'] : 
 #        frames=red.reduce(id,bias=sbias,dark=sdark,flat=sflat,scat=red.scat,return_list=True) 
 #        for frame,trace in zip(frames,traces) :
+#            if red.transpose : frame=red.imtranspose(frame)
 #            out=trace.extract2d(frame,plot=t)
 
 
@@ -416,7 +446,7 @@ def process_thread(pars) :
                           flat=superflat,
                           scat=red.scat,
                           crbox=red.crbox,
-                          trim=True,
+                          trim=trim,
                           solve=solve,
                           return_list=True,display=None)
     name=frames[0].header['FILE']
