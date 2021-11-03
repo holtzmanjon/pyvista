@@ -1,8 +1,8 @@
 ---
 channels : ['']
 formstr  : ['{:04d}']
-gain     : [0.5]
-rn       : [7]
+gain     : [0.6]
+rn       : [5]
 #crbox    : [1,11]
 biastype : 0
 transpose : True
