@@ -83,7 +83,7 @@ class Reducer() :
             try : self.namp=config['namp']
             except : self.namp = 1
             try :self.transpose=config['transpose']
-            except : self.scale = False
+            except : self.transpose = False
             try : self.crbox=config['crbox']
             except : self.crbox=None
             self.biastype=config['biastype']
@@ -682,7 +682,7 @@ class Reducer() :
         if return_list and type(im) is not list : im=[im]
         return im
 
-    def write(self,im,name,overwrite=True,png=False) :
+    def write(self,im,name,overwrite=True,png=False,wave=None) :
         """ write out image, deal with multiple channels 
         """
 
@@ -693,18 +693,25 @@ class Reducer() :
             else : outname = name
             frame.write(outname,overwrite=overwrite)
             if png :
-                backend=matplotlib.get_backend()
-                matplotlib.use('Agg')
-                fig=plt.figure(figsize=(12,9))
-                vmin,vmax=tv.minmax(frame.data)
-                plt.imshow(frame.data,vmin=vmin,vmax=vmax,
+                #backend=matplotlib.get_backend()
+                #matplotlib.use('Agg')
+                if wave is not None :
+                    fig=plt.figure(figsize=(18,6))
+                    for row in frame.data.size[0] :
+                        plt.plot(wave[row],frame.data[row])
+                        plt.xlabel('Wavelength')
+                        plt.ylabel('Flux')
+                else :
+                    fig=plt.figure(figsize=(12,9))
+                    vmin,vmax=tv.minmax(frame.data)
+                    plt.imshow(frame.data,vmin=vmin,vmax=vmax,
                            cmap='Greys_r',interpolation='nearest',origin='lower')
-                plt.colorbar(shrink=0.8)
-                plt.axis('off')
+                    plt.colorbar(shrink=0.8)
+                    plt.axis('off')
                 fig.tight_layout()
                 fig.savefig(name+'.png')
                 plt.close()
-                matplotlib.use(backend)
+                #matplotlib.use(backend)
  
 
     def getcube(self,ims,**kwargs) :
