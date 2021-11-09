@@ -42,7 +42,7 @@ class SpecData(CCDData) :
         else :
             print('Input must be a filename or CCDData object')
 
-    def write(self,file,overwrite=True) :
+    def write(self,file,overwrite=True,png=False) :
         hdulist=fits.HDUList()
         hdulist.append(fits.PrimaryHDU(header=self.meta))
         hdulist.append(fits.ImageHDU(self.data))
@@ -50,11 +50,26 @@ class SpecData(CCDData) :
         hdulist.append(fits.ImageHDU(self.mask.astype(np.int16)))
         hdulist.append(fits.ImageHDU(self.wave))
         hdulist.writeto(file,overwrite=overwrite)
+        if png :
+            #backend=matplotlib.get_backend()
+            #matplotlib.use('Agg')
+            fig,ax=plots.multi(1,1,figsize=(18,6))
+            self.plot(ax)
+            fig.savefig(file+'.png')
+            #matplotlib.use(backend)
+            plt.close()
 
     def plot(self,ax,**kwargs) :
-        for row in range(self.wave.shape[0]) :
-            gd = np.where(self.mask[row,:] == False)[0]
-            plots.plotl(ax,self.wave[row,gd],self.data[row,gd],**kwargs)
+        if self.data.ndim == 1 :
+            gd = np.where(self.mask == False)[0]
+            plots.plotl(ax,self.wave[gd],self.data[gd],**kwargs)
+        else :
+            for row in range(self.wave.shape[0]) :
+                gd = np.where(self.mask[row,:] == False)[0]
+                plots.plotl(ax,self.wave[row,gd],self.data[row,gd],**kwargs)
+        gd = np.where(self.mask == False)[0]
+        med=np.nanmedian(self.data[gd])
+        ax.set_ylim(0,2*med)
         
 
 
