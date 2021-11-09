@@ -318,25 +318,27 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                                         plots.plotl(ax[1],w[row,gd],ec.data[row,gd]/ec.uncertainty.array[row,gd],xt='Wavelength',yt='S/N')
                                     plot.suptitle(ec.header['OBJNAME'])
                                     plt.draw()
-                                    plot.canvas.draw_idle()
-                                    plt.pause(0.1)
-                                    input("  hit a key to continue")
-                            #ec.write(reddir+ec.header['FILE'].replace('.fits','.ec.fits'),overwrite=True)
-                            comb=wcal.scomb(ec,10.**np.arange(3.5,4.0,5.5e-6),average=True,usemask=True)
+                            wnew = 10.**np.arange(3.5,4.0,5.5e-6)
+                            comb=wcal.scomb(ec,wnew,average=True,usemask=True)
                             if plot is not None :
-                                plots.plotl(ax[0],10.**np.arange(3.5,4.0,5.5e-6),comb.data,color='k')
-                                plots.plotl(ax[1],10.**np.arange(3.5,4.0,5.5e-6),comb.data/comb.uncertainty.array,color='k')
+                                plots.plotl(ax[0],wnew,comb.data,color='k')
+                                plots.plotl(ax[1],wnew,comb.data/comb.uncertainty.array,color='k')
                                 plt.draw()
+                                plot.canvas.draw_idle()
+                                plt.pause(0.1)
+                                input("  hit a key to continue")
                             out = spectra.SpecData(ec,wave=w)
-                            out.write(reddir+ec.header['FILE'].replace('.fits','.ec.fits'))
-                            out = spectra.SpecData(comb,wave=w)
-                            out.write(reddir+comb.header['FILE'])
+                            out.write(reddir+ec.header['FILE'].replace('.fits','.ec.fits'),png=True)
+                            out = spectra.SpecData(comb,wave=wnew)
+                            out.write(reddir+comb.header['FILE'],png=True)
                         if html is not None : 
-                            name=frames[0].header['FILE']
-                            fhtml.write('<TR><TD>{:s}'.format(name))
                             for frame in frames :
+                                name=frames[0].header['FILE']
+                                fhtml.write('<TR><TD>{:s}'.format(name))
                                 fhtml.write(('<TD><a href={:s}.png><IMG src={:s}.png width=500>'+
                                 '</a>\n').format(name,name))
+                                fhtml.write(('<TD><a href={:s}.png><IMG src={:s}.png width=500>'+
+                                '</a>\n').format(name,name.replace('.fits','.ec.fits').replace('.fits','.ec.fits')))
             elif 'extract2d' in objects :
                 # 2D spectra
                 print('extract2d')
