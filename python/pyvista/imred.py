@@ -751,7 +751,7 @@ class Reducer() :
            else : return out[0]
         else : return out
 
-    def median(self,ims, normalize=False,display=None,div=True,return_list=False, **kwargs) :
+    def combine(self,ims, normalize=False,display=None,div=True,return_list=False, type='median',sigreject=5,**kwargs) :
         """ Combine images from list of images 
         """
         # create list of images, reading and overscan subtracting
@@ -775,9 +775,17 @@ class Reducer() :
                 varcube.append(allcube[im][chip].uncertainty.array**2)
                 maskcube.append(allcube[im][chip].mask)
             if self.verbose: print('  median combining data....')
-            med = np.median(np.array(datacube),axis=0)
+            if type == 'median' :
+                med = np.median(np.array(datacube),axis=0)
+                sig = 1.253 * np.sqrt(np.mean(np.array(varcube),axis=0)/nframe)
+            elif type == 'mean' :
+                med = np.mean(np.array(datacube),axis=0)
+                sig = np.sqrt(np.mean(np.array(varcube),axis=0)/nframe)
+            elif type == 'reject' :
+                med = np.median(np.array(datacube),axis=0)
+                gd=np.where(np.array(datacube)<med+sigreject*np.sqrt(np.array(varcube)))
+		med = np.mean(np.array(datacube[gd]),axis=0)
             if self.verbose: print('  calculating uncertainty....')
-            sig = 1.253 * np.sqrt(np.mean(np.array(varcube),axis=0)/nframe)
             mask = np.any(maskcube,axis=0)
             comb=CCDData(med,header=allcube[im][chip].header,uncertainty=StdDevUncertainty(sig),
                          mask=mask,unit=u.dimensionless_unscaled)
@@ -819,17 +827,17 @@ class Reducer() :
     def mkbias(self,ims,display=None,scat=None) :
         """ Driver for superbias combination (no superbias subtraction no normalization)
         """
-        return self.median(ims,display=display,div=False,scat=scat)
+        return self.combine(ims,display=display,div=False,scat=scat)
 
     def mkdark(self,ims,bias=None,display=None,scat=None) :
         """ Driver for superdark combination (no normalization)
         """
-        return self.median(ims,bias=bias,display=display,div=False,scat=scat)
+        return self.combine(ims,bias=bias,display=display,div=False,scat=scat)
 
     def mkflat(self,ims,bias=None,dark=None,scat=None,display=None) :
         """ Driver for superflat combination (with superbias if specified, normalize to normbox
         """
-        return self.median(ims,bias=bias,dark=dark,normalize=True,scat=scat,display=display)
+        return self.combine(ims,bias=bias,dark=dark,normalize=True,scat=scat,display=display)
 
     def mkspecflat(self,flats,wid=101) :
         """ Spectral flat takes out variation along wavelength direction
