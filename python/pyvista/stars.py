@@ -364,16 +364,16 @@ def process(file,red,tab,bias=None,dark=None,flat=None,disp=None, solve=True,
     return phot
 
 def dostar(red,obj,date,filts=['SR+D25'],seeing=12,dark=None,flats=[None],
-               rad=np.arange(5,45,5), skyrad=[50,60],clobber=False) :
+           rad=np.arange(5,45,5), skyrad=[50,60],clobber=False,threads=32,disp=None) :
 
-    if dark == None : print('No dark frame')
+    if dark is None : print('No dark frame')
     try : tab = Table.read(obj+'.fits')
     except : tab=None
 
 
     grid=[]
     for filt,flat in zip(filts,flats) :
-        if flat == None : print('No flat frame')
+        if flat is None : print('No flat frame')
     
         files= glob.glob(red.dir+'/*'+obj+'*'+filt+'*')
         files.sort()
@@ -390,7 +390,7 @@ def dostar(red,obj,date,filts=['SR+D25'],seeing=12,dark=None,flats=[None],
         sav='{:s}.{:s}.{:s}'.format(obj,date,filt) 
         if not os.path.exists(sav+'.fits') or clobber :
             out = process_all(files,red,tab,flat=flat,dark=dark,seeing=seeing,
-                              rad=rad,skyrad=skyrad,threads=32)
+                              rad=rad,skyrad=skyrad,threads=threads,disp=disp)
             out.write(sav+'.fits',overwrite=True)
         else :
             out=Table.read(sav+'.fits')
@@ -399,7 +399,7 @@ def dostar(red,obj,date,filts=['SR+D25'],seeing=12,dark=None,flats=[None],
         grid.append([sav+'_mjd.png',sav+'_air.png'])
     html.htmltab(grid,file=obj+'.'+date+'.html')
 
-def diffphot(tab,aper='aper35.0',yr=0.02,title=None,hard=None) :
+def diffphot(tab,aper='aper35.0',yr=0.1,title=None,hard=None) :
     """ Make differential photometry plots
            including airmass detrending
     """
@@ -424,6 +424,13 @@ def diffphot(tab,aper='aper35.0',yr=0.02,title=None,hard=None) :
             daterr[i,j] =  tab[aper+'err'][ii]
             air[i] = tab['AIRMASS'][ii]
 
+    # total the comp stars
+    #afig,aax = plots.multi(1,1)
+    #tot = -2.5*np.log10((10**(-0.4*dat[:,1:])).sum(axis=1))
+    #aax.scatter(x,dat[:,0]-tot)
+    #aax.set_ylim(aax.get_ylim()[1],aax.get_ylim()[0])
+        
+    
     # make plots of all pairs of stars
     for j in range(nstars) :
         for k in range(j,nstars) :
@@ -446,7 +453,9 @@ def diffphot(tab,aper='aper35.0',yr=0.02,title=None,hard=None) :
             ax[j,k].scatter(x,diff_fit,color='b')
             ax[j,k].errorbar(x,diff_fit,yerr=err,fmt='none',color='b')
             ax[j,k].set_xlabel('MJD')
-            ax[j,k].set_ylim(med-yr,med+yr)
+            ax[j,k].scatter(x,dat[:,j]-np.median(dat[:,j])+np.median(diff)+0.01,edgecolors='r',facecolors='none')
+            ax[j,k].scatter(x,dat[:,k]-np.median(dat[:,k])+np.median(diff)-0.01,edgecolors='m',facecolors='none')
+            ax[j,k].set_ylim(med+yr,med-yr)
             bd =np.where(diff>(med+yr))[0]
             ax[j,k].scatter(x[bd],len(bd)*[med+yr-.01*yr],marker=6,color='r')
             bd =np.where(diff<(med-yr))[0]
@@ -460,7 +469,9 @@ def diffphot(tab,aper='aper35.0',yr=0.02,title=None,hard=None) :
             airax[j,k].errorbar(air,diff,yerr=err,fmt='none',color='g')
             airax[j,k].scatter(air,diff_fit,color='b')
             airax[j,k].errorbar(air,diff_fit,yerr=err,fmt='none',color='b')
-            airax[j,k].set_ylim(med-yr,med+yr)
+            airax[j,k].scatter(air,dat[:,j]-np.median(dat[:,j])+np.median(diff)+0.01,edgecolors='r',facecolors='none')
+            airax[j,k].scatter(air,dat[:,k]-np.median(dat[:,k])+np.median(diff)-0.01,edgecolors='m',facecolors='none')
+            airax[j,k].set_ylim(med+yr,med-yr)
             bd =np.where(diff>(med+yr))[0]
             airax[j,k].scatter(air[bd],len(bd)*[med+yr-.01*yr],
                                marker=6,color='r')
@@ -493,6 +504,7 @@ def diffphot(tab,aper='aper35.0',yr=0.02,title=None,hard=None) :
     #plt.draw()
 
     pdb.set_trace()
+    plt.close()
     plt.close()
     plt.close()
 
