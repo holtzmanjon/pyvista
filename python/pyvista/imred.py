@@ -781,17 +781,23 @@ class Reducer() :
                 datacube.append(allcube[im][chip].data)
                 varcube.append(allcube[im][chip].uncertainty.array**2)
                 maskcube.append(allcube[im][chip].mask)
-            if self.verbose: print('  median combining data....')
             if type == 'median' :
+                if self.verbose: print('  combining data with median....')
                 med = np.median(np.array(datacube),axis=0)
                 sig = 1.253 * np.sqrt(np.mean(np.array(varcube),axis=0)/nframe)
             elif type == 'mean' :
+                if self.verbose: print('  combining data with mean....')
                 med = np.mean(np.array(datacube),axis=0)
                 sig = np.sqrt(np.mean(np.array(varcube),axis=0)/nframe)
             elif type == 'reject' :
-                med = np.median(np.array(datacube),axis=0)
-                gd=np.where(np.array(datacube)<med+sigreject*np.sqrt(np.array(varcube)))
-		med = np.mean(np.array(datacube[gd]),axis=0)
+                datacube = np.array(datacube)
+                pdb.set_trace()
+                if self.verbose: print('  combining data with rejection....')
+                med = np.median(datacube,axis=0)
+                bd=np.where(datacube>med+sigreject*np.sqrt(np.array(varcube)))
+                datacube[bd]=np.nan
+                med = np.nanmean(datacube,axis=0)
+                sig = np.sqrt(np.mean(np.array(varcube),axis=0)/nframe)
             if self.verbose: print('  calculating uncertainty....')
             mask = np.any(maskcube,axis=0)
             comb=CCDData(med,header=allcube[im][chip].header,uncertainty=StdDevUncertainty(sig),
@@ -831,10 +837,10 @@ class Reducer() :
            else : return out[0]
         else : return out
 
-    def mkbias(self,ims,display=None,scat=None) :
+    def mkbias(self,ims,display=None,scat=None,type='median') :
         """ Driver for superbias combination (no superbias subtraction no normalization)
         """
-        return self.combine(ims,display=display,div=False,scat=scat)
+        return self.combine(ims,display=display,div=False,scat=scat,type=type)
 
     def mkdark(self,ims,bias=None,display=None,scat=None) :
         """ Driver for superdark combination (no normalization)
