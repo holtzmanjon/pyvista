@@ -10,12 +10,12 @@ from astropy.nddata import support_nddata
 from . import cmap
 from . import mmm
 from . import image
-#try:
+try:
 #   import autopy
-#except:
-#   print('autopy does not seem to be available, disabling arrow key cursor moves')
+    import pyautogui
+except:
+   print('pyautogui does not seem to be available, disabling arrow key cursor moves')
 
-import pyautogui
 import pdb
  
 class TV:
