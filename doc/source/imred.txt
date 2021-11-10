@@ -57,8 +57,8 @@ light subtraction if a scattered light parameter has been set,
 flat fields if a flat frame has been load, bad pixel masking if
 a bad pixel mask has been set.
 
-Calibration frames can be created using the mksuperbias,
-mksuperdark, mksuperflat, mkspecflat methods. These take lists
+Calibration frames can be created using the mkbias,
+mkdark, mkflat, mkspecflat methods. These take lists
 of frames as arguments and combine the input frame using
 a median filter (with normalization for flats). The calibration
 frames are also returned as NDData/CCDData, so that the uncertainties
@@ -90,18 +90,18 @@ Methods :
     sequence number alone, and the input directory will be searched for files matching
     the input format ({dir}/{root}{formstr}.fits*) with the input file number
   - overscan : subtracts overscan, and calculates uncertainty
-  - bias : subtracts input superbias frame
-  - flat : divides by input superflat frame
+  - bias : subtracts input combined bias frame
+  - flat : divides by input combined flat frame
   - reduce :  reads, overscan subtracts (per biastype), bias subtracts if
-             given a superbias, flat fields if given a superflat
+             given a combined bias, flat fields if given a combined flat
   - getcube: reads a set of frames into a data cube
   - median:  median filters images in cube
   - sum: :   sums images in cube
-  - mksuperbias: given input bias frames, creates superbias with 
+  - mkbias: given input bias frames, creates combined bias with 
     median combination after overscan subtraction
-  - mksuperflat: given input flat field frames, creates superbias
+  - mkflat: given input flat field frames, creates combined bias
     with median combination with normalization, after overscan
-    subtraction, and bias subtraction if given superbias
+    subtraction, and bias subtraction if given combined bias
   - mkspecflat: creates flat field as above, but then removes
     structure along columns using spectral signature calculated from
     a boxcar filter of a central set of rows, to produce a flat
