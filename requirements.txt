@@ -1,2 +1,5 @@
+matplotlib
 numpy
 astropy
+photutils
+holtz-tools
