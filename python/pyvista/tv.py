@@ -10,10 +10,12 @@ from astropy.nddata import support_nddata
 from . import cmap
 from . import mmm
 from . import image
-try:
-   import autopy
-except:
-   print('autopy does not seem to be available, disabling arrow key cursor moves')
+#try:
+#   import autopy
+#except:
+#   print('autopy does not seem to be available, disabling arrow key cursor moves')
+
+import pyautogui
 import pdb
  
 class TV:
@@ -160,8 +162,10 @@ class TV:
                 #self.aximage.set_cmap(cm)
                 plt.draw()
                 try:
-                    x,y= autopy.mouse.location()
-                    autopy.mouse.move(int(x),int(y))
+                    #x,y= autopy.mouse.location()
+                    #autopy.mouse.move(int(x),int(y))
+                    x,y=pyautogui.position()
+                    pyautogui.moveTo(int(x),int(y))
                 except: pass
 
             elif (event.key == 'p' or event.key == 'v') and subPlotNr == 0 :
@@ -178,9 +182,11 @@ class TV:
                 px-=n
                 py-=n
                 try:
-                    x,y= autopy.mouse.location()
                     xs,ys = scale()
-                    autopy.mouse.move(int(x+px*xs),int(y-py*ys))
+                    #x,y= autopy.mouse.location()
+                    #autopy.mouse.move(int(x+px*xs),int(y-py*ys))
+                    x,y= pyautogui.position()
+                    pyautogui.moveTo(int(x+px*xs),int(y-py*ys))
                 except: pass
 
             elif event.key == 'r' and subPlotNr == 0 :
@@ -224,44 +230,57 @@ class TV:
                 # move cursor
                 xs,ys = scale()
                 try:
-                    x,y= autopy.mouse.location()
+                    #x,y= autopy.mouse.location()
+                    x,y= pyautogui.position()
                     if xs < 1. :
-                        autopy.mouse.move(int(x-1),int(y))
+                        #autopy.mouse.move(int(x-1),int(y))
+                        pyautogui.moveTo(int(x-1),int(y))
                     else :
-                        autopy.mouse.move(int(x-xs),int(y))
-                except: pass
+                        #autopy.mouse.move(int(x-xs),int(y))
+                        pyautogui.moveTo(int(x-xs),int(y))
+                except:
+                    print('autopy error')
 
             elif event.key == 'right' and subPlotNr == 0 :
                 # move cursor
                 xs,ys = scale()
                 try:
-                    x,y= autopy.mouse.location()
+                    #x,y= autopy.mouse.location()
+                    x,y= pyautogui.position()
                     if xs < 1. :
-                        autopy.mouse.move(int(x+1),int(y))
+                        #autopy.mouse.move(int(x+1),int(y))
+                        pyautogui.moveTo(int(x+1),int(y))
                     else :
-                        autopy.mouse.move(int(x+xs),int(y))
+                        #autopy.mouse.move(int(x+xs),int(y))
+                        pyautogui.moveTo(int(x+xs),int(y))
                 except: pass
 
             elif event.key == 'up' and subPlotNr == 0 :
                 # move cursor
                 xs,ys = scale()
                 try:
-                    x,y= autopy.mouse.location()
+                    #x,y= autopy.mouse.location()
+                    x,y= pyautogui.position()
                     if ys < 1. :
-                        autopy.mouse.move(int(x),int(y-1))
+                        #autopy.mouse.move(int(x),int(y-1))
+                        pyautogui.moveTo(int(x),int(y-1))
                     else :
-                        autopy.mouse.move(int(x),int(y-ys))
+                        #autopy.mouse.move(int(x),int(y-ys))
+                        pyautogui.moveTo(int(x),int(y-ys))
                 except: pass
 
             elif event.key == 'down' and subPlotNr == 0 :
                 # move cursor
                 xs,ys = scale()
                 try:
-                    x,y = autopy.mouse.location()
+                    #x,y= autopy.mouse.location()
+                    x,y= pyautogui.position()
                     if ys < 1. :
-                        autopy.mouse.move(int(x),int(y+1))
+                        #autopy.mouse.move(int(x),int(y+1))
+                        pyautogui.moveTo(int(x),int(y+1))
                     else :
-                        autopy.mouse.move(int(x),int(y+ys))
+                        #autopy.mouse.move(int(x),int(y+ys))
+                        pyautogui.moveTo(int(x),int(y+ys))
                 except: pass
 
             elif event.key == 'a' and subPlotNr == 0 :
