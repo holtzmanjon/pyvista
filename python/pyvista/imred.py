@@ -33,10 +33,10 @@ from pyvista import tv
 try: 
     import pyds9
 except:
-    print('pyds9 is not available, proceeding')
+    #print('pyds9 is not available, proceeding')
+    pass
 
 ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../../'
-
 
 
 class Reducer() :
@@ -54,6 +54,8 @@ class Reducer() :
         self.scat=None
         self.mask=None
         self.transpose=None
+        self.scale=1
+        self.biastype=-1
 
         # we will allow for instruments to have multiple channels, so everything goes in lists
         self.channels=['']
@@ -78,8 +80,6 @@ class Reducer() :
             self.rn=config['rn']/np.sqrt(nfowler)
             try :self.scale=config['scale']
             except : self.scale = None
-            try : self.flip=config['flip']
-            except : self.flip = None
             try : self.namp=config['namp']
             except : self.namp = 1
             try :self.transpose=config['transpose']
@@ -153,7 +153,7 @@ class Reducer() :
                 print('  will use format:  {:s}/{:s}{:s}.fits*'.format(
                          self.dir,self.root,form))
             print('         gain:  {}    rn: {}'.format(self.gain,self.rn))
-            print('         scale:  {}   flip: {}'.format(self.scale,self.flip))
+            print('         scale:  {}   '.format(self.scale))
             print('  Biastype : {:d}'.format(self.biastype))
             print('  Bias box: ')
             for box in self.biasbox :
@@ -200,7 +200,7 @@ class Reducer() :
                 pdb.set_trace()
             file=glob.glob(search)
             if len(file) == 0 : 
-                print('cannot find file matching: '+search)
+                raise ValueError('cannot find file matching: '+search)
                 return
             elif len(file) > 1 : 
                 if self.verbose : print('more than one match found, using first!',file)
@@ -254,11 +254,12 @@ class Reducer() :
                 ampboxes = biasbox
                 databoxes = biasregion
             im.data = im.data.astype(float)
-            for databox,ampbox in zip(databoxes,ampboxes) :
+            color=['m','g','b','r','c','y']
+            for ibias,(databox,ampbox) in enumerate(zip(databoxes,ampboxes)) :
               if display is not None :
-                  display.tvbox(0,0,box=ampbox)
+                  display.tvbox(0,0,box=ampbox,color=color[ibias])
                   if type(databox) == image.BOX : 
-                      display.tvbox(0,0,box=databox,color='g')
+                      display.tvbox(0,0,box=databox,color=color[ibias],ls='--',lw=2)
                       ax.plot(np.arange(databox.ymin,databox.ymax),
                           np.mean(im.data[databox.ymin:databox.ymax,
                           ampbox.xmin:ampbox.xmax], axis=1))
@@ -296,10 +297,7 @@ class Reducer() :
                             databox.xmin:databox.xmax+1].astype(float) - over
             if display is not None :
                 display.tv(im)
-                get=input("  See bias box and cross section. Hit any key to continue")
-                if get == 'i' : code.interact(local=locals())
-                elif get == 'q' : sys.exit()
-                elif get == 'p' : pdb.set_trace()
+                getinput("  See bias box and cross section. ",display)
 
             # Add uncertainty (redo from scratch after overscan)
             data=copy.copy(im.data)
@@ -428,7 +426,7 @@ class Reducer() :
                  display.plotax2.text(0.05,0.95,'Row {:d}'.format(row),
                      transform=display.plotax2.transAxes)
                  display.plotax2.set_ylim(min,max)
-                 input("  See flat-fielded image and original with - key. Hit any key to continue")
+                 getinput("  See flat-fielded image and original with - (minus) key.",display)
          if len(out) == 1 : return out[0]
          else : return out
 
@@ -483,7 +481,7 @@ class Reducer() :
             display.ax.scatter(points[:,1],points[:,0],color='r',s=3)
             points_gd=np.array(points_gd)
             display.ax.scatter(points_gd[:,1],points_gd[:,0],color='g',s=3)
-            input("  See image with scattered light points. Hit any key to continue".format(im))
+            getinput("  See image with scattered light points",display)
             display.clear()
             display.tv(im)
             display.tv(grid_z)
@@ -492,7 +490,7 @@ class Reducer() :
             display.plotax1.plot(im.data[:,col])
             display.plotax1.plot(grid_z[:,col])
             plt.draw()
-            input("  See scattered light image. Hit any key to continue".format(im))
+            getinput("  See scattered light image",display)
 
         im.data -= grid_z
 
@@ -515,7 +513,7 @@ class Reducer() :
                 image.zap(im,crbox,nsig=nsig)
             if display is not None : 
                 display.tv(im)
-                input("  See CR-zapped image and original with - key. Hit any key to continue")
+                getinput("  See CR-zapped image and original with - key",display)
             out.append(im)
         if len(out) == 1 : return out[0]
         else : return out
@@ -532,7 +530,7 @@ class Reducer() :
                  ims[i].data[bd[0],bd[1]] = val
                  ims[i].uncertainty.array[bd[0],bd[1]] = np.inf
 
-    def platesolve(self,im,scale=0.46,seeing=2,display=None,flip=True) :
+    def platesolve(self,im,scale=0.46,seeing=2,display=None) :
         """ try to get plate solution with imwcs
         """
         if self.verbose : print('  plate solving ....')
@@ -621,7 +619,7 @@ class Reducer() :
         for f in glob.glob(os.path.basename(tmpfile[1])+'*') :
             os.remove(f)
         if display is not None :
-            input("  See plate solve stars. Hit any key to continue")
+            getinput("  See plate solve stars",display)
             display.tvclear()
         return im
 
@@ -678,7 +676,7 @@ class Reducer() :
         if trim : im=self.trim(im,trimimage=trim)
         im=self.crrej(im,crbox=crbox,display=display)
         if solve : 
-            im=self.platesolve(im,display=display,scale=self.scale,flip=self.flip,seeing=seeing)
+            im=self.platesolve(im,display=display,scale=self.scale,seeing=seeing)
         if return_list and type(im) is not list : im=[im]
         return im
 
@@ -758,7 +756,8 @@ class Reducer() :
            else : return out[0]
         else : return out
 
-    def combine(self,ims, normalize=False,display=None,div=True,return_list=False, type='median',sigreject=5,**kwargs) :
+    def combine(self,ims, normalize=False,display=None,div=True,
+                return_list=False, type='median',sigreject=5,**kwargs) :
         """ Combine images from list of images 
         """
         # create list of images, reading and overscan subtracting
@@ -798,6 +797,8 @@ class Reducer() :
                 datacube[bd]=np.nan
                 med = np.nanmean(datacube,axis=0)
                 sig = np.sqrt(np.mean(np.array(varcube),axis=0)/nframe)
+            else :
+                raise ValueError('no combination type: {:s}'.format(type))
             if self.verbose: print('  calculating uncertainty....')
             mask = np.any(maskcube,axis=0)
             comb=CCDData(med,header=allcube[im][chip].header,uncertainty=StdDevUncertainty(sig),
@@ -814,22 +815,19 @@ class Reducer() :
                 min,max=tv.minmax(med[gd[0],gd[1]],low=10,high=10)
                 display.plotax1.hist(med[gd[0],gd[1]],bins=np.linspace(min,max,100),histtype='step')
                 display.fig.canvas.draw_idle()
-                get = input("  See final image, use - key for S/N image. Hit any key to continue")
-                if get == 'i' : code.interact(local=locals())
-                elif get == 'q' : sys.exit()
-                elif get == 'p' : pdb.set_trace()
+                getinput("  See final image, use - key for S/N image.",display)
                 for i,im in enumerate(ims) :
                     min,max=tv.minmax(med[gd[0],gd[1]],low=5,high=5)
                     display.fig.canvas.draw_idle()
                     if div :
                         display.plotax2.hist((allcube[i][chip].data/med)[gd[0],gd[1]],bins=np.linspace(0.5,1.5,100),histtype='step')
                         display.tv(allcube[i][chip].data/med,min=0.5,max=1.5)
-                        input("    see image: {} divided by master, hit any key to continue".format(im))
+                        getinput("    see image: {} divided by master".format(im),display)
                     else :
                         delta=5*self.rn[chip]
                         display.plotax2.hist((allcube[i][chip].data-med)[gd[0],gd[1]],bins=np.linspace(-delta,delta,100),histtype='step')
                         display.tv(allcube[i][chip].data-med,min=-delta,max=delta)
-                        input("    see image: {} minus master, hit any key to continue".format(im))
+                        getinput("    see image: {} minus master".format(im),display)
 
         # return the frame
         if len(out) == 1 :
@@ -837,34 +835,65 @@ class Reducer() :
            else : return out[0]
         else : return out
 
-    def mkbias(self,ims,display=None,scat=None,type='median') :
+    def mkbias(self,ims,display=None,scat=None,type='median',sigreject=5) :
         """ Driver for superbias combination (no superbias subtraction no normalization)
         """
-        return self.combine(ims,display=display,div=False,scat=scat,type=type)
+        return self.combine(ims,display=display,div=False,scat=scat,
+                            type=type,sigreject=sigreject)
 
-    def mkdark(self,ims,bias=None,display=None,scat=None) :
+    def mkdark(self,ims,bias=None,display=None,scat=None,
+               type='median',sigreject=5,clip=None) :
         """ Driver for superdark combination (no normalization)
         """
-        return self.combine(ims,bias=bias,display=display,div=False,scat=scat)
+        dark= self.combine(ims,bias=bias,display=display,
+                            div=False,scat=scat,type=type,sigreject=sigreject)
+        if clip != None:
+            low = np.where(dark.data < clip*dark.uncertainty.array)
+            dark.data[low] = 0.
+            dark.data[low] = 0.
+        return dark
 
-    def mkflat(self,ims,bias=None,dark=None,scat=None,display=None) :
-        """ Driver for superflat combination (with superbias if specified, normalize to normbox
+    def mkflat(self,ims,bias=None,dark=None,scat=None,display=None,
+               type='median',sigreject=5,spec=False,width=101) :
+        """ Driver for superflat combination 
+             (with superbias if specified, normalize to normbox
         """
-        return self.combine(ims,bias=bias,dark=dark,normalize=True,scat=scat,display=display)
+        flat= self.combine(ims,bias=bias,dark=dark,normalize=True,
+                 scat=scat,display=display,type=type,sigreject=sigreject)
+        if spec :
+            return self.mkspecflat(flat,width=width,display=display)
+        else :
+            return flat
 
-    def mkspecflat(self,flats,wid=101) :
+    def mkspecflat(self,flats,width=101,display=None) :
         """ Spectral flat takes out variation along wavelength direction
         """
-        boxcar = Box1DKernel(wid)
-        for iflat,flat in enumerate(flats) : 
-            nrows=flats[iflat].data.shape[0]
-            med = convolve(np.median(flat,axis=0),boxcar,boundary='extend')
-            for row in range(flats[iflat].data.shape[0]) :
-                flats[iflat].data[row,:] /= med
-                flats[iflat].uncertainty.array[row,:] /= med
 
-        return flats
+        if type(flats) is not list : flats=[flats]
+        boxcar = Box1DKernel(width)
 
+        sflat=[]
+        for flat in flats :
+            if self.transpose : tmp=copy.deepcopy(self.imtranspose(flat))
+            else : tmp=flat
+            nrows=tmp.data.shape[0]
+            snmed = np.nanmedian(tmp.data/tmp.uncertainty.array,axis=1)
+            gdrows = np.where(snmed>50)[0]
+            med = convolve(np.nanmedian(tmp[gdrows,:],axis=0),boxcar,boundary='extend')
+            if display is not None :
+                display.tv(tmp)
+                display.plotax1.cla()
+                display.plotax2.cla()
+                display.plotax1.plot(snmed)
+                display.plotax2.plot(med)
+            for row in range(tmp.data.shape[0]) :
+                tmp.data[row,:] /= med
+                tmp.uncertainty.array[row,:] /= med
+            if self.transpose : sflat.append( self.imtranspose(tmp))
+            else : sflat.append(tmp)
+
+        if len(sflat) == 1 :return sflat[0]
+        else : return sflat
 
 # old combine routine
 def combine(ims,norm=False,bias=None,flat=None,trim=False,verbose=False,
@@ -1095,15 +1124,19 @@ def mkmask(inst=None) :
 
     return mask
 
-def getinput(str) :
-    get = input(str)
+def getinput(text,display) :
+    """ print text, get a key input from display
+    """
+    print(text)
+    print('   To continue, hit q in display window (p for debug) ')
+    get = display.tvmark()[0]
     if get == 'i' : code.interact(local=globals())
     elif get == 'p' :
         pdb.set_trace()
     return get
 
 class Data(object) :
-    """ Experimental data class to cinclude wavelength array
+    """ Experimental data class to include wavelength array
     """
     def __init__(self,data,wave=None) :
         if type(data) is str :
