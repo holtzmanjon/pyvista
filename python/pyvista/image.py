@@ -14,10 +14,6 @@ import glob
 import bz2
 import os
 import pdb
-try: 
-    import pyds9
-except:
-    print('pyds9 is not available, proceeding')
 
 class BOX() :
     """ 
