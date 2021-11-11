@@ -4,7 +4,7 @@ Installation
 To install pyvista, first clone (or fork, if you are interested in contributing)
 the project from gihub:
 
-.. code-block::
+.. code-block:: csh
 
    git clone https://github.com/holtzmanjon/pyvista
 
@@ -21,7 +21,7 @@ Installation into Python distribution
 -------------------------------------
 Once downloaded, you can install with the usual
 
-.. code-block::
+.. code-block:: csh
 
    python setup.py install
 
@@ -30,7 +30,7 @@ Installation using environment variables
 Alternatively, define an environment variable PYVISTA_DIR that refers to the top
 level pyvista directory, e.g.
 
-.. code-block:: 
+.. code-block:: csh
 
    setenv PYVISTA_DIR /pathto/pyvista   (csh/tcsh)
    export PYVISTA_DIR=/pathto/pyvista   (bash)
