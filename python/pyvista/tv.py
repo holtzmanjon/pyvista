@@ -543,7 +543,7 @@ class TV:
         self.ax.add_patch(patches.Circle((x,y),rad,fill=False,color=color))
         plt.draw()
 
-    def tvbox(self,x,y,box=None,size=3,color='m') :
+    def tvbox(self,x,y,box=None,size=3,color='m',ls=None,lw=None) :
         """
         displays a patch (box by default) on an image
 
@@ -567,7 +567,7 @@ class TV:
             xsize=size
             y0=y-size/2
             ysize=size
-        self.ax.add_patch(patches.Rectangle((x0,y0),xsize,ysize,fill=False,color=color))
+        self.ax.add_patch(patches.Rectangle((x0,y0),xsize,ysize,fill=False,color=color,ls=ls,lw=lw))
         plt.draw()
 
     def clear(self) :
@@ -598,7 +598,7 @@ class TV:
           key pressed, x data position, y data position
         """
         self.__startBlock()
-        reserved=['r','p','v','left','right','up','down'] 
+        reserved=['r','p','v','left','right','up','down','-','+','='] 
         if self.event.key in reserved : self.tvmark()
         return self.event.key, self.event.xdata, self.event.ydata
 
