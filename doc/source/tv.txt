@@ -32,8 +32,10 @@ To load it:
 
    from pyvista import tv
 
-If the autopy package is available it will be loaded: this functionality is
-required for interactive functions that move the cursor.
+If the pyautogui package is available it will be loaded: this functionality is
+required for interactive functions that move the cursor. Note that for some versions
+of MacOSX, the controlling application needs to be given permission to access
+the mouse.
 
 Usage
 +++++
