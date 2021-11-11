@@ -540,7 +540,7 @@ class TV:
           size= :  patch size
           color= :  patch color
         """
-        self.ax.add_patch(patches.Circle((x,y),rad,fill=False,color=color
+        self.ax.add_patch(patches.Circle((x,y),rad,fill=False,color=color,
                           ls=ls,lw=lw))
         plt.draw()
 
