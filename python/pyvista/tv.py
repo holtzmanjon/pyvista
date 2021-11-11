@@ -529,7 +529,7 @@ class TV:
         """
         self.ax.text(x,y,text,ha=ha,va=va,color=color)
 
-    def tvcirc(self,x,y,rad=3,color='m') :
+    def tvcirc(self,x,y,rad=3,color='m',ls=None,lw=None) :
         """
         displays a circle on an image
 
@@ -540,7 +540,8 @@ class TV:
           size= :  patch size
           color= :  patch color
         """
-        self.ax.add_patch(patches.Circle((x,y),rad,fill=False,color=color))
+        self.ax.add_patch(patches.Circle((x,y),rad,fill=False,color=color
+                          ls=ls,lw=lw))
         plt.draw()
 
     def tvbox(self,x,y,box=None,size=3,color='m',ls=None,lw=None) :
