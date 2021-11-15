@@ -65,7 +65,7 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False)
 
     istar=len(stars)+1
     print('Hit c near desired star(s) to get centroid position\n'+
-          '    i to use integer position of cursor')
+          '    i to use integer position of cursor\n'+
           '    q or e to quit')
     while True :
         key,x,y = tv.tvmark()
