@@ -211,9 +211,15 @@ class Reducer() :
             try : im=CCDData.read(file,hdu=ext,unit=u.dimensionless_unscaled)
             except : raise RuntimeError('Error reading file: {:s}'.format(file))
             im.header['FILE'] = os.path.basename(file)
-            if 'OBJECT' not in im.header :
+            if 'OBJECT' not in im.header  or im.header['OBJECT'] == '':
                 try: im.header['OBJECT'] = im.header['OBJNAME']
                 except KeyError : im.header['OBJECT'] = im.header['FILE']
+            if 'RA' not in im.header  :
+                try: im.header['RA'] = im.header['OBJCTRA']
+                except : print('no RA or OBJCTRA found')
+            if 'DEC' not in im.header  :
+                try: im.header['DEC'] = im.header['OBJCTDEC']
+                except : print('no DEC or OBJCTDEC found')
 
             # Add uncertainty (will be in error if there is an overscan, but redo with overscan subraction later)
             data=copy.copy(im.data)
@@ -262,7 +268,7 @@ class Reducer() :
                       display.tvbox(0,0,box=databox,color=color[ibias],ls='--',lw=2)
                       ax.plot(np.arange(databox.ymin,databox.ymax),
                           np.mean(im.data[databox.ymin:databox.ymax,
-                          ampbox.xmin:ampbox.xmax], axis=1))
+                          ampbox.xmin:ampbox.xmax], axis=1),color=color[ibias])
               if self.biastype == 0 :
                 b=ampbox.mean(im.data)
                 if self.verbose: print('  subtracting overscan: ', b)
@@ -289,6 +295,7 @@ class Reducer() :
                 if display is not None : 
                     ax.plot(np.arange(databox.ymin,databox.ymax+1),
                             over,color='k')
+                    ax.set_xlabel('Row')
                 over=image.stretch(over,ncol=databox.ncol())
                 if self.verbose: print('  subtracting overscan vector ')
                 im.data[databox.ymin:databox.ymax+1,
@@ -533,12 +540,15 @@ class Reducer() :
     def platesolve(self,im,scale=0.46,seeing=2,display=None) :
         """ try to get plate solution with imwcs
         """
-        if self.verbose : print('  plate solving ....')
+        if self.verbose : print('  plate solving with local astrometry.net....')
 
         # find stars
         mad=np.nanmedian(np.abs(im-np.nanmedian(im)))
         daofind=DAOStarFinder(fwhm=seeing/scale,threshold=10*mad)
         objs=daofind(im.data-np.nanmedian(im.data))
+        if len(objs) == 0 :
+            raise RuntimeError('no stars detected. Maybe try setting seeing?')
+
         try: objs.sort(['mag'])
         except: pdb.set_trace()
         gd=np.where((objs['xcentroid']>50)&(objs['ycentroid']>50)&
@@ -565,10 +575,6 @@ class Reducer() :
         print(cmd)
         ret = subprocess.call(cmd.split())
 
-        # get WCS
-        header=fits.open(os.path.basename(tmpfile[1])+'xy.wcs')[0].header
-        w=WCS(header)
-        im.wcs=w
 
         """
         cmd='/usr/local/astrometry/bin/new-wcs -i {:s}.fits -w {:s}xy.wcs -o {:s}w.fits'.format(tmpfile[1],os.path.basename(tmpfile[1]),os.path.basename(tmpfile[1]))
@@ -616,11 +622,19 @@ class Reducer() :
             display.tvcirc(xx,yy,rad=5,color='g')
 
         """
-        for f in glob.glob(os.path.basename(tmpfile[1])+'*') :
-            os.remove(f)
         if display is not None :
             getinput("  See plate solve stars",display)
             display.tvclear()
+        # get WCS
+        try:
+            header=fits.open(os.path.basename(tmpfile[1])+'xy.wcs')[0].header
+            w=WCS(header)
+            im.wcs=w
+        except :
+            for f in glob.glob(os.path.basename(tmpfile[1])+'*') : os.remove(f)
+            raise RuntimeError('plate solve FAILED')
+
+        for f in glob.glob(os.path.basename(tmpfile[1])+'*') : os.remove(f)
         return im
 
     def noise(self,pairs,rows=None,cols=None,nbox=200,display=None) :
