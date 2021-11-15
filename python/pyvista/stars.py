@@ -64,6 +64,9 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False)
         if exit : return stars
 
     istar=len(stars)+1
+    print('Hit c near desired star(s) to get centroid position\n'+
+          '    i to use integer position of cursor')
+          '    q or e to quit')
     while True :
         key,x,y = tv.tvmark()
         if key == 'q' or key == 'e' : break
@@ -103,7 +106,8 @@ def add_coord(data,stars,wcs=None) :
         stars['DEC'] = dec
 
 @support_nddata
-def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,disp=None,gain=1,rn=0,mag=True,utils=True) :
+def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,display=None,
+           gain=1,rn=0,mag=True,utils=True) :
     """ Aperture photometry of input image with current star list
     """
 
@@ -116,7 +120,7 @@ def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,disp=None,gain=1,rn=0
            raise Exception('uncertainty must be StdDevUncertainty ')
         uncertainty_data = uncertainty.array
     else :
-        uncertainty_data = np.sqrt(data/gain + rn**2)
+        uncertainty_data = np.sqrt(data/gain + rn**2/gain**2)
         
     # Add new output columns to table, removing them first if they exist already
     emptycol = Column( np.empty(len(stars))*np.nan )
@@ -171,9 +175,9 @@ def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,disp=None,gain=1,rn=0
                               (dist2 < skyrad[1]**2) ) 
                 sky,skysig,skyskew,nsky = mmm.mmm(data[gd[0],gd[1]].flatten())
                 sigsq=skysig**2/nsky
-            if disp is not None :
-                disp.tvcirc(star['x'],star['y'],skyrad[0],color='g')
-                disp.tvcirc(star['x'],star['y'],skyrad[1],color='g')
+            if display is not None :
+                display.tvcirc(star['x'],star['y'],skyrad[0],color='g')
+                display.tvcirc(star['x'],star['y'],skyrad[1],color='g')
         else : 
             sky =0.
             skysig= 0.
@@ -219,8 +223,8 @@ def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,disp=None,gain=1,rn=0
                 try : stars[istar][name] = -2.5 * np.log10(stars[istar][name])
                 except : stars[istar][name] = 99.999
 
-            if disp is not None :
-                disp.tvcirc(star['x'],star['y'],r,color='b')
+            if display is not None :
+                display.tvcirc(star['x'],star['y'],r,color='b')
         stars[istar]['sky'] = sky
         stars[istar]['skysig'] = skysig
            
@@ -235,7 +239,7 @@ def save(file,stars) :
     """ Save internal photometry list to FITS table"""
     stars.write(file,overwrite=True)
 
-def centroid(data,x,y,r,verbose=True) :
+def centroid(data,x,y,r,verbose=False) :
     """ Get centroid in input data around input position, with given radius
     """
     # create arrays of pixel numbers for centroiding
@@ -266,9 +270,10 @@ def centroid(data,x,y,r,verbose=True) :
         yold = round(y)
         if verbose: print(iter,x,y)
         iter+=1
+    if iter > 5 : print('possible centroiding convergence issues, consider using a larger radius?')
     return x,y
 
-def process_all(files,red,tab,bias=None,dark=None,flat=None,threads=8, disp=None, solve=True,
+def process_all(files,red,tab,bias=None,dark=None,flat=None,threads=8, display=None, solve=True,
             seeing=15,rad=[3,5,7],skyrad=[10,15],cards=['EXPTIME','FILTER','AIRMASS']):
     """ multi-threaded processing of files
     """
@@ -309,7 +314,7 @@ def process_thread(pars) :
     return process(file,red,tab,bias=bias,dark=dark,flat=flat,
                    rad=rad,skyrad=skyrad,seeing=seeing,cards=cards)
 
-def process(file,red,tab,bias=None,dark=None,flat=None,disp=None, solve=True,
+def process(file,red,tab,bias=None,dark=None,flat=None,display=None, solve=True,
             seeing=15,rad=[3,5,7],skyrad=[10,15],cards=['EXPTIME','FILTER','AIRMASS']):
 
     """ Process and do photometry on input file
@@ -324,7 +329,7 @@ def process(file,red,tab,bias=None,dark=None,flat=None,disp=None, solve=True,
 
         # process file
         a=red.reduce(file,dark=dark,bias=bias,flat=flat,solve=solve,
-                     seeing=seeing,display=disp)
+                     seeing=seeing,display=display)
         dateobs=Time(a.header['DATE-OBS'],format='fits')
 
         # get x,y positions from RA/DEC and load into photometry table
@@ -334,11 +339,11 @@ def process(file,red,tab,bias=None,dark=None,flat=None,disp=None, solve=True,
         phot['y']=y
 
         # re-centroid stars
-        if disp is not None :
-            disp.tv(a)
-            mark(disp,phot,exit=True,auto=False,color='r',new=True,
+        if display is not None :
+            display.tv(a)
+            mark(display,phot,exit=True,auto=False,color='r',new=True,
                  rad=seeing/red.scale)
-            mark(disp,phot,exit=True,auto=True,color='g',rad=seeing/red.scale)
+            mark(display,phot,exit=True,auto=True,color='g',rad=seeing/red.scale)
         else :
             for star in phot :
                 x,y = centroid(a.data,star['x'],star['y'],seeing/red.scale)
@@ -346,7 +351,7 @@ def process(file,red,tab,bias=None,dark=None,flat=None,disp=None, solve=True,
                 star['y'] = y
 
         # do photometry 
-        try : phot=photom(a,phot,rad=rad,skyrad=skyrad,disp=disp)
+        try : phot=photom(a,phot,rad=rad,skyrad=skyrad,display=display)
         except : 
             print('Error with photom')
         phot.add_column(Column([file]*len(tab),name='FILE',dtype=str))
@@ -364,7 +369,7 @@ def process(file,red,tab,bias=None,dark=None,flat=None,disp=None, solve=True,
     return phot
 
 def dostar(red,obj,date,filts=['SR+D25'],seeing=12,dark=None,flats=[None],
-           rad=np.arange(5,45,5), skyrad=[50,60],clobber=False,threads=32,disp=None) :
+           rad=np.arange(5,45,5), skyrad=[50,60],clobber=False,threads=32,display=None) :
 
     if dark is None : print('No dark frame')
     try : tab = Table.read(obj+'.fits')
@@ -390,7 +395,7 @@ def dostar(red,obj,date,filts=['SR+D25'],seeing=12,dark=None,flats=[None],
         sav='{:s}.{:s}.{:s}'.format(obj,date,filt) 
         if not os.path.exists(sav+'.fits') or clobber :
             out = process_all(files,red,tab,flat=flat,dark=dark,seeing=seeing,
-                              rad=rad,skyrad=skyrad,threads=threads,disp=disp)
+                              rad=rad,skyrad=skyrad,threads=threads,display=display)
             out.write(sav+'.fits',overwrite=True)
         else :
             out=Table.read(sav+'.fits')
