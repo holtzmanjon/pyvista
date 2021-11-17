@@ -46,9 +46,18 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False)
         for icard,card in enumerate(cards) :
             try: stars.add_column(Column([],name=card,dtype=(types[icard])))
             except: pass
+        stars['AIRMASS'].info.format = '.3f'
     else :
         if auto :
             # with auto option, recentroid and update from current header
+            for icard,card in enumerate(cards) :
+                try: stars[card] = tv.hdr[card]
+                except KeyError: stars.add_column(0.,name=card)
+            stars['AIRMASS'].info.format = '.3f'
+            try: stars['MJD'] = tv.hdr['MJD']
+            except KeyError: 
+                stars.add_column(0.,name='MJD')
+                stars['MJD'].info.format = '.6f'
             for star in stars :
                 x,y = centroid(tv.img,star['x'],star['y'],rad)
                 star['x'] = x
