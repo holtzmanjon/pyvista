@@ -179,7 +179,7 @@ class WaveCal() :
             if self.ax is not None : 
                 self.ax[1].cla()
                 scat=self.ax[1].scatter(self.waves,diff,marker='o',c=self.y,s=2)
-                self.ax[1].scatter(self.waves[bd],diff[bd],marker='o',c='r',s=2)
+                plots.plotp(self.ax[1],self.waves[bd],diff[bd],marker='o',color='r',size=2)
                 xlim=self.ax[1].get_xlim()
                 self.ax[1].set_ylim(diff.min()-0.5,diff.max()+0.5)
                 self.ax[1].plot(xlim,[0,0],linestyle=':')
@@ -190,7 +190,8 @@ class WaveCal() :
                 plt.draw()
                 try: self.fig.canvas.draw_idle()
                 except: pass
-                input('  See 2D wavecal fit. Hit any key to continue....')
+                print('  See 2D wavecal fit. Hit space bar in plot window to continue....')
+                get=plots.mark(self.fig)
 
         else :
             self.model=fitter(mod,self.pix-self.pix0,self.waves*self.waves_order,weights=self.weights)
@@ -298,7 +299,7 @@ class WaveCal() :
                         display.plotax2.plot(lags,shift)
                         display.plotax1.set_xlabel('Lag')
                         plt.draw()
-                        input("  See spectrum and template spectrum (top), cross corrleation(bottom). hit any key to continue")
+                        input("  See spectrum and template spectrum (top), cross correlation(bottom). hit any key to continue")
                     # single shift for all pixels
                     self.pix0 = self.pix0+fitpeak+lags[0]
                     wav=np.atleast_2d(self.wave(image=np.array(sz)))
@@ -462,8 +463,8 @@ class WaveCal() :
                 # if we have a solution already, see how good it is (after shift)
                 diff=self.wave(pixels=[x,y])-np.array(waves)
                 ax[1].cla()
-                if pixplot : ax[1].scatter(x,diff,s=2,c=y)
-                else : ax[1].scatter(np.array(waves),diff,s=2,c=y)
+                if pixplot : plots.plotc(ax[1],x,diff,y,size=2,zr=[y.min(),y.max()])
+                else : plots.plotc(ax[1],np.array(waves),diff,y,size=2,zr=[np.array(y).min(),np.array(y).max()])
                 ax[1].text(0.1,0.9,'from previous fit, rms: {:8.3f}'.format(diff.std()),transform=ax[1].transAxes)
                 xlim=ax[1].get_xlim()
                 ax[1].plot(xlim,[0,0],linestyle=':')
@@ -471,7 +472,8 @@ class WaveCal() :
                 print("  rms from old fit (with shift): {:8.3f}".format(diff.std()))
             plt.figure(plot.number)
             plt.draw()
-            input('  See identified lines. hit any key to continue....')
+            print('  See identified lines. Hit space bar in plot window to continue....')
+            get=plots.mark(self.fig)
         self.pix=np.array(x)
         self.y=np.array(y)
         self.waves=np.array(waves)

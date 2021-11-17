@@ -116,6 +116,10 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                         # loop over windows
                         waves_channel=[]
                         for iwind,(wcal,wtrace) in enumerate(zip(wave,trace)) :
+                            try:
+                                delattr(wcal,'ax')
+                                delattr(wcal,'fig')
+                            except: pass
                             try : file = wavecal['file']
                             except KeyError : file = None
                             # extract and ID lines

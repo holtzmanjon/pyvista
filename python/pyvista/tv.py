@@ -26,7 +26,7 @@ class TV:
            tv=TV()  to set up a new TV object (display window)
     """
  
-    def __init__(self, figsize=(12,8.5), aspect='equal'):
+    def __init__(self, figsize=(12,8.5), aspect='equal', clickzoom=True):
         """
         Initialize TV object
         """
@@ -44,6 +44,7 @@ class TV:
         self.axis = False
         self.aspect = aspect
         self.doflip = False
+        self.usezoom = clickzoom
 
         # set up initial img and header lists
         self.current = -1
@@ -295,6 +296,9 @@ class TV:
                 self.axis = not self.axis
                 plt.draw()
 
+            elif event.key == 'z' :
+                self.usezoom = not self.usezoom
+
             elif event.key == '#' :
                 xlim = self.ax.get_xlim()
                 ylim = self.ax.get_ylim()
@@ -315,7 +319,7 @@ class TV:
                 # print help
                 print('Asynchronous commands: ')
                 print('Image window: ')
-                print('  mouse:')
+                print('  mouse (with clickzoom enabled):')
                 print('    left mouse  : zoom in, centered on cursoe')
                 print('    center mouse: zoom out, centered on cursoe')
                 print('    right mouse : pan, center to cursor')
@@ -324,13 +328,18 @@ class TV:
                 print('    +/=         : toggle to next image in stack')
                 print('    -           : toggle to previous image in stack')
                 print('    arrow keys  : move single image pixels')
+                print('    x           : cross-section plots at cursor position')
+                print('    p/v         : find nearest peak/valley')
                 print('    a           : toggle axes on/off')
+                print('    z           : toggle zoom with mouse (clickzoom) on/off')
+                print('    #           : label pixels with values')
+                print('    $           : clear text ')
                 print('    h/?         : print this help')
 
             if self.blocking == 1 : self.__stopBlock()
 
         elif event.name == 'button_press_event' :
-            if subPlotNr == 0 :
+            if self.usezoom and subPlotNr == 0 :
                 # button press in image window to zoom/pan
                 xlim = self.ax.get_xlim()
                 ylim = self.ax.get_ylim()
