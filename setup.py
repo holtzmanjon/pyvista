@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='astro-pyvista',
@@ -10,13 +10,20 @@ setup(
     license='MIT',
 #    packages=['pyvista','tools'],
 #    package_dir={"pyvista": "python/pyvista", "tools" : "python/tools/python/tools"},
+    #packages=['pyvista','data'],
+    #package_dir={"": "python", "data": ""},
     packages=['pyvista'],
     package_dir={"": "python"},
+    #package_data={"pyvista": ["data/*/*.yml"]},
+    #packages = find_packages(),
+    include_package_data=True,
     install_requires=[
                       'holtz-tools',
                       'astropy',
                       'ccdproc',
                       'photutils',
+                      'pyyaml',
+                      'pyautogui',
                       'numpy',
                       ],
 
