@@ -726,7 +726,7 @@ class Trace() :
             plot.plotax2.plot(lags,shift)
             plot.plotax2.set_xlabel('lag')
             plt.draw()
-            getinput('  See spectra and cross-correlation. Hit any key to continue....',self.fig)
+            getinput('  See spectra and cross-correlation. Hit any key to continue....',plot.fig)
         self.pix0=fitpeak+lags[0]
         return fitpeak+lags[0]
  
@@ -785,7 +785,7 @@ class Trace() :
                 plot.ax.plot(range(ncols),rlo,color=color,linewidth=1)
                 plot.ax.plot(range(ncols),rhi,color=color,linewidth=1)
                 plt.draw()
-        if plot is not None : getinput('  See extraction window(s). Hit any key to continue....',self.fig)
+        if plot is not None : getinput('  See extraction window(s). Hit any key to continue....',plot.fig)
         print("")
         return CCDData(spec,uncertainty=StdDevUncertainty(sig),mask=mask,header=hd.header,unit='adu')
   
@@ -816,7 +816,7 @@ class Trace() :
                 spec[:,col] = np.interp(outrows+cr[col],np.arange(nrows),hd.data[:,col])
                 sig[:,col] = np.sqrt(np.interp(outrows+cr[col],np.arange(nrows),hd.uncertainty.array[:,col]**2))
             out.append(CCDData(spec,StdDevUncertainty(sig),unit='adu'))
-        if plot is not None: getinput('  enter something to continue....',self.fig)
+        if plot is not None: getinput('  enter something to continue....',plot.fig)
 
         if len(out) == 1 : return out[0]
         else : return out
