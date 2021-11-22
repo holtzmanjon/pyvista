@@ -24,6 +24,7 @@ setup(
                       'photutils',
                       'pyyaml',
                       'pyautogui',
+                      'importlib_resources',
                       'numpy',
                       ],
 
