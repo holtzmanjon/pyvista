@@ -1,0 +1,19 @@
+---
+channels  : ['']
+formstr   : [' {:d}']
+gain      : [0.8]
+rn        : [10]
+biastype  : 0
+crbox     : 'lacosmic'
+scale     : 0.44
+flip     : False
+#biasbox   : [[[2052,2090],[20,2028]]]
+biasregion :
+    - [[0,4799],[0,3210]]
+biasbox   : 
+    - [[100,4700],[3195,3205]]
+trimbox   : 
+    - [[0,4799],[0,3193]]
+normbox   : 
+    - [[1200,2000],[2000,2800]]
+
