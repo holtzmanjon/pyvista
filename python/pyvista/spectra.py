@@ -687,7 +687,7 @@ class Trace() :
 
         self.pix0=0
         print("")
-        if plot : getinput('  See trace. Hit any key to continue....',self.fig)
+        if plot : getinput('  See trace. Hit any key to continue....',plot.fig)
 
     def retrace(self,hd,plot=None,thresh=20) :
         """ Retrace starting with existing model
