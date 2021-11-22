@@ -12,6 +12,7 @@ from astropy.modeling import models, fitting
 from astropy.nddata import CCDData, StdDevUncertainty
 from astropy.io import ascii, fits
 from astropy.convolution import convolve, Box1DKernel, Box2DKernel
+from astropy.table import Table
 import pyvista
 from pyvista import image
 from pyvista import tv
@@ -82,7 +83,7 @@ def get_wavecal(file) :
 class WaveCal() :
     """ Class for wavelength solutions
     """
-    def __init__ (self,type='chebyshev',degree=2,ydegree=2,pix0=0,orders=[1]) :
+    def __init__ (self,name=None, type='chebyshev',degree=2,ydegree=2,pix0=0,orders=np.array([1])) :
         """ Initialize the wavecal object
 
             type : type of solution ('poly' or 'chebyshev')
@@ -92,18 +93,33 @@ class WaveCal() :
             orders : spectral order for each row
             spectrum : spectrum from which fit is derived
         """
-        self.type = type
-        self.degree = degree
-        self.ydegree = ydegree
-        self.pix0 = pix0
-        self.orders = orders
-        self.waves = None
-        self.x = None
-        self.y = None
-        self.weights = None
-        self.model = None
-        self.ax = None
-        self.spectrum = None
+        if name is not None :
+            tab=Table.read(name)
+
+            self.type = tab['type'][0]
+            self.degree = tab['degree'][0]
+            self.waves = tab['waves'][0]
+            self.waves_order = tab['waves_order'][0]
+            pdb.set_trace()
+            self.orders = tab['orders'][0]
+            self.pix0 = tab['pix0'][0]
+            self.pix = tab['pix'][0]
+            self.spectrum  = tab['spectrum'][0]
+            self.weights = tab['weights'][0]
+        else :
+            self.type = type
+            self.degree = degree
+            self.ydegree = ydegree
+            self.pix0 = pix0
+            self.orders = orders
+            self.waves = None
+            self.waves_order = None
+            self.x = None
+            self.y = None
+            self.weights = None
+            self.model = None
+            self.ax = None
+            self.spectrum = None
 
     def wave(self,pixels=None,image=None) :
         """ Wavelength from pixel using wavelength solution model
@@ -194,15 +210,20 @@ class WaveCal() :
                 get=plots.mark(self.fig)
 
         else :
-            self.model=fitter(mod,self.pix-self.pix0,self.waves*self.waves_order,weights=self.weights)
+            self.model=fitter(mod,self.pix-self.pix0,
+                              self.waves*self.waves_order,weights=self.weights)
             diff=self.waves-self.wave(pixels=[self.pix])
             print('  rms: {:8.3f} Angstroms'.format(diff.std()))
             if self.ax is not None :
                 # iterate allowing for interactive removal of points
                 done = False
                 ymax = self.ax[0].get_ylim()[1]
+                print('  Input in plot window: ')
+                print('       l : to remove all lines to left of cursor')
+                print('       r : to remove all lines to right of cursor')
+                print('       n : to remove line nearest cursor x position')
+                print('       anything else : finish and return')
                 while not done :
-
                     # do fit
                     gd=np.where(self.weights>0.)[0]
                     bd=np.where(self.weights<=0.)[0]
@@ -231,24 +252,34 @@ class WaveCal() :
                     plt.draw()
 
                     # get input from user on lines to remove
-                    for i in range(len(self.pix)) :
-                        print('{:3d}{:8.2f}{:8.2f}{:8.2f}{:8.2f}'.format(
-                               i, self.pix[i], self.waves[i], diff[i], self.weights[i]))
-                    i = input('  enter ID of line to remove (-n for all lines<n, +n for all lines>n, O for new degree, return to continue): ')
+                    #for i in range(len(self.pix)) :
+                    #    print('{:3d}{:8.2f}{:8.2f}{:8.2f}{:8.2f}'.format(
+                    #           i, self.pix[i], self.waves[i], diff[i], self.weights[i]))
+                    i = getinput('  input from plot window...', self.fig)
                     if i == '' :
                         done = True
+                    elif i[2] == 'l' :
+                        bd=np.where(self.waves<i[0])[0]
+                        self.weights[bd] = 0.
+                    elif i[2] == 'r' :
+                        bd=np.where(self.waves>i[0])[0]
+                        self.weights[bd] = 0.
+                    elif i[2] == 'n' :
+                        bd=np.argmin(np.abs(self.waves-i[0]))
+                        self.weights[bd] = 0.
                     elif i == 'O' :
                         print('  current degree of fit: {:d}'.format(self.degree))
-                        self.degree = int(input('  enter new degree of fit: '))
+                        self.degree = int(getinput('  enter new degree of fit: ',self.fig))
                         mod = self.getmod()
-                    elif '+' in i :
-                        self.weights[int(i)+1:] = 0.
-                    elif '-' in i :
-                        self.weights[0:abs(int(i))] = 0.
-                    elif int(i) >= 0 :
-                        self.weights[int(i)] = 0.
-                    else :
-                        print('invalid input')
+                    else : done = True
+                    #elif '+' in i :
+                    #    self.weights[int(i)+1:] = 0.
+                    #elif '-' in i :
+                    #    self.weights[0:abs(int(i))] = 0.
+                    #elif int(i) >= 0 :
+                    #    self.weights[int(i)] = 0.
+                    #else :
+                    #    print('invalid input')
 
     def set_spectrum(self,spectrum) :
         """ Set spectrum used to derive fit
@@ -261,7 +292,7 @@ class WaveCal() :
         return self.spectrum 
 
     def identify(self,spectrum,file=None,wav=None,wref=None,inter=False,verbose=False,
-                 disp=None,display=None,plot=None,rad=5,thresh=10,pixplot=False,
+                 disp=None,display=None,plot=None,rad=5,thresh=100,pixplot=False,
                  xmin=None, xmax=None, lags=range(-300,300), nskip=1) :
         """ Given some estimate of wavelength solution and file with lines,
             identify peaks and centroid
@@ -299,7 +330,7 @@ class WaveCal() :
                         display.plotax2.plot(lags,shift)
                         display.plotax1.set_xlabel('Lag')
                         plt.draw()
-                        input("  See spectrum and template spectrum (top), cross correlation(bottom). hit any key to continue")
+                        getinput("  See spectrum and template spectrum (top), cross correlation(bottom). hit any key to continue",self.fig)
                     # single shift for all pixels
                     self.pix0 = self.pix0+fitpeak+lags[0]
                     wav=np.atleast_2d(self.wave(image=np.array(sz)))
@@ -329,7 +360,7 @@ class WaveCal() :
                 for i in range(2) :
                     print('mark location of known line with m key')
                     ret=plots.mark(f)
-                    w=input('wavelength of line: ')
+                    w=getinput('wavelength of line: ')
                     if i==0 :
                         w0=float(w)
                         pix0=ret[0]
@@ -472,8 +503,7 @@ class WaveCal() :
                 print("  rms from old fit (with shift): {:8.3f}".format(diff.std()))
             plt.figure(plot.number)
             plt.draw()
-            print('  See identified lines. Hit space bar in plot window to continue....')
-            get=plots.mark(self.fig)
+            getinput('  See identified lines. Hit space bar in plot window to continue....',self.fig)
         self.pix=np.array(x)
         self.y=np.array(y)
         self.waves=np.array(waves)
@@ -518,13 +548,26 @@ class WaveCal() :
     def save(self,file) :
         """ Save object to file
         """
-        try : delattr(self,'fig')
-        except: pass
-        try : delattr(self,'ax')
-        except: pass
-        f=open(file,'wb')
-        pickle.dump(self,f)
-        f.close()
+        #try : delattr(self,'fig')
+        #except: pass
+        #try : delattr(self,'ax')
+        #except: pass
+        #f=open(file,'wb')
+        #pickle.dump(self,f)
+        #f.close()
+        tab=Table()
+        tab['type'] = [self.type]
+        tab['degree'] = [self.degree]
+        tab['waves'] = [self.waves]
+        tab['waves_order'] = [self.waves_order]
+        tab['orders'] = [self.orders]
+        tab['pix0'] = [self.pix0]
+        tab['pix'] = [self.pix]
+        tab['spectrum'] = [self.spectrum.data]
+        tab['weights'] = [self.weights]
+        tab.write(file,overwrite=True)
+        return tab
+
 
 class Trace() :
     """ Class for spectral traces
@@ -644,7 +687,7 @@ class Trace() :
 
         self.pix0=0
         print("")
-        if plot : input('  See trace. Hit any key to continue....')
+        if plot : getinput('  See trace. Hit any key to continue....',self.fig)
 
     def retrace(self,hd,plot=None,thresh=20) :
         """ Retrace starting with existing model
@@ -683,7 +726,7 @@ class Trace() :
             plot.plotax2.plot(lags,shift)
             plot.plotax2.set_xlabel('lag')
             plt.draw()
-            input('  See spectra and cross-correlation. Hit any key to continue....')
+            getinput('  See spectra and cross-correlation. Hit any key to continue....',self.fig)
         self.pix0=fitpeak+lags[0]
         return fitpeak+lags[0]
  
@@ -742,7 +785,7 @@ class Trace() :
                 plot.ax.plot(range(ncols),rlo,color=color,linewidth=1)
                 plot.ax.plot(range(ncols),rhi,color=color,linewidth=1)
                 plt.draw()
-        if plot is not None : input('  See extraction window(s). Hit any key to continue....')
+        if plot is not None : getinput('  See extraction window(s). Hit any key to continue....',self.fig)
         print("")
         return CCDData(spec,uncertainty=StdDevUncertainty(sig),mask=mask,header=hd.header,unit='adu')
   
@@ -773,7 +816,7 @@ class Trace() :
                 spec[:,col] = np.interp(outrows+cr[col],np.arange(nrows),hd.data[:,col])
                 sig[:,col] = np.sqrt(np.interp(outrows+cr[col],np.arange(nrows),hd.uncertainty.array[:,col]**2))
             out.append(CCDData(spec,StdDevUncertainty(sig),unit='adu'))
-        if plot is not None: input('  enter something to continue....')
+        if plot is not None: getinput('  enter something to continue....',self.fig)
 
         if len(out) == 1 : return out[0]
         else : return out
@@ -907,7 +950,7 @@ def wavecal(hd,file=None,wref=None,disp=None,wid=[3],rad=5,snr=3,degree=2,wcal0=
             print('  {:3d}{:8.2f}{:8.2f}{:8.2f}{:8.2f}{:8.2f}'.format(
                    i, cents[i], wcal.wave(cents[i]), waves[i], waves[i]-wcal.wave(cents[i]),weight[i]))
         print('  rms: {:8.2f} Anstroms'.format(diff.std()))
-        i = input('enter ID of line to remove (-n for all lines<n, +n for all lines>n, return to continue): ')
+        i = getinput('enter ID of line to remove (-n for all lines<n, +n for all lines>n, return to continue): ',self.fig)
         if i is '' :
             done = True
         elif '+' in i :
@@ -978,3 +1021,11 @@ def gauss(x, *p):
     """
     A, mu, sigma = p
     return A*np.exp(-(x-mu)**2/(2.*sigma**2))
+
+def getinput(prompt,fig=None) :
+
+    if fig == None : return '','',input(prompt)
+    print(prompt)
+    get = plots.mark(fig)
+    return get
+
