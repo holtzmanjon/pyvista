@@ -100,7 +100,6 @@ class WaveCal() :
             self.degree = tab['degree'][0]
             self.waves = tab['waves'][0]
             self.waves_order = tab['waves_order'][0]
-            pdb.set_trace()
             self.orders = tab['orders'][0]
             self.pix0 = tab['pix0'][0]
             self.pix = tab['pix'][0]
@@ -560,7 +559,7 @@ class WaveCal() :
         tab['degree'] = [self.degree]
         tab['waves'] = [self.waves]
         tab['waves_order'] = [self.waves_order]
-        tab['orders'] = [self.orders]
+        tab['orders'] = np.array([self.orders])
         tab['pix0'] = [self.pix0]
         tab['pix'] = [self.pix]
         tab['spectrum'] = [self.spectrum.data]
@@ -687,7 +686,9 @@ class Trace() :
 
         self.pix0=0
         print("")
-        if plot : getinput('  See trace. Hit any key to continue....',plot.fig)
+        if plot : 
+            while getinput('  See trace. Hit space bar to continue....',plot.fig)[2] != ' ' :
+                pass
 
     def retrace(self,hd,plot=None,thresh=20) :
         """ Retrace starting with existing model
@@ -785,7 +786,9 @@ class Trace() :
                 plot.ax.plot(range(ncols),rlo,color=color,linewidth=1)
                 plot.ax.plot(range(ncols),rhi,color=color,linewidth=1)
                 plt.draw()
-        if plot is not None : getinput('  See extraction window(s). Hit any key to continue....',plot.fig)
+        if plot is not None : 
+            while getinput('  See extraction window(s). Hit space bar to continue....',plot.fig)[2] != ' ' :
+                pass
         print("")
         return CCDData(spec,uncertainty=StdDevUncertainty(sig),mask=mask,header=hd.header,unit='adu')
   
