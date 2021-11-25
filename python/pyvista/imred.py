@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tempfile
 from pyvista import stars
+import pyvista.data as DATA
 
 import warnings
 from astropy.utils.exceptions import AstropyWarning
@@ -30,6 +31,7 @@ import os
 import pdb
 from pyvista import image
 from pyvista import tv
+import importlib_resources
 try: 
     import pyds9
 except:
@@ -69,8 +71,10 @@ class Reducer() :
         # Read instrument configuation from YAML configuration file 
         if inst is not None :
             if inst.find('/') < 0 :
-                config = yaml.load(open(ROOT+'/data/'+inst+'/'+inst+
-                              conf+'.yml','r'), Loader=yaml.FullLoader)
+                #config = yaml.load(open(ROOT+'/data/'+inst+'/'+inst+
+                #              conf+'.yml','r'), Loader=yaml.FullLoader)
+                config = yaml.load(open(importlib_resources.files(DATA).joinpath(inst+'/'+inst+
+                              conf+'.yml'),'r'), Loader=yaml.FullLoader)
             else :
                 config = yaml.load(open(inst+'.yml','r'), 
                               Loader=yaml.FullLoader)
