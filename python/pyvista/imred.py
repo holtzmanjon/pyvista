@@ -907,6 +907,8 @@ class Reducer() :
             for row in range(tmp.data.shape[0]) :
                 tmp.data[row,:] /= med
                 tmp.uncertainty.array[row,:] /= med
+            if display is not None :
+                display.tv(tmp,min=0.7,max=1.3)
             if self.transpose : sflat.append( self.imtranspose(tmp))
             else : sflat.append(tmp)
 
@@ -1146,7 +1148,7 @@ def getinput(text,display) :
     """ print text, get a key input from display
     """
     print(text)
-    print('   To continue, hit q in display window (p for debug) ')
+    print('   To continue, hit space in display window (p for debug) ')
     get = display.tvmark()[0]
     if get == 'i' : code.interact(local=globals())
     elif get == 'p' :
