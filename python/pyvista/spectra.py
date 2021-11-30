@@ -193,8 +193,8 @@ class WaveCal() :
 
             if self.ax is not None : 
                 self.ax[1].cla()
-                scat=self.ax[1].scatter(self.waves,diff,marker='o',c=self.y,s=2)
-                plots.plotp(self.ax[1],self.waves[bd],diff[bd],marker='o',color='r',size=2)
+                scat=self.ax[1].scatter(self.waves,diff,marker='o',c=self.y,s=5)
+                plots.plotp(self.ax[1],self.waves[bd],diff[bd],marker='o',color='r',size=5)
                 xlim=self.ax[1].get_xlim()
                 self.ax[1].set_ylim(diff.min()-0.5,diff.max()+0.5)
                 self.ax[1].plot(xlim,[0,0],linestyle=':')
@@ -265,6 +265,7 @@ class WaveCal() :
                         self.weights[bd] = 0.
                     elif i[2] == 'n' :
                         bd=np.argmin(np.abs(self.waves-i[0]))
+                        print(bd,i[0])
                         self.weights[bd] = 0.
                     elif i == 'O' :
                         print('  current degree of fit: {:d}'.format(self.degree))
@@ -329,7 +330,7 @@ class WaveCal() :
                         display.plotax2.plot(lags,shift)
                         display.plotax1.set_xlabel('Lag')
                         plt.draw()
-                        getinput("  See spectrum and template spectrum (top), cross correlation(bottom). hit any key to continue",self.fig)
+                        getinput("  See spectrum and template spectrum (top), cross correlation(bottom). hit any key to continue",display.fig)
                     # single shift for all pixels
                     self.pix0 = self.pix0+fitpeak+lags[0]
                     wav=np.atleast_2d(self.wave(image=np.array(sz)))
@@ -403,6 +404,7 @@ class WaveCal() :
         # get centroid around expected lines
         x=[]
         y=[]
+        fwhm=[]
         waves=[]
         waves_order=[]
         weight=[]
@@ -482,6 +484,7 @@ class WaveCal() :
                         else : ax[0].text(line,1.,'{:7.1f}'.format(line),rotation='vertical',va='top',ha='center')
                     x.append(cent)
                     y.append(row)
+                    fwhm.append(np.abs(coeff[2]*2.354))
                     # we will fit for wavelength*order
                     waves.append(line)
                     try: order = self.orders[row]
@@ -502,9 +505,10 @@ class WaveCal() :
                 print("  rms from old fit (with shift): {:8.3f}".format(diff.std()))
             plt.figure(plot.number)
             plt.draw()
-            getinput('  See identified lines. Hit space bar in plot window to continue....',self.fig)
+            print('  See identified lines. Hit space bar in plot window to continue....')
         self.pix=np.array(x)
         self.y=np.array(y)
+        self.fwhm=np.array(fwhm)
         self.waves=np.array(waves)
         self.waves_order=np.array(waves_order)
         self.weights=np.array(weight)
@@ -682,6 +686,7 @@ class Trace() :
                 plot.ax.scatter(cols,ypos,marker='o',color='r',s=4) 
                 plot.ax.scatter(cols[gd],ypos[gd],marker='o',color='g',s=10) 
                 plot.ax.plot(cols,model(cols),color='m')
+                plot.plotax1.plot(cols,model(cols),color='m')
                 #plt.pause(0.05)
 
         self.pix0=0
@@ -742,7 +747,7 @@ class Trace() :
         mask = np.zeros([len(self.model),hd.data.shape[1]],dtype=bool)
 
         if plot is not None:
-            plot.clear()
+            plot.tvclear()
             plot.tv(hd)
 
         for i,model in enumerate(self.model) :
@@ -785,6 +790,7 @@ class Trace() :
                 plot.ax.plot(range(ncols),cr,color='g',linewidth=3)
                 plot.ax.plot(range(ncols),rlo,color=color,linewidth=1)
                 plot.ax.plot(range(ncols),rhi,color=color,linewidth=1)
+                plot.plotax2.plot(range(ncols),spec[i],color=color,linewidth=1)
                 plt.draw()
         if plot is not None : 
             while getinput('  See extraction window(s). Hit space bar to continue....',plot.fig)[2] != ' ' :
