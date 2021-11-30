@@ -63,7 +63,7 @@ class TV:
         # set up colorbar
         self.cb = None
         self.cblist = [None, None, None, None]
-        rect = 0.00, 0.03, 1., 0.06
+        rect = 0.00, 0.03, 0.7, 0.06
         self.cb_ax = tv.add_axes(rect)
         #tv.subplots_adjust(left=-0.15,right=1.15,bottom=-0.10,top=1.00)
         self.bottom = 0.
@@ -76,6 +76,13 @@ class TV:
         rect = 0.74, 0.15, 0.25, 0.4
         plotax = tv.add_axes(rect)
         self.plotax2 = plotax
+
+        # "lights" windows
+        rect = 0.85, 0.02, 0.1, 0.05
+        self.lgt1 = tv.add_axes(rect)
+        self.lgt1.axis('off')
+        self.lgt1.add_patch(patches.Rectangle((0,0),1,1,color='r',fill=True))
+        self.lgt1.text(0.5,0.5,'Asynchronous',ha='center',va='center')
 
         # function to show image values, etc.
         def format_coord(x, y):
@@ -315,6 +322,9 @@ class TV:
                 for text in self.ax.texts : text.set_visible(False)
                 plt.draw()
 
+            elif event.key == '%' :
+                self.tvclear()
+
             elif event.key == 'h' or event.key == '?' :
                 # print help
                 print('Asynchronous commands: ')
@@ -334,6 +344,7 @@ class TV:
                 print('    z           : toggle zoom with mouse (clickzoom) on/off')
                 print('    #           : label pixels with values')
                 print('    $           : clear text ')
+                print('    %           : clear patches ')
                 print('    h/?         : print this help')
 
             if self.blocking == 1 : self.__stopBlock()
@@ -607,11 +618,20 @@ class TV:
         Returns:
           key pressed, x data position, y data position
         """
+        self.light(self.lgt1,'Input','g')
+        plt.draw()
         self.__startBlock()
-        reserved=['r','p','v','left','right','up','down','-','+','='] 
+        reserved=['r','p','v','left','right','up','down','-','+','=','%','#','$'] 
         if self.event.key in reserved : self.tvmark()
+        self.light(self.lgt1,'Asynchronous','r')
         return self.event.key, self.event.xdata, self.event.ydata
 
+    def light(self,ax,text,color) :
+        ax.cla()
+        ax.axis('off')
+        ax.add_patch(patches.Rectangle((0,0),1,1,color=color,fill=True))
+        ax.text(0.5,0.5,text,ha='center',va='center')
+ 
     def fill(self) :
         y,x=np.mgrid[0:100,0:100]
         self.tv(x)
