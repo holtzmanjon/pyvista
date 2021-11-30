@@ -26,6 +26,7 @@ setup(
                       'pyautogui',
                       'importlib_resources',
                       'numpy',
+                      'scipy',
                       ],
 
     classifiers=[
