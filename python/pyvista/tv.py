@@ -55,8 +55,8 @@ class TV:
         self.imglist = [None, None, None, None]
         self.hdr = None
         self.hdrlist = [None, None, None, None]
-        self.scale = [0.,1.]
-        self.scalelist = [[0.,1.],[0.,1.],[0.,1.],[0.,1.]]
+        self.scale = np.array([0.,1.])
+        self.scalelist = [self.scale,self.scale,self.scale,self.scale]
         self.cmap = 'Greys_r'
         self.axlist = [None, None, None, None]
 
@@ -303,10 +303,10 @@ class TV:
                 self.axis = not self.axis
                 plt.draw()
 
-            elif event.key == 'z' :
+            elif event.key == 'z' and subPlotNr == 0 :
                 self.usezoom = not self.usezoom
 
-            elif event.key == '#' :
+            elif event.key == '#' and subPlotNr == 0 :
                 xlim = self.ax.get_xlim()
                 ylim = self.ax.get_ylim()
                 if (xlim[1]-xlim[0]) > 32 or (ylim[1]-ylim[0]) > 32 :
@@ -318,11 +318,11 @@ class TV:
                 plt.draw()
                 print('use $ to remove pixel label values')
 
-            elif event.key == '$' :
+            elif event.key == '$' and subPlotNr == 0 :
                 for text in self.ax.texts : text.set_visible(False)
                 plt.draw()
 
-            elif event.key == '%' :
+            elif event.key == '%' and subPlotNr == 0 :
                 self.tvclear()
 
             elif event.key == 'h' or event.key == '?' :
@@ -379,6 +379,30 @@ class TV:
                 ystart,xstart = self.fig.axes[1].transAxes.inverted().transform(disp)
                 #self.xstart = event.xdata
                 self.xstart = xstart
+
+            elif subPlotNr == 2 :
+                # mouse click in plotax1 changes limits 
+                ylim=self.plotax1.get_ylim()
+                if event.button == 1 :
+                    self.scale[0] = event.xdata
+                    self.lowline[0].remove()
+                    self.lowline = self.plotax1.plot(
+                              [self.scale[0],self.scale[0]],
+                              [ylim[0],ylim[1]*0.8],
+                              ls=':',color='r')
+                elif event.button == 3 :
+                    self.scale[1] = event.xdata
+                    self.highline[0].remove()
+                    self.highline = self.plotax1.plot(
+                              [self.scale[1],self.scale[1]],
+                              [ylim[0],ylim[1]*0.8],
+                              ls=':',color='r')
+                self.aximage = self.ax.imshow(self.img,
+                                   vmin=self.scale.min(),vmax=self.scale.max(),
+                                   cmap=self.cmap, 
+                                   interpolation='nearest',aspect=self.aspect)
+                self.plotax1.set_ylim(ylim)
+                plt.draw()
 
         elif event.name == 'button_release_event' :
             self.button = False
@@ -503,7 +527,7 @@ class TV:
            min = 0.
         if max is None : 
            min,max = minmax(data)
-        self.scale = [min,max]
+        self.scale = np.array([min,max])
         self.scalelist.pop(current)
         self.scalelist.insert(current,self.scale)
 
@@ -538,11 +562,30 @@ class TV:
         self.cblist.pop(current)
         self.cblist.insert(current,self.cb)
 
-        plt.draw()
         # instead of redraw color, could replace data, but not if sizes change?
         # img.set_data()
         # img.changed()
         # plt.draw()
+
+        # image histogram in plotax1
+        self.plotax1.cla()
+        self.plotax1.hist(data.flatten(),bins=np.linspace(data.min(),data.max(),100))
+        ylim=self.plotax1.get_ylim()
+        self.lowline = self.plotax1.plot([self.scale[0],self.scale[0]],
+                                         [ylim[0],ylim[1]*0.8],
+                                         ls=':',color='r')
+        self.highline = self.plotax1.plot([self.scale[1],self.scale[1]],
+                                         [ylim[0],ylim[1]*0.8],
+                                         ls=':',color='r')
+        self.plotax1.text(0.05,0.95,'Image histogram : ',
+                          transform=self.plotax1.transAxes)
+        self.plotax1.text(0.1,0.90,'left click for new lower scale',
+                          transform=self.plotax1.transAxes)
+        self.plotax1.text(0.1,0.85,'right click for new higher scale',
+                          transform=self.plotax1.transAxes)
+        self.plotax1.set_ylim(ylim)
+
+        plt.draw()
 
     def tvtext(self,x,y,text,color='m',ha='center',va='center') :
         """ Annotates with text
