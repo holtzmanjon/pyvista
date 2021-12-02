@@ -83,28 +83,26 @@ def get_wavecal(file) :
 class WaveCal() :
     """ Class for wavelength solutions
     """
-    def __init__ (self,name=None, type='chebyshev',degree=2,ydegree=2,pix0=0,orders=np.array([1])) :
+    def __init__ (self,file=None, type='chebyshev',degree=2,ydegree=2,
+                  pix0=0,orders=np.array([1])) :
         """ Initialize the wavecal object
 
-            type : type of solution ('poly' or 'chebyshev')
+            type : type of solution ('Polynomial1D' or 'chebyshev')
             degree : polynomial degree for wavelength
             ydegree : polynomial degree for  y dimension
             pix0 : reference pixel
             orders : spectral order for each row
             spectrum : spectrum from which fit is derived
         """
-        if name is not None :
-            tab=Table.read(name)
-
-            self.type = tab['type'][0]
-            self.degree = tab['degree'][0]
-            self.waves = tab['waves'][0]
-            self.waves_order = tab['waves_order'][0]
-            self.orders = tab['orders'][0]
-            self.pix0 = tab['pix0'][0]
-            self.pix = tab['pix'][0]
-            self.spectrum  = tab['spectrum'][0]
-            self.weights = tab['weights'][0]
+        if file is not None :
+            tab=Table.read(file)
+            for tag in ['type','degree','ydegree','waves',
+                        'waves_order','orders',
+                        'pix0','pix','y','spectrum','weights'] :
+                setattr(self,tag,tab[tag][0])
+            self.orders=np.atleast_1d(self.orders)
+            # make the initial models
+            self.fit()
         else :
             self.type = type
             self.degree = degree
@@ -119,6 +117,19 @@ class WaveCal() :
             self.model = None
             self.ax = None
             self.spectrum = None
+
+    def write(self,file,append=False) :
+        """ Save object to file
+        """
+        tab=Table()
+        for tag in ['type','degree','ydegree','waves','waves_order',
+                    'orders','pix0','pix','y','weights','spectrum'] :
+            tab[tag] = [getattr(self,tag)]
+        if append :
+            tab.write(file,append=True)
+        else :
+            tab.write(file,overwrite=True)
+        return tab
 
     def wave(self,pixels=None,image=None) :
         """ Wavelength from pixel using wavelength solution model
@@ -154,12 +165,12 @@ class WaveCal() :
         """ Return model for current attributes
         """
 
-        if self.type == 'poly' :
+        if self.type == 'Polynomial1D' :
             mod=models.Polynomial1D(degree=self.degree)
         elif self.type == 'chebyshev' :
             mod=models.Chebyshev1D(degree=self.degree)
         elif self.type == 'chebyshev2D' :
-            sz=self.spectrum.data.shape
+            sz=self.spectrum.shape
             mod=models.Chebyshev2D(x_degree=self.degree,y_degree=self.ydegree,
                                    x_domain=[0,sz[1]],y_domain=[0,sz[0]])
         else :
@@ -167,13 +178,14 @@ class WaveCal() :
             return
         return mod
 
-    def fit(self,plot=True) :
+    def fit(self,degree=None,plot=True) :
         """ do a wavelength fit 
         """
         print("doing wavelength fit")
         # set up fitter and model
         twod='2D' in self.type
         fitter=fitting.LinearLSQFitter()
+        if degree is not None : self.degree=degree
         mod = self.getmod()
 
         if not hasattr(self,'ax') : self.ax = None
@@ -182,7 +194,8 @@ class WaveCal() :
             nbd=0
             while nbd != nold :
                 nold=nbd
-                self.model=fitter(mod,self.pix-self.pix0,self.y,self.waves*self.waves_order,weights=self.weights)
+                self.model=fitter(mod,self.pix-self.pix0,self.y,
+                           self.waves*self.waves_order,weights=self.weights)
                 diff=self.waves-self.wave(pixels=[self.pix,self.y])
                 gd = np.where(self.weights > 0)[0]
                 print('  rms: {:8.3f}'.format(diff[gd].std()))
@@ -194,11 +207,13 @@ class WaveCal() :
             if self.ax is not None : 
                 self.ax[1].cla()
                 scat=self.ax[1].scatter(self.waves,diff,marker='o',c=self.y,s=5)
-                plots.plotp(self.ax[1],self.waves[bd],diff[bd],marker='o',color='r',size=5)
+                plots.plotp(self.ax[1],self.waves[bd],diff[bd],
+                            marker='o',color='r',size=5)
                 xlim=self.ax[1].get_xlim()
                 self.ax[1].set_ylim(diff.min()-0.5,diff.max()+0.5)
                 self.ax[1].plot(xlim,[0,0],linestyle=':')
-                self.ax[1].text(0.1,0.9,'rms: {:8.3f}'.format(diff[gd].std()),transform=self.ax[1].transAxes)
+                self.ax[1].text(0.1,0.9,'rms: {:8.3f}'.format(
+                                diff[gd].std()),transform=self.ax[1].transAxes)
                 cb_ax = self.fig.add_axes([0.94,0.05,0.02,0.4])
                 cb = self.fig.colorbar(scat,cax=cb_ax)
                 cb.ax.set_ylabel('Row')
@@ -232,8 +247,8 @@ class WaveCal() :
 
                     # replot spectrum with new fit wavelength scale
                     self.ax[0].cla()
-                    #self.ax[0].plot(self.wave(image=self.spectrum.data.shape)[0,:],self.spectrum.data[0,:])
-                    self.ax[0].plot(self.wave(image=self.spectrum.data.shape[1]),self.spectrum.data[0,:])
+                    #self.ax[0].plot(self.wave(image=self.spectrum.shape)[0,:],self.spectrum[0,:])
+                    self.ax[0].plot(self.wave(image=self.spectrum.shape[1]),self.spectrum[0,:])
                     # plot residuals
                     self.ax[1].cla()
                     self.ax[1].plot(self.waves[gd],diff[gd],'go')
@@ -298,11 +313,11 @@ class WaveCal() :
             identify peaks and centroid
         """
 
-        sz=spectrum.shape
+        sz=spectrum.data.shape
         if len(sz) == 1 : 
             spectrum.data = np.atleast_2d(spectrum.data)
             spectrum.uncertainty.array = np.atleast_2d(spectrum.uncertainty.array)
-            sz=spectrum.shape
+            sz=spectrum.data.shape
         if xmin is None : xmin=0
         if xmax is None : xmax=sz[-1]
         nrow=sz[0]
@@ -313,7 +328,7 @@ class WaveCal() :
             if self.spectrum is not None :
                 # cross correlate with reference image to get pixel shift
                 print('  cross correlating with reference spectrum using lags: ', lags)
-                fitpeak,shift = image.xcorr(self.spectrum.data,spectrum.data,lags)
+                fitpeak,shift = image.xcorr(self.spectrum,spectrum.data,lags)
                 if shift.ndim == 1 :
                     pixshift=(fitpeak+lags[0])[0]
                     print('  Derived pixel shift from input wcal: ',fitpeak+lags[0])
@@ -322,7 +337,7 @@ class WaveCal() :
                         display.plotax1.text(0.05,0.95,'spectrum and reference',transform=display.plotax1.transAxes)
                         for row in range(spectrum.data.shape[0]) :
                             display.plotax1.plot(spectrum.data[row,:],color='m')
-                            display.plotax1.plot(self.spectrum.data[row,:],color='g')
+                            display.plotax1.plot(self.spectrum[row,:],color='g')
                         display.plotax1.set_xlabel('Pixel')
                         display.plotax2.cla()
                         display.plotax2.text(0.05,0.95,'cross correlation: {:8.3f}'.format(pixshift),
@@ -330,7 +345,7 @@ class WaveCal() :
                         display.plotax2.plot(lags,shift)
                         display.plotax1.set_xlabel('Lag')
                         plt.draw()
-                        getinput("  See spectrum and template spectrum (top), cross correlation(bottom). hit any key to continue",display.fig)
+                        print("  See spectrum and template spectrum (top), cross correlation(bottom)",display.fig)
                     # single shift for all pixels
                     self.pix0 = self.pix0+fitpeak+lags[0]
                     wav=np.atleast_2d(self.wave(image=np.array(sz)))
@@ -492,17 +507,17 @@ class WaveCal() :
                     waves_order.append(order)
                     weight.append(1.)
         if plot is not None : 
-            if self.model is not None :
-                # if we have a solution already, see how good it is (after shift)
-                diff=self.wave(pixels=[x,y])-np.array(waves)
-                ax[1].cla()
-                if pixplot : plots.plotc(ax[1],x,diff,y,size=2,zr=[y.min(),y.max()])
-                else : plots.plotc(ax[1],np.array(waves),diff,y,size=2,zr=[np.array(y).min(),np.array(y).max()])
-                ax[1].text(0.1,0.9,'from previous fit, rms: {:8.3f}'.format(diff.std()),transform=ax[1].transAxes)
-                xlim=ax[1].get_xlim()
-                ax[1].plot(xlim,[0,0],linestyle=':')
-                ax[1].set_ylim(diff.min()-0.5,diff.max()+0.5)
-                print("  rms from old fit (with shift): {:8.3f}".format(diff.std()))
+            #if self.model is not None :
+            #    # if we have a solution already, see how good it is (after shift)
+            #    diff=self.wave(pixels=[x,y])-np.array(waves)
+            #    ax[1].cla()
+            #    if pixplot : plots.plotc(ax[1],x,diff,y,size=2,zr=[y.min(),y.max()])
+            #    else : plots.plotc(ax[1],np.array(waves),diff,y,size=2,zr=[np.array(y).min(),np.array(y).max()])
+            #    ax[1].text(0.1,0.9,'from previous fit, rms: {:8.3f}'.format(diff.std()),transform=ax[1].transAxes)
+            #    xlim=ax[1].get_xlim()
+            #    ax[1].plot(xlim,[0,0],linestyle=':')
+            #    ax[1].set_ylim(diff.min()-0.5,diff.max()+0.5)
+            #    print("  rms from old fit (with shift): {:8.3f}".format(diff.std()))
             plt.figure(plot.number)
             plt.draw()
             print('  See identified lines. Hit space bar in plot window to continue....')
@@ -512,7 +527,9 @@ class WaveCal() :
         self.waves=np.array(waves)
         self.waves_order=np.array(waves_order)
         self.weights=np.array(weight)
-        self.spectrum = spectrum
+        self.spectrum = spectrum.data
+
+        self.fit()
         print('')
 
     def scomb(self,hd,wav,average=True,usemask=True) :
@@ -548,42 +565,42 @@ class WaveCal() :
             sig = np.sqrt(sig)
         return CCDData(out,uncertainty=StdDevUncertainty(sig),mask=mask,header=hd.header,unit='adu')
 
-    def save(self,file) :
-        """ Save object to file
-        """
-        #try : delattr(self,'fig')
-        #except: pass
-        #try : delattr(self,'ax')
-        #except: pass
-        #f=open(file,'wb')
-        #pickle.dump(self,f)
-        #f.close()
-        tab=Table()
-        tab['type'] = [self.type]
-        tab['degree'] = [self.degree]
-        tab['waves'] = [self.waves]
-        tab['waves_order'] = [self.waves_order]
-        tab['orders'] = np.array([self.orders])
-        tab['pix0'] = [self.pix0]
-        tab['pix'] = [self.pix]
-        tab['spectrum'] = [self.spectrum.data]
-        tab['weights'] = [self.weights]
-        tab.write(file,overwrite=True)
-        return tab
 
 
 class Trace() :
     """ Class for spectral traces
     """
 
-    def __init__ (self,inst=None, type='poly',order=2,pix0=0,rad=5,spectrum=None,model=None,sc0=None,rows=None,lags=None,channel=None) :
+    def __init__ (self,file=None,inst=None, type='Polynomial1D',degree=2,pix0=0,rad=5,
+                  spectrum=None,model=None,sc0=None,rows=None,lags=None,channel=None) :
+
+        if file is not None :
+            """ Initialize object from FITS file
+            """
+            tab=Table.read(file)
+            for tag in ['type','degree','sc0','pix0','spectrum','rad','lags'] :
+                setattr(self,tag, tab[tag][0])
+            try : self.rows = tab['rows'][0]
+            except : self.rows = None
+            coeffs = tab['coeffs'][0]
+            self.model = []
+            for row in coeffs :
+                if self.type == 'Polynomial1D' :
+                    kwargs={}
+                    for i,c in enumerate(row) :
+                        name='c{:d}'.format(i)
+                        kwargs[name] = c
+                    self.model.append(
+                        models.Polynomial1D(degree=self.degree,**kwargs))
+            return
+
         self.type = type
-        self.order = order
+        self.degree = degree
         self.pix0 = pix0
         self.spectrum = spectrum
         self.rad = rad
         if inst == 'TSPEC' :
-            self.order = 3
+            self.degree = 3
             self.rows = [[135,235],[295,395],[435,535],[560,660],[735,830]]
             self.lags = range(-75,75) 
         elif inst == 'DIS' :
@@ -601,13 +618,36 @@ class Trace() :
         if model is not None : self.model=model
         if sc0 is not None : self.sc0=sc0
 
+    def write(self,file,append=False) :
+        """ Write trace information to FITS file
+        """
+        tab=Table()
+        for tag in ['type','degree','sc0','pix0','spectrum','rad','lags'] :
+            tab[tag] = [getattr(self,tag)]
+        if self.rows is not None : tab['rows'] = [np.array(self.rows)]
+        coeffs = []
+        if self.type == 'Polynomial1D' :
+            for m in self.model :
+                row=[]
+                for i in range(self.degree+1) :
+                    name='c{:d}'.format(i)
+                    row.append(getattr(m,name).value)
+                coeffs.append(row)
+        tab['coeffs'] = [np.array(coeffs)]
+        if append :
+            tab.write(file,append=True)
+        else :
+            tab.write(file,overwrite=True)
+        return tab
+
+
     def trace(self,hd,srows,sc0=None,plot=None,thresh=20,rows=True) :
         """ Trace a spectrum from starting position
         """
 
         fitter=fitting.LinearLSQFitter()
-        if self.type == 'poly' :
-            mod=models.Polynomial1D(degree=self.order)
+        if self.type == 'Polynomial1D' :
+            mod=models.Polynomial1D(degree=self.degree)
         else :
             raise ValueError('unknown fitting type: '+self.type)
             return
@@ -628,9 +668,6 @@ class Trace() :
         if type(srows ) is int or type(srows) is float : srows=[srows]
         #oldmodel=copy.copy(self.model)
         self.model=[]
-        if plot is not None : 
-            plot.clear()
-            plot.tv(hd)
 
         rad = self.rad-1
         for irow,srow in enumerate(srows) :
@@ -683,10 +720,15 @@ class Trace() :
             self.model.append(model)
 
             if plot : 
+                plot.clear()
+                plot.tv(hd)
                 plot.ax.scatter(cols,ypos,marker='o',color='r',s=4) 
                 plot.ax.scatter(cols[gd],ypos[gd],marker='o',color='g',s=10) 
                 plot.ax.plot(cols,model(cols),color='m')
-                plot.plotax1.plot(cols,model(cols),color='m')
+                plot.plotax2.cla()
+                plot.plotax2.plot(cols,model(cols),color='m')
+                plot.plotax2.text(0.05,0.95,'Derived trace',
+                       transform=plot.plotax2.transAxes)
                 #plt.pause(0.05)
 
         self.pix0=0
@@ -723,7 +765,7 @@ class Trace() :
             plot.tv(im)
             plot.plotax1.cla()
             plot.plotax1.text(0.05,0.95,'obj and ref cross-section',transform=plot.plotax1.transAxes)
-            plot.plotax1.plot(self.spectrum.data/self.spectrum.data.max())
+            plot.plotax1.plot(self.spectrum/self.spectrum.max())
             plot.plotax1.plot(im[:,self.sc0]/im[:,self.sc0].max())
             plot.plotax1.set_xlabel('row')
             plot.plotax2.cla()
@@ -732,7 +774,7 @@ class Trace() :
             plot.plotax2.plot(lags,shift)
             plot.plotax2.set_xlabel('lag')
             plt.draw()
-            getinput('  See spectra and cross-correlation. Hit any key to continue....',plot.fig)
+            getinput('  See spectra and cross-correlation. Hit any key in display window to continue....',plot.fig)
         self.pix0=fitpeak+lags[0]
         return fitpeak+lags[0]
  
@@ -747,7 +789,7 @@ class Trace() :
         mask = np.zeros([len(self.model),hd.data.shape[1]],dtype=bool)
 
         if plot is not None:
-            plot.tvclear()
+            plot.clear()
             plot.tv(hd)
 
         for i,model in enumerate(self.model) :
@@ -790,7 +832,10 @@ class Trace() :
                 plot.ax.plot(range(ncols),cr,color='g',linewidth=3)
                 plot.ax.plot(range(ncols),rlo,color=color,linewidth=1)
                 plot.ax.plot(range(ncols),rhi,color=color,linewidth=1)
+                plot.plotax2.cla()
                 plot.plotax2.plot(range(ncols),spec[i],color=color,linewidth=1)
+                plot.plotax2.text(0.05,0.95,'Extracted spectrum',
+                       transform=plot.plotax2.transAxes)
                 plt.draw()
         if plot is not None : 
             while getinput('  See extraction window(s). Hit space bar to continue....',plot.fig)[2] != ' ' :
@@ -822,22 +867,16 @@ class Trace() :
             cr=model(np.arange(ncols))
             cr-=cr[self.sc0]
             for col in range(ncols) :
-                spec[:,col] = np.interp(outrows+cr[col],np.arange(nrows),hd.data[:,col])
-                sig[:,col] = np.sqrt(np.interp(outrows+cr[col],np.arange(nrows),hd.uncertainty.array[:,col]**2))
+                spec[:,col] = np.interp(outrows+cr[col],np.arange(nrows),
+                                        hd.data[:,col])
+                sig[:,col] = np.sqrt(np.interp(outrows+cr[col],np.arange(nrows),
+                                        hd.uncertainty.array[:,col]**2))
             out.append(CCDData(spec,StdDevUncertainty(sig),unit='adu'))
-        if plot is not None: getinput('  enter something to continue....',plot.fig)
+        if plot is not None: getinput(
+                          '  enter something to continue....',plot.fig)
 
         if len(out) == 1 : return out[0]
         else : return out
-
-    def save(self,file) :
-        """ Save object to file
-        """
-        try : delattr(self,'ax')
-        except: pass
-        f=open(file,'wb')
-        pickle.dump(self,f)
-        f.close()
 
 def mash(hd,sp=None,bks=None) :
     """
