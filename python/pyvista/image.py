@@ -549,6 +549,7 @@ def xcorr(a,b,lags,medfilt=0) :
 
     # compute xcorr with starting and ending position to allow full range of lags
     xs = -lags[0]
+    xs = np.max([0,-lags[0]])
     xe = np.min([a.shape[-1],b.shape[-1]])-lags[-1]
     atmp=np.atleast_2d(a)
     btmp=np.atleast_2d(b)
