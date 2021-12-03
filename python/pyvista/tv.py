@@ -45,6 +45,7 @@ class TV:
         self.aspect = aspect
         self.doflip = False
         self.usezoom = clickzoom
+        self.histclick = True
 
         # set up initial img and header lists
         self.current = -1
@@ -380,7 +381,7 @@ class TV:
                 #self.xstart = event.xdata
                 self.xstart = xstart
 
-            elif subPlotNr == 2 :
+            elif subPlotNr == 2 and self.histclick :
                 # mouse click in plotax1 changes limits 
                 ylim=self.plotax1.get_ylim()
                 if event.button == 1 :
@@ -584,6 +585,7 @@ class TV:
         self.plotax1.text(0.1,0.85,'right click for new higher scale',
                           transform=self.plotax1.transAxes)
         self.plotax1.set_ylim(ylim)
+        self.histclick = True
 
         plt.draw()
 
