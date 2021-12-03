@@ -248,8 +248,8 @@ def tvstar(tv,plot=None,size=11,fwhm=5,scale=1,pafixed=False) :
     print('Hit key near star center, "q" to quit')
     while key != 'q' :
         key,x,y=tv.tvmark()
-        tv.plotax1.cla()
-        gfit(tv.img,x,y,size=size,fwhm=fwhm,scale=scale,plot=tv.plotax1,sub=False,pafixed=pafixed)
+        tv.plotax2.cla()
+        gfit(tv.img,x,y,size=size,fwhm=fwhm,scale=scale,plot=tv.plotax2,sub=False,pafixed=pafixed)
 
 def window(hdu,box) :
     """
