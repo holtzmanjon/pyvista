@@ -1,4 +1,5 @@
 import matplotlib
+from importlib_resources import files
 import matplotlib.pyplot as plt
 import os
 import pdb
@@ -14,12 +15,9 @@ from astropy.io import ascii, fits
 from astropy.convolution import convolve, Box1DKernel, Box2DKernel
 from astropy.table import Table
 import pyvista
-from pyvista import image
-from pyvista import tv
+import pyvista.data
+from pyvista import image, tv
 from tools import plots
-
-ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../../'
-
 
 class SpecData(CCDData) :
     """ Class to include a wavelength array on top of CCDData, with simple read/write/plot methods
@@ -178,7 +176,7 @@ class WaveCal() :
             return
         return mod
 
-    def fit(self,degree=None,plot=True) :
+    def fit(self,degree=None) :
         """ do a wavelength fit 
         """
         print("doing wavelength fit")
@@ -339,11 +337,12 @@ class WaveCal() :
                             display.plotax1.plot(spectrum.data[row,:],color='m')
                             display.plotax1.plot(self.spectrum[row,:],color='g')
                         display.plotax1.set_xlabel('Pixel')
+                        dislay.histclick=False
                         display.plotax2.cla()
                         display.plotax2.text(0.05,0.95,'cross correlation: {:8.3f}'.format(pixshift),
                                              transform=display.plotax2.transAxes)
                         display.plotax2.plot(lags,shift)
-                        display.plotax1.set_xlabel('Lag')
+                        display.plotax2.set_xlabel('Lag')
                         plt.draw()
                         print("  See spectrum and template spectrum (top), cross correlation(bottom)",display.fig)
                     # single shift for all pixels
@@ -375,7 +374,7 @@ class WaveCal() :
                 for i in range(2) :
                     print('mark location of known line with m key')
                     ret=plots.mark(f)
-                    w=getinput('wavelength of line: ')
+                    w=input('wavelength of line: ')
                     if i==0 :
                         w0=float(w)
                         pix0=ret[0]
@@ -383,7 +382,6 @@ class WaveCal() :
                         disp = (float(w)-w0)/(ret[0]-pix0)
                 print(w0,pix0,disp)
                 wav=np.atleast_2d(w0+(pix-pix0)*disp)
-                pdb.set_trace()
             else :
                 # get dispersion guess from header cards if not given in disp
                 if disp is None: disp=spectrum.header['DISPDW']
@@ -398,7 +396,7 @@ class WaveCal() :
         # open file with wavelengths and read
         if file is not None :
             if file.find('/') < 0 :
-                f=open(ROOT+'/data/lamps/'+file,'r')
+                f=open(files(pyvista.data).joinpath('lamps/'+file),'r')
             else :
                 f=open(file,'r')
             lines=[]
@@ -407,7 +405,7 @@ class WaveCal() :
                     w=float(line.split()[0])
                     # if we have microns, convert to Angstroms
                     if w<10 : w*=10000
-                    if w > wav.min() and w < wav.max() : lines.append(w)
+                    if w > np.nanmin(wav) and w < np.nanmax(wav) : lines.append(w)
             lines=np.array(lines)
             f.close()
         else :
@@ -428,7 +426,9 @@ class WaveCal() :
             display.ax.cla()
             display.ax.axis('off')
             display.tv(spectrum.data)
-        if plot is not None : 
+        if plot is None :
+            self.ax = None
+        else :
             if type(plot) is matplotlib.figure.Figure :
                 plot.clf()
                 plt.draw()
@@ -458,7 +458,7 @@ class WaveCal() :
                 ax[0].set_ylabel('Intensity')
             for line in lines :
                 # initial guess from input wavelengths
-                peak=abs(line-wav[row,:]).argmin()
+                peak=np.nanargmin(abs(line-wav[row,:]))
                 if ( (peak > xmin+rad) and (peak < xmax-rad)) :
                   # set peak to highest nearby pixel
                   peak=(spectrum.data[row,peak-rad:peak+rad+1]).argmax()+peak-rad
@@ -507,17 +507,6 @@ class WaveCal() :
                     waves_order.append(order)
                     weight.append(1.)
         if plot is not None : 
-            #if self.model is not None :
-            #    # if we have a solution already, see how good it is (after shift)
-            #    diff=self.wave(pixels=[x,y])-np.array(waves)
-            #    ax[1].cla()
-            #    if pixplot : plots.plotc(ax[1],x,diff,y,size=2,zr=[y.min(),y.max()])
-            #    else : plots.plotc(ax[1],np.array(waves),diff,y,size=2,zr=[np.array(y).min(),np.array(y).max()])
-            #    ax[1].text(0.1,0.9,'from previous fit, rms: {:8.3f}'.format(diff.std()),transform=ax[1].transAxes)
-            #    xlim=ax[1].get_xlim()
-            #    ax[1].plot(xlim,[0,0],linestyle=':')
-            #    ax[1].set_ylim(diff.min()-0.5,diff.max()+0.5)
-            #    print("  rms from old fit (with shift): {:8.3f}".format(diff.std()))
             plt.figure(plot.number)
             plt.draw()
             print('  See identified lines. Hit space bar in plot window to continue....')
@@ -577,7 +566,15 @@ class Trace() :
         if file is not None :
             """ Initialize object from FITS file
             """
-            tab=Table.read(file)
+            try:
+                if file.find('/') < 0 :
+                    tab=Table.read(files(pyvista.data).joinpath(file))
+                else :
+                    tab=Table.read(file)
+            except FileNotFoundError :
+                raise ValueError("can't find file {:s}",
+                                 files(pyvista.data).joinpath(file))
+
             for tag in ['type','degree','sc0','pix0','spectrum','rad','lags'] :
                 setattr(self,tag, tab[tag][0])
             try : self.rows = tab['rows'][0]
@@ -668,6 +665,9 @@ class Trace() :
         if type(srows ) is int or type(srows) is float : srows=[srows]
         #oldmodel=copy.copy(self.model)
         self.model=[]
+        if plot : 
+            plot.clear()
+            plot.tv(hd)
 
         rad = self.rad-1
         for irow,srow in enumerate(srows) :
@@ -720,8 +720,6 @@ class Trace() :
             self.model.append(model)
 
             if plot : 
-                plot.clear()
-                plot.tv(hd)
                 plot.ax.scatter(cols,ypos,marker='o',color='r',s=4) 
                 plot.ax.scatter(cols[gd],ypos[gd],marker='o',color='g',s=10) 
                 plot.ax.plot(cols,model(cols),color='m')
@@ -768,6 +766,7 @@ class Trace() :
             plot.plotax1.plot(self.spectrum/self.spectrum.max())
             plot.plotax1.plot(im[:,self.sc0]/im[:,self.sc0].max())
             plot.plotax1.set_xlabel('row')
+            plot.histclick=False
             plot.plotax2.cla()
             plot.plotax2.text(0.05,0.95,'cross correlation {:8.3f}'.format(pixshift),
                               transform=plot.plotax2.transAxes)
