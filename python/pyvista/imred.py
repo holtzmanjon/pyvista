@@ -38,8 +38,6 @@ except:
     #print('pyds9 is not available, proceeding')
     pass
 
-ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../../'
-
 
 class Reducer() :
     """ Class for reducing images of a given instrument
@@ -71,8 +69,6 @@ class Reducer() :
         # Read instrument configuation from YAML configuration file 
         if inst is not None :
             if inst.find('/') < 0 :
-                #config = yaml.load(open(ROOT+'/data/'+inst+'/'+inst+
-                #              conf+'.yml','r'), Loader=yaml.FullLoader)
                 config = yaml.load(open(importlib_resources.files(DATA).joinpath(inst+'/'+inst+
                               conf+'.yml'),'r'), Loader=yaml.FullLoader)
             else :
@@ -142,8 +138,8 @@ class Reducer() :
             except : pass
            
             # Add bad pixel mask if it exists
-            try: self.mask=fits.open(ROOT+'/data/'+inst+'/'+
-                                inst+'_mask.fits')[0].data.astype(bool)
+            try: self.mask=fits.open(importlib_resources.files(DATA).joinpath(inst+'/'+
+                                inst+'_mask.fits'))[0].data.astype(bool)
             except: pass
 
         # save number of chips for convenience
@@ -254,8 +250,7 @@ class Reducer() :
         for ichan,(im,gain,rn,biasbox,biasregion) in enumerate(zip(ims,self.gain,self.rn,self.biasbox,self.biasregion)) :
             if display is not None : 
                 display.tv(im)
-                if ichan %2 == 0 : ax=display.plotax1
-                else : ax=display.plotax2
+                ax=display.plotax2
                 ax.cla()
             if self.namp == 1 : 
                 ampboxes = [biasbox]
@@ -318,9 +313,12 @@ class Reducer() :
     def imtranspose(self,im) :
         """ Transpose a CCDData object
         """
-        return CCDData(im.data.T,header=im.header,
-                       uncertainty=StdDevUncertainty(im.uncertainty.array.T),
-                       mask=im.mask.T,unit=u.dimensionless_unscaled)
+        if self.transpose :
+            return CCDData(im.data.T,header=im.header,
+                           uncertainty=StdDevUncertainty(im.uncertainty.array.T),
+                           mask=im.mask.T,unit=u.dimensionless_unscaled)
+        else : 
+            return im
 
     def trim(self,im,trimimage=False) :
         """ Trim image by masking non-trimmed pixels
@@ -418,17 +416,17 @@ class Reducer() :
              if display is not None : 
                  display.tv(corr)
                  #plot central crossections
-                 display.plotax1.cla()
+                 display.plotax2.cla()
                  dim=corr.data.shape
                  col = int(dim[1]/2)
                  row = corr.data[:,col]
-                 display.plotax1.plot(row)
+                 display.plotax2.plot(row)
                  min,max=tv.minmax(row,low=5,high=5)
-                 display.plotax1.set_ylim(min,max)
-                 display.plotax1.set_xlabel('row')
-                 display.plotax1.text(0.05,0.95,'Column {:d}'.format(col),
-                     transform=display.plotax1.transAxes)
-                 display.plotax2.cla()
+                 display.plotax2.set_ylim(min,max)
+                 display.plotax2.set_xlabel('row')
+                 display.plotax2.text(0.05,0.95,'Column {:d}'.format(col),
+                     transform=display.plotax2.transAxes)
+                 #display.plotax2.cla()
                  row = int(dim[0]/2)
                  col = corr.data[row,:]
                  min,max=tv.minmax(col,low=10,high=10)
@@ -497,9 +495,9 @@ class Reducer() :
             display.tv(im)
             display.tv(grid_z)
             col=int(im.shape[-1]/2)
-            display.plotax1.cla()
-            display.plotax1.plot(im.data[:,col])
-            display.plotax1.plot(grid_z[:,col])
+            display.plotax2.cla()
+            display.plotax2.plot(im.data[:,col])
+            display.plotax2.plot(grid_z[:,col])
             plt.draw()
             getinput("  See scattered light image",display)
 
@@ -831,7 +829,7 @@ class Reducer() :
                 display.tv(comb)
                 gd=np.where(comb.mask == False)
                 min,max=tv.minmax(med[gd[0],gd[1]],low=10,high=10)
-                display.plotax1.hist(med[gd[0],gd[1]],bins=np.linspace(min,max,100),histtype='step')
+                display.plotax2.hist(med[gd[0],gd[1]],bins=np.linspace(min,max,100),histtype='step')
                 display.fig.canvas.draw_idle()
                 getinput("  See final image, use - key for S/N image.",display)
                 for i,im in enumerate(ims) :
@@ -892,25 +890,21 @@ class Reducer() :
 
         sflat=[]
         for flat in flats :
-            if self.transpose : tmp=copy.deepcopy(self.imtranspose(flat))
-            else : tmp=flat
+            tmp=copy.deepcopy(self.imtranspose(flat))
             nrows=tmp.data.shape[0]
             snmed = np.nanmedian(tmp.data/tmp.uncertainty.array,axis=1)
             gdrows = np.where(snmed>50)[0]
             med = convolve(np.nanmedian(tmp[gdrows,:],axis=0),boxcar,boundary='extend')
             if display is not None :
                 display.tv(tmp)
-                display.plotax1.cla()
                 display.plotax2.cla()
-                display.plotax1.plot(snmed)
                 display.plotax2.plot(med)
             for row in range(tmp.data.shape[0]) :
                 tmp.data[row,:] /= med
                 tmp.uncertainty.array[row,:] /= med
             if display is not None :
                 display.tv(tmp,min=0.7,max=1.3)
-            if self.transpose : sflat.append( self.imtranspose(tmp))
-            else : sflat.append(tmp)
+            sflat.append( self.imtranspose(tmp))
 
         if len(sflat) == 1 :return sflat[0]
         else : return sflat
