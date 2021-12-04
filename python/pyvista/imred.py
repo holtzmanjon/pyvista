@@ -79,16 +79,16 @@ class Reducer() :
             self.gain=config['gain']
             self.rn=config['rn']/np.sqrt(nfowler)
             try :self.scale=config['scale']
-            except : self.scale = None
+            except KeyError: self.scale = None
             try : self.namp=config['namp']
-            except : self.namp = 1
+            except KeyError: self.namp = 1
             try :self.transpose=config['transpose']
-            except : self.transpose = False
+            except KeyError: self.transpose = False
             try : self.crbox=config['crbox']
-            except : self.crbox=None
+            except KeyError: self.crbox=None
             self.biastype=config['biastype']
             try : self.biasavg=config['biasavg']
-            except : self.biasavg=11
+            except KeyError: self.biasavg=11
             if self.biasavg %2 == 0 : self.biasavg += 1
             self.biasbox=[]
             for box in config['biasbox'] :
@@ -109,7 +109,8 @@ class Reducer() :
                     for amp in box : 
                         ampbox.append(image.BOX(xr=amp[0],yr=amp[1]) )
                     self.biasregion.append(ampbox)
-            except: self.biasregion=[None]
+            except KeyError: 
+                self.biasregion=[None]
             self.trimbox=[]
             for box in config['trimbox'] :
                 if self.namp == 1 :
@@ -309,16 +310,6 @@ class Reducer() :
             data=copy.copy(im.data)
             data[data<0] = 0.
             im.uncertainty = StdDevUncertainty(np.sqrt( data/gain + (rn/gain)**2 ))
-
-    def imtranspose(self,im) :
-        """ Transpose a CCDData object
-        """
-        if self.transpose :
-            return CCDData(im.data.T,header=im.header,
-                           uncertainty=StdDevUncertainty(im.uncertainty.array.T),
-                           mask=im.mask.T,unit=u.dimensionless_unscaled)
-        else : 
-            return im
 
     def trim(self,im,trimimage=False) :
         """ Trim image by masking non-trimmed pixels
@@ -890,11 +881,15 @@ class Reducer() :
 
         sflat=[]
         for flat in flats :
-            tmp=copy.deepcopy(self.imtranspose(flat))
+            if self.transpose :
+                tmp = image.transpose(flat)
+            else :
+                tmp = copy.deepcopy(flat)
             nrows=tmp.data.shape[0]
             snmed = np.nanmedian(tmp.data/tmp.uncertainty.array,axis=1)
             gdrows = np.where(snmed>50)[0]
-            med = convolve(np.nanmedian(tmp[gdrows,:],axis=0),boxcar,boundary='extend')
+            med = convolve(np.nanmedian(tmp[gdrows,:],axis=0),
+                           boxcar,boundary='extend')
             if display is not None :
                 display.tv(tmp)
                 display.plotax2.cla()
@@ -904,7 +899,10 @@ class Reducer() :
                 tmp.uncertainty.array[row,:] /= med
             if display is not None :
                 display.tv(tmp,min=0.7,max=1.3)
-            sflat.append( self.imtranspose(tmp))
+            if self.transpose :
+                sflat.append(image.transpose(tmp))
+            else :
+                sflat.append(tmp)
 
         if len(sflat) == 1 :return sflat[0]
         else : return sflat
