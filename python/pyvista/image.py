@@ -2,11 +2,12 @@ from __future__ import print_function
 import numpy as np
 import copy
 from tools import plots
-from astropy.io import fits
-from astropy.io import ascii
+from astropy import units as u
+from astropy.io import fits, ascii
 from astropy.modeling import models, fitting
 from astropy.convolution import convolve, Box1DKernel
 from astropy.nddata import StdDevUncertainty, support_nddata
+from ccdproc import CCDData
 import scipy.signal
 import scipy.ndimage
 import matplotlib.pyplot as plt
@@ -537,10 +538,20 @@ def getdata(hd) :
 def xcorr(a,b,lags,medfilt=0) :
     """ Cross correlation function between two arrays, calculated at lags
 
-        Args:
-            a, b : input 1D arrays
-            lags : array (1D) of x-corrlation lags
-            medfilt : size of median filter for arrays (default=0)
+        If input images have the same number of rows, then calculate a single
+          cross-correlation in columns
+        If first image has one row, but the second has more, then calculate 
+          a cross correlation for each row of the second images
+
+        Arguments:
+            a : array_like
+                reference array
+            b : array_like
+                array to calculate shifts for
+            lags : array_like
+                x-corrlation lags to use
+            medfilt : int, default=0
+                size of median filter for arrays 
 
         Returns :
             fit peak of cross-correlation (quadratic fit)
@@ -553,15 +564,19 @@ def xcorr(a,b,lags,medfilt=0) :
     xe = np.min([a.shape[-1],b.shape[-1]])-lags[-1]
     atmp=np.atleast_2d(a)
     btmp=np.atleast_2d(b)
+
+    # with medfilt parameter, subtract median filtered array from data
     if medfilt>0 :
         atmp=np.atleast_2d(atmp-scipy.signal.medfilt(a,kernel_size=[1,medfilt]))
         btmp=np.atleast_2d(btmp-scipy.signal.medfilt(b,kernel_size=[1,medfilt]))
 
     if atmp.shape[0] == btmp.shape[0] :
+        # single cross-correlation
         shift=np.zeros([1,len(lags)])
         for i,lag in enumerate(lags) :
             shift[0,i]=np.sum(atmp[:,xs:xe]*btmp[:,xs+lag:xe+lag])
     elif atmp.shape[0] == 1 :
+        # cross-correlation for each row
         shift=np.zeros([btmp.shape[0],len(lags)])
         for row in range(btmp.shape[0]) :
             print('cross correlating row: {:d}'.format(row),end='\r')
@@ -570,6 +585,8 @@ def xcorr(a,b,lags,medfilt=0) :
     else:
         raise ValueError('input arrays must have same nrows, or first must have 1 row')
         return
+
+    # fit the cross-correlation function to get the peak
     fitpeak=np.zeros(shift.shape[0])
     for row in range(shift.shape[0]) :
         peak=shift[row,:].argmax()
@@ -636,3 +653,12 @@ def smooth(hd,size) :
     npix=1
     for dim in size : npix*=dim
     hd.uncertainty=StdDevUncertainty(np.sqrt(scipy.ndimage.uniform_filter(hd.uncertainty.array**2,size=size)/npix))
+
+
+def transpose(im) :
+    """ Transpose a CCDData object
+    """
+    return CCDData(im.data.T,header=im.header,
+                   uncertainty=StdDevUncertainty(im.uncertainty.array.T),
+                   mask=im.mask.T,unit=u.dimensionless_unscaled)
+
