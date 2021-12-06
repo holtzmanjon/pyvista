@@ -211,6 +211,7 @@ class Reducer() :
             if self.verbose : print('  Reading file: {:s}'.format(file)) 
             try : im=CCDData.read(file,hdu=ext,unit=u.dimensionless_unscaled)
             except : raise RuntimeError('Error reading file: {:s}'.format(file))
+            im.data = im.data.astype(np.float32)
             im.header['FILE'] = os.path.basename(file)
             if 'OBJECT' not in im.header  or im.header['OBJECT'] == '':
                 try: im.header['OBJECT'] = im.header['OBJNAME']
@@ -259,7 +260,7 @@ class Reducer() :
             else :
                 ampboxes = biasbox
                 databoxes = biasregion
-            im.data = im.data.astype(float)
+            im.data = im.data.astype(np.float32)
             color=['m','g','b','r','c','y']
             for ibias,(databox,ampbox) in enumerate(zip(databoxes,ampboxes)) :
               if display is not None :
@@ -282,9 +283,9 @@ class Reducer() :
                     im.data[databox.ymin:databox.ymax+1,
                             databox.xmin:databox.xmax+1] = \
                             im.data[databox.ymin:databox.ymax+1,
-                                    databox.xmin:databox.xmax+1].astype(float)-b
+                               databox.xmin:databox.xmax+1].astype(np.float32)-b
                 else : 
-                    im.data = im.data.astype(float)-b
+                    im.data = im.data.astype(np.float32)-b
                 im.header.add_comment('subtracted overscan: {:f}'.format(b))
               elif self.biastype == 1 :
                 over=np.median(im.data[databox.ymin:databox.ymax+1,
@@ -301,7 +302,7 @@ class Reducer() :
                 im.data[databox.ymin:databox.ymax+1,
                         databox.xmin:databox.xmax+1] = \
                     im.data[databox.ymin:databox.ymax+1,
-                            databox.xmin:databox.xmax+1].astype(float) - over
+                            databox.xmin:databox.xmax+1].astype(np.float32) - over
             if display is not None :
                 display.tv(im)
                 getinput("  See bias box and cross section. ",display)
@@ -753,8 +754,8 @@ class Reducer() :
             sum = np.sum(np.array(datacube),axis=0)
             sig = np.sqrt(np.sum(np.array(varcube),axis=0))
             mask = np.any(maskcube,axis=0)
-            out.append(CCDData(sum,header=allcube[0][chip].header,
-                       uncertainty=StdDevUncertainty(sig),
+            out.append(CCDData(sum.astype(np.float32),header=allcube[0][chip].header,
+                       uncertainty=StdDevUncertainty(sig.astype(np.float32)),
                        mask=mask,unit=u.dimensionless_unscaled))
         
         # return the frame
@@ -808,7 +809,8 @@ class Reducer() :
                 raise ValueError('no combination type: {:s}'.format(type))
             if self.verbose: print('  calculating uncertainty....')
             mask = np.any(maskcube,axis=0)
-            comb=CCDData(med,header=allcube[im][chip].header,uncertainty=StdDevUncertainty(sig),
+            comb=CCDData(med.astype(np.float32),header=allcube[im][chip].header,
+                         uncertainty=StdDevUncertainty(sig.astype(np.float32)),
                          mask=mask,unit=u.dimensionless_unscaled)
             if normalize: comb.meta['MEANNORM'] = np.array(allnorm).mean()
             out.append(comb)
