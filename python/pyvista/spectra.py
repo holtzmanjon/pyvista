@@ -125,6 +125,7 @@ class WaveCal() :
                 setattr(self,tag,tab[tag][0])
             self.orders=np.atleast_1d(self.orders)
             # make the initial models from the saved data
+            self.model = None
             self.fit()
         else :
             self.type = type
@@ -138,6 +139,7 @@ class WaveCal() :
             self.model = None
             self.ax = None
             self.spectrum = None
+            self.orders = [1]
 
     def write(self,file,append=False) :
         """ Save object to file
@@ -155,10 +157,17 @@ class WaveCal() :
     def wave(self,pixels=None,image=None) :
         """ Wavelength from pixel using wavelength solution model
 
-            pix : input pixel positions [x] or [y,x]
-            image : for input image size [nrows,ncols], 
-                        return wavelengths at all pixels
-            returns wavelength
+        Parameters
+        ----------
+        pix : array_like
+           input pixel positions [x] or [y,x]
+        image : tuple
+           for input image size [nrows,ncols], return wavelengths at all pixels
+
+        Returns 
+        -------
+        wavelength
+
         """
         if pixels is not None :
             out=np.zeros(len(pixels[0]))
@@ -209,7 +218,8 @@ class WaveCal() :
         twod='2D' in self.type
         fitter=fitting.LinearLSQFitter()
         if degree is not None : self.degree=degree
-        mod = self.getmod()
+        if self.model is None : self.model = self.getmod()
+        mod = self.model
 
         if not hasattr(self,'ax') : self.ax = None
         if twod :
@@ -347,11 +357,31 @@ class WaveCal() :
         return self.spectrum 
 
     def identify(self,spectrum,file=None,wav=None,wref=None,inter=False,
-                 orders=None,verbose=False,rad=5,thresh=100,
+                 orders=None,verbose=False,rad=5,thresh=100, fit=True,
                  disp=None,display=None,plot=None,pixplot=False,
                  xmin=None,xmax=None,lags=range(-300,300), nskip=1) :
         """ Given some estimate of wavelength solution and file with lines,
-            identify peaks and centroid
+            identify peaks and centroid, via methods:
+
+            1. if input wav array/image is specified, use this to identify lines
+            2. if WaveCal object as associated spectrum, use cross correlation
+               to identify shift of input spectrum, then use previous solution
+               to create a wavelength array. Cross correlation lags to try
+               are specified by lags=range(dx1,dx2), default range(-300,300)
+            3. if inter==True, prompt user to identify 2 lines
+            4. use header cards DISPDW and DISPWC for dispersion and wave center
+               or as specified by input disp=[dispersion] and wref=[lambda,pix]
+
+            Given wavelength guess array, identify lines from input file, or,
+               if no file given, lines saved in the WaveCal structure
+
+            Lines are identified by looking for peaks within rad pixels of
+               initial guess
+
+            After line identification, fit() is called, unless fit=False
+
+            With plot=True, plot of spectrum is shown, with initial wavelength
+               guess. With pixplot=True, plot is shown as function of pixel
         """
 
         sz=spectrum.data.shape
@@ -450,7 +480,8 @@ class WaveCal() :
                     w=float(line.split()[0])
                     # if we have microns, convert to Angstroms
                     if w<10 : w*=10000
-                    if w > np.nanmin(wav) and w < np.nanmax(wav) : lines.append(w)
+                    if w > np.nanmin(wav) and w < np.nanmax(wav) : 
+                        lines.append(w)
             lines=np.array(lines)
             f.close()
         else :
@@ -524,7 +555,6 @@ class WaveCal() :
                       while peak != oldpeak and  niter<10:
                         p0 = [spectrum.data[row,peak],peak,rad]
                         coeff, var_matrix = curve_fit(gauss, xx, yy, p0=p0)
-                        fit = gauss(xx,*coeff)
                         cent = coeff[1]
                         oldpeak = peak
                         peak = int(cent)
@@ -557,7 +587,7 @@ class WaveCal() :
         self.weights=np.array(weight)
         self.spectrum = spectrum.data
 
-        self.fit()
+        if fit: self.fit()
         print('')
 
     def scomb(self,hd,wav,average=True,usemask=True) :
@@ -600,13 +630,23 @@ class WaveCal() :
                        mask=mask,header=hd.header,unit='adu')
 
 
+    def correct(self,hd,wav) :
+        """ Correct input image to desired wavelength scale
+        """
+        out=np.zeros([hd.data.shape[0],len(wav)])
+        w=self.wave(image=hd.data.shape)
+        for i in range(len(out)) :
+            sort=np.argsort(w[i,:])
+            wmin=w[i,sort].min()
+            wmax=w[i,sort].max()
+            w2=np.abs(wav-wmin).argmin()
+            w1=np.abs(wav-wmax).argmin()
+            out[i,w2:w1] += np.interp(wav[w2:w1],w[i,sort],hd.data[i,sort])
+
+        return out
+
 class Trace() :
     """ Class for spectral traces
-
-    Parameters
-    ----------
-    file : str, optional
-        filename for FITS file with WaveCal attributes
 
     Attributes 
     ----------
@@ -624,6 +664,11 @@ class Trace() :
         radius in pixels to use for calculating centroid
     lags : array_like
         range of lags to use to try to find object locations
+
+    Parameters
+    ----------
+    file : str, optional
+        filename for FITS file with WaveCal attributes
 
     """
 
