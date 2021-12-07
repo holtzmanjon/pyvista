@@ -6,5 +6,6 @@ astropy
 ccdproc
 photutils
 holtz-tools
+importlib_resources
 pyautogui
 pyyaml
