@@ -143,6 +143,13 @@ class WaveCal() :
 
     def write(self,file,append=False) :
         """ Save object to file
+
+            Parameters 
+            ----------
+            file : str
+              name of output file to write to
+            append : bool
+              append to existing file (untested)
         """
         tab=Table()
         for tag in ['type','degree','ydegree','waves','waves_order',
@@ -157,11 +164,15 @@ class WaveCal() :
     def wave(self,pixels=None,image=None) :
         """ Wavelength from pixel using wavelength solution model
 
+        With pixels=[pixels,rows] keyword, return wavelengths for input set of pixels/rows
+        With image=(nrow,ncol), returns wavelengths in an image
+        
+
         Parameters
         ----------
-        pix : array_like
+        pix : array_like, optional
            input pixel positions [x] or [y,x]
-        image : tuple
+        image : tuple, optional
            for input image size [nrows,ncols], return wavelengths at all pixels
 
         Returns 
@@ -210,8 +221,17 @@ class WaveCal() :
             return
         return mod
 
-    def fit(self,degree=None) :
+    def fit(self,degree=None,reject=3) :
         """ do a wavelength fit 
+
+            If a figure has been set in identify, will show fit graphically and
+            allow for manual removal of lines in 1D case.  In 2D case, outliers
+            are detected and removed
+ 
+            Parameters
+            ----------
+            degree : int, optional
+              degree of polynomial in wavelength, else as previously set in object
         """
         print("doing wavelength fit")
         # set up fitter and model
@@ -234,7 +254,7 @@ class WaveCal() :
                 diff=self.waves-self.wave(pixels=[self.pix,self.y])
                 gd = np.where(self.weights > 0)[0]
                 print('  rms: {:8.3f}'.format(diff[gd].std()))
-                bd = np.where(abs(diff) > 3*diff.std())[0]
+                bd = np.where(abs(diff) > reject*diff.std())[0]
                 nbd = len(bd)
                 print('rejecting {:d} points from {:d} total: '.format(
                       nbd,len(self.waves)))
@@ -592,6 +612,22 @@ class WaveCal() :
 
     def scomb(self,hd,wav,average=True,usemask=True) :
         """ Resample onto input wavelength grid
+
+        Uses current wavelength solution, linearly interpolates to specified
+          wavelengths, on a row-by-row basis. Allows for order overlap.
+       
+
+        Parameters
+        ----------
+        hd : array or CCDData
+          input image to resample
+        wav : array_like
+          new wavelengths to interpolate to
+        average : bool, optional, default=True
+          if overlapping orders, average if True, otherwise sum
+        usemask : bool, optional, default=True
+          if True, skip input masked pixels for interpolation
+
         """
         #output grid
         out=np.zeros(len(wav))
@@ -631,8 +667,20 @@ class WaveCal() :
 
 
     def correct(self,hd,wav) :
-        """ Correct input image to desired wavelength scale
+        """ Resample input image to desired wavelength scale
+
+        Uses current wavelength solution, linearly interpolates to specified
+          wavelengths, on a row-by-row basis.
+
+        Parameters
+        ----------
+        hd : array or CCDData
+          input image to resample
+        wav : array_like
+          new wavelengths to interpolate to
+
         """
+
         out=np.zeros([hd.data.shape[0],len(wav)])
         w=self.wave(image=hd.data.shape)
         for i in range(len(out)) :
