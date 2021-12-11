@@ -739,8 +739,11 @@ class Trace() :
             for tag in ['type','degree','sc0','pix0',
                         'spectrum','rad','lags','transpose'] :
                 setattr(self,tag, tab[tag][0])
-            try : self.rows = tab['rows'][0]
-            except KeyError: self.rows = None
+            for tag in ['rows','index'] :
+                try : setattr(self,tag,tab[tag][0])
+                except KeyError : 
+                    print('no attribute: ', tag)
+                    setattr(self,tag,None)
             coeffs = tab['coeffs'][0]
             # use saved coefficients to instantiate model
             self.model = []
@@ -789,7 +792,10 @@ class Trace() :
         for tag in ['type','degree','sc0','pix0',
                     'spectrum','rad','lags','transpose'] :
             tab[tag] = [getattr(self,tag)]
-        if self.rows is not None : tab['rows'] = [np.array(self.rows)]
+        for tag in ['rows','index'] :
+            try : 
+                if getattr(self,tag) is not None : tab[tag] = [np.array(getattr(self,tag))]
+            except AttributeError : print('no attribute: ', tag)
         coeffs = []
         if self.type == 'Polynomial1D' :
             # load model coefficients
@@ -875,8 +881,9 @@ class Trace() :
                 ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*hd.data[cr-rad:cr+rad+1,col]) / ysum[col]
                 yvar[col] = np.sum(hd.uncertainty.array[cr-rad:cr+rad+1,col]**2) 
                 ymask[col] = np.any(hd.mask[cr-rad:cr+rad+1,col]) 
-                if np.abs(ypos[col]-sr) > rad/2. : ymask[col] = True
                 # use this position as starting center for next if above threshold S/N
+                if np.abs(ypos[col]-sr) > rad/2. : 
+                    ymask[col] = True
                 if (not ymask[col]) & np.isfinite(ysum[col]) & (ysum[col]/np.sqrt(yvar[col]) > thresh)  : sr=int(round(ypos[col]))
 
             cols=np.arange(ncol)
@@ -934,6 +941,7 @@ class Trace() :
             spec[self.rows[1]:] = 0.  
         except: pass
         fitpeak,shift = image.xcorr(self.spectrum,spec,lags)
+        pdb.set_trace()
         pixshift=(fitpeak+lags[0])[0]
         if plot is not None :
             plot.clear()
@@ -954,7 +962,7 @@ class Trace() :
         self.pix0=fitpeak+lags[0]
         return fitpeak+lags[0]
  
-    def extract(self,im,rad=None,scat=False,plot=None,medfilt=None) :
+    def extract(self,im,rad=None,scat=False,plot=None,medfilt=None,nout=None) :
         """ Extract spectrum given trace(s)
         """
         if self.transpose :
@@ -965,15 +973,25 @@ class Trace() :
         if rad is None : rad=self.rad
         nrows=hd.data.shape[0]
         ncols=hd.data.shape[-1]
-        spec = np.zeros([len(self.model),hd.data.shape[1]])
-        sig = np.zeros([len(self.model),hd.data.shape[1]])
-        mask = np.zeros([len(self.model),hd.data.shape[1]],dtype=bool)
+        if nout is not None :
+            spec = np.zeros([nout,hd.data.shape[1]])
+            sig = np.zeros([nout,hd.data.shape[1]])
+            mask = np.zeros([nout,hd.data.shape[1]],dtype=bool)
+        else :
+            spec = np.zeros([len(self.model),hd.data.shape[1]])
+            sig = np.zeros([len(self.model),hd.data.shape[1]])
+            mask = np.zeros([len(self.model),hd.data.shape[1]],dtype=bool)
 
         if plot is not None:
             plot.clear()
             plot.tv(hd)
 
-        for i,model in enumerate(self.model) :
+        for j,model in enumerate(self.model) :
+
+            if nout is not None :
+                i=self.index[j]
+            else :
+                i=j
             cr=model(np.arange(ncols))+self.pix0
             print('  extracting aperture {:d}'.format(i),end='\r')
             icr=np.round(cr).astype(int)
