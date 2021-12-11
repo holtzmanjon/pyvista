@@ -739,30 +739,8 @@ class Reducer() :
     def sum(self,ims, return_list=False, **kwargs) :
         """ Coadd input images
         """
-        allcube = self.getcube(ims, **kwargs)
-        nframe = len(allcube)
-        
-        out=[]
-        for chip in range(self.nchip) :
-            datacube = []
-            varcube = []
-            maskcube = []
-            for im in range(nframe) :
-                datacube.append(allcube[im][chip].data)
-                varcube.append(allcube[im][chip].uncertainty.array**2)
-                maskcube.append(allcube[im][chip].mask)
-            sum = np.sum(np.array(datacube),axis=0)
-            sig = np.sqrt(np.sum(np.array(varcube),axis=0))
-            mask = np.any(maskcube,axis=0)
-            out.append(CCDData(sum.astype(np.float32),header=allcube[0][chip].header,
-                       uncertainty=StdDevUncertainty(sig.astype(np.float32)),
-                       mask=mask,unit=u.dimensionless_unscaled))
-        
-        # return the frame
-        if len(out) == 1 : 
-           if return_list : return [out[0]]
-           else : return out[0]
-        else : return out
+
+        return self.combine(ims,type='sum',return_list=return_list,**kwargs)
 
     def combine(self,ims, normalize=False,display=None,div=True,
                 return_list=False, type='median',sigreject=5,**kwargs) :
@@ -795,16 +773,19 @@ class Reducer() :
             elif type == 'mean' :
                 if self.verbose: print('  combining data with mean....')
                 med = np.mean(np.array(datacube),axis=0)
+                sig = np.sqrt(np.sum(np.array(varcube),axis=0)/nframe)
+            elif type == 'sum' :
+                if self.verbose: print('  combining data with sum....')
+                med = np.sum(np.array(datacube),axis=0)
                 sig = np.sqrt(np.mean(np.array(varcube),axis=0)/nframe)
             elif type == 'reject' :
                 datacube = np.array(datacube)
-                pdb.set_trace()
                 if self.verbose: print('  combining data with rejection....')
                 med = np.median(datacube,axis=0)
                 bd=np.where(datacube>med+sigreject*np.sqrt(np.array(varcube)))
                 datacube[bd]=np.nan
                 med = np.nanmean(datacube,axis=0)
-                sig = np.sqrt(np.mean(np.array(varcube),axis=0)/nframe)
+                sig = np.sqrt(np.nanmean(np.array(varcube),axis=0)/nframe)
             else :
                 raise ValueError('no combination type: {:s}'.format(type))
             if self.verbose: print('  calculating uncertainty....')
@@ -829,12 +810,14 @@ class Reducer() :
                     min,max=tv.minmax(med[gd[0],gd[1]],low=5,high=5)
                     display.fig.canvas.draw_idle()
                     if div :
-                        display.plotax2.hist((allcube[i][chip].data/med)[gd[0],gd[1]],bins=np.linspace(0.5,1.5,100),histtype='step')
+                        display.plotax2.hist((allcube[i][chip].data/med)[gd[0],gd[1]],
+                                            bins=np.linspace(0.5,1.5,100),histtype='step')
                         display.tv(allcube[i][chip].data/med,min=0.5,max=1.5)
                         getinput("    see image: {} divided by master".format(im),display)
                     else :
                         delta=5*self.rn[chip]
-                        display.plotax2.hist((allcube[i][chip].data-med)[gd[0],gd[1]],bins=np.linspace(-delta,delta,100),histtype='step')
+                        display.plotax2.hist((allcube[i][chip].data-med)[gd[0],gd[1]],
+                                            bins=np.linspace(-delta,delta,100),histtype='step')
                         display.tv(allcube[i][chip].data-med,min=-delta,max=delta)
                         getinput("    see image: {} minus master".format(im),display)
 
