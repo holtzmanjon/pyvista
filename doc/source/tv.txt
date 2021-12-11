@@ -76,13 +76,20 @@ available in the main display window:
 
 Several synchronous (waits for input) methods are also available:
 
-  |  imexam(size=11,fwhm=5,scale=1,pafixed=False)  : draws radial profiles and fits Gaussian around cursor position when key is hit
-  |  tvmark() :   returns (x,y,key) when a key is hit at (data) position (x,y)
-  |  clear() :   clears the display
-  |  tvbox(x,y,box=None,size=3,color='m') : displays square of specified size at input position (or pyvista box object) with specified color
-  |  tvvcirc(x,y,rad=3,color='m') : displays circle of specified size and color at input position
-  |  tvclear() :  clears graphics patches from display
-  |  flip() :  toggles vertical flip of displays (default starts with origin in lower left)
+imexam(size=11,fwhm=5,scale=1,pafixed=False)  : 
+  draws radial profiles and fits Gaussian around cursor position when key is hit
+tvmark() :   
+  returns (x,y,key) when a key is hit at (data) position (x,y)
+clear() :   
+  clears the display
+tvbox(x,y,box=None,size=3,color='m') : 
+  displays square of specified size at input position (or pyvista box object) with specified color
+tvvcirc(x,y,rad=3,color='m') : 
+  displays circle of specified size and color at input position
+tvclear() :  
+  clears graphics patches from display
+flip() :  
+  toggles vertical flip of displays (default starts with origin in lower left)
 
 
 Module functions
