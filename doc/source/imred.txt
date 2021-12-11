@@ -20,7 +20,7 @@ images. A class is instantiated for a given instrument. Necesseary information
 can be specified on instantiation, but generally is loaded given an input
 instrument name, e.g., ARCTIC, ARCES, DIS, TSPEC. In this case, configuration
 is read from a configuration file called {inst}_config.yml; pyvista contains
-several of these in the PYVISTA_DIR/data directory tree. For a new instrument,
+several of these in the PYVISTA_DIR/python/pyvista/data directory tree. For a new instrument,
 they should be straightforward to construct, see below
 
 For a given instrument, there can be multiple files created per exposure,
@@ -32,7 +32,7 @@ The reading function of the Reducer allows for file names to be
 read by specifying a sequence number (rather than typing the full
 name), if the data taking system supports unique identification by
 sequence number. File names are constructed using a template:
-{dir}/{root}{formstr}.fits*, where {dir}, {root}, and {formstr} are
+{dir}/{root}{formstr}.*, where {dir}, {root}, and {formstr} are
 customizable attributes of the reducer. For example, if {dir} is
 defined as some input directory, {root} is '*', and {formstr} is
 {:04d}, then if you were to, e.g. rd(28), it would look for a file
