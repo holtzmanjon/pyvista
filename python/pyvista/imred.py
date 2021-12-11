@@ -41,6 +41,32 @@ except:
 
 class Reducer() :
     """ Class for reducing images of a given instrument
+
+    Parameters
+    ----------
+
+    Attributes
+    ----------
+    dir : str
+    root : str
+    verbose : bool 
+    inst : str
+    badpix : str
+    scat : int
+    mask : str
+    transpose : bool
+    scale : float
+    biastype : int
+    gain : float
+    rn : float
+    namp : int
+    crbox : list
+    biasavg : int
+    biasregion : 
+    trimbox :
+    outbox :
+
+
     """
     def __init__(self,inst=None,conf='',dir='./',root='*',formstr='{04d}',
                  gain=1,rn=0.,verbose=True,nfowler=1) :
