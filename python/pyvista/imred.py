@@ -190,7 +190,7 @@ class Reducer() :
         for form,gain,rn in zip(self.formstr,self.gain,self.rn) :
             # find the files that match the directory/format
             if type(num) is int :
-                search=self.dir+'/'+self.root+form.format(num)+'.f*'
+                search=self.dir+'/'+self.root+form.format(num)+'.*'
             elif type(num) is str or type(num) is np.str_ :
                 if num.find('/') >= 0 :
                     search=num+'*'
