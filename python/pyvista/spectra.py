@@ -42,6 +42,8 @@ class SpecData(CCDData) :
             print('Input must be a filename or CCDData object')
 
     def write(self,file,overwrite=True,png=False) :
+        """  Write SpecData to file
+        """
         hdulist=fits.HDUList()
         hdulist.append(fits.PrimaryHDU(header=self.meta))
         hdulist.append(fits.ImageHDU(self.data))
@@ -118,7 +120,10 @@ class WaveCal() :
     def __init__ (self,file=None, type='chebyshev',degree=2,ydegree=2,
                   pix0=0) :
         if file is not None :
-            tab=Table.read(file)
+            if str(file)[0] == '.' or str(file)[0] == '/' :
+                tab=Table.read(file)
+            else :
+                tab=Table.read(files(pyvista.data).joinpath(file))
             for tag in ['type','degree','ydegree','waves',
                         'waves_order','orders',
                         'pix0','pix','y','spectrum','weights'] :
@@ -277,7 +282,7 @@ class WaveCal() :
                 plt.draw()
                 try: self.fig.canvas.draw_idle()
                 except: pass
-                print('  See 2D wavecal fit. Hit space bar in plot window to continue....')
+                print('  See 2D wavecal fit. Enter space in plot window to continue')
                 get=plots.mark(self.fig)
 
         else :
@@ -508,7 +513,7 @@ class WaveCal() :
             lines = self.waves
             weights = self.weights
             gd = np.where(weights >0)[0]
-            lines = lines[gd]
+            lines = set(lines[gd])
 
         # get centroid around expected lines
         x=[]
@@ -598,7 +603,7 @@ class WaveCal() :
                     weight.append(1.)
         if plot is not None : 
             self.fig.tight_layout()
-            print('  See identified lines. Hit space bar in plot window to continue....')
+            print('  See identified lines.')
         self.pix=np.array(x)
         self.y=np.array(y)
         self.fwhm=np.array(fwhm)
@@ -728,10 +733,10 @@ class Trace() :
             """ Initialize object from FITS file
             """
             try:
-                if str(file).find('/') < 0 :
-                    tab=Table.read(files(pyvista.data).joinpath(file))
-                else :
+                if str(file)[0] == '.' or str(file)[0] == '/' :
                     tab=Table.read(file)
+                else :
+                    tab=Table.read(files(pyvista.data).joinpath(file))
             except FileNotFoundError :
                 raise ValueError("can't find file {:s}",
                                  files(pyvista.data).joinpath(file))
