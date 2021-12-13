@@ -738,8 +738,7 @@ class Trace() :
                 else :
                     tab=Table.read(files(pyvista.data).joinpath(file))
             except FileNotFoundError :
-                raise ValueError("can't find file {:s}",
-                                 files(pyvista.data).joinpath(file))
+                raise ValueError("can't find file {:s}",file)
 
             for tag in ['type','degree','sc0','pix0',
                         'spectrum','rad','lags','transpose'] :
