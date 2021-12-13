@@ -1,8 +1,12 @@
 from astropy.io import fits
+import astropy.units as u
 import numpy as np
 import pdb
+from pydl.pydlutils.yanny import yanny
+from tools import plots, match
+from ccdproc import CCDData
 
-def unzip(file,dark=None,cube=False,cds=True) :
+def unzip(file,dark=None) :
     """ Read APOGEE .apz file, get CDS image
     """
     # open file and confirm checksums
@@ -30,27 +34,77 @@ def unzip(file,dark=None,cube=False,cds=True) :
           raw = hd[ext].data
         if read == 1 :
           data = np.copy(raw)
-          if cube : 
-              data3d=np.zeros([nreads,2048,2048],dtype=np.int16)
-              data3d[0]=data[0:2048,0:2048]
+          data3d=np.zeros([nreads,2048,2048],dtype=np.int16)
+          data3d[0]=data[0:2048,0:2048]
         else :
           data = np.add(data,raw,dtype=np.int16)
           data = np.add(data,avg_dcounts,dtype=np.int16)
-          if read == 2 : first = data
-          if cube :
-              data3d[read-1]=data[0:2048,0:2048]
+          data3d[read-1]=data[0:2048,0:2048]
 
         ext += 1
 
       # compute and add the cdsframe, subtract dark if we have one
-    cds = (data[0:2048,0:2048] - first[0:2048,0:2048] ).astype(float)
     if dark is not None :
         # if we don't have enough reads in the dark, do nothing
         try :
-            cds -= (dark[nreads-1,:,:] - dark[2,:,:])
+            data3d -= dark[0:nreads]
         except:
             print('not halting: not enough reads in dark, skipping dark subtraction for mjdcube')
             pass
 
-    if cube : return data3d
-    else : return cds
+    return data3d
+
+def cds(file,dark=None) :
+    """ CDS extraction of a cube
+    """
+    header = fits.open(file)[1].header
+    cube = unzip(file,dark=dark)
+    out= (cube[-1,0:2048,0:2048] - cube[1,0:2048,0:2048] ).astype(np.float32)
+    return CCDData(data=vert(out),header=header,unit=u.dimensionless_unscaled)
+
+def vert(data) :
+    """ Vertical bias subtraction from reference pixels
+    """ 
+    for i in range(4) :
+        top = np.median(data[2044:2048,i*512:(i+1)*512])
+        bottom = np.median(data[0:4,i*512:(i+1)*512])
+        data[:,i*512:(i+1)*512]-=(top+bottom)/2.
+
+    return data
+
+def config(cid,specid=2) :
+    """ Get FIBERMAP structure from configuration file for specified instrument
+    """
+    if isinstance(cid,str):
+        conf = yanny(cid)
+    else :
+        conf = yanny('/home/sdss5/software/sdsscore/main/apo/summary_files/{:04d}XX/confSummary-{:d}.par'.format(cid//100,cid))
+
+    gd =np.where((conf['FIBERMAP']['spectrographId'] == specid) & (conf['FIBERMAP']['fiberId'] > 0) )[0]
+    return conf['FIBERMAP'][gd]
+
+def flux(im,apogee=True) :
+    flux = np.median(im.data,axis=1)
+    if apogee :
+        c = config(im.header['CONFIGFL'])
+        i1, i2 = match.match(300-np.arange(300),c['fiberId'])
+        mag=c['h_mag']
+    else :
+        c = config(im.header['CONFID'],specid=1)
+        i1, i2 = match.match(1+np.arange(500),c['fiberId'])
+        mag=c['mag'][:,1]
+    print('found match for {:d} fibers'.format(len(i1)))
+    fig,ax=plots.multi(2,2)
+    plots.plotp(ax[0,0],c['fiberId'][i2],flux[i1],xt='fiberId',yt='flux',color='r')
+    assigned=np.where(c['assigned'][i2] == 1)[0]
+    plots.plotp(ax[0,0],c['fiberId'][i2[assigned]],flux[i1[assigned]],color='g',size=20)
+    sky=np.where(np.char.find(c['category'][i2],b'sky') >=0)[0]
+    plots.plotp(ax[0,0],c['fiberId'][i2[sky]],flux[i1[sky]],color='b',size=20)
+
+    gd=np.where(mag[i2] > 0)[0]
+    plots.plotp(ax[0,1],mag[i2[gd]],-2.5*np.log10(flux[i1[gd]]),xt='mag',yt='-2.5*log10(flux)')
+    #plots.plotc(ax[1,1],c['xFocal'][i2[gd]],c['yFocal'][i2[gd]],mag[i2[gd]]+2.5*np.log10(flux[i1[gd]]),xt='xFocal',yt='yFocal',size=3)
+    gd=np.where(flux[i1] > 100)[0]
+    plots.plotc(ax[1,1],c['xFocal'][i2[gd]],c['yFocal'][i2[gd]],mag[i2[gd]]+2.5*np.log10(flux[i1[gd]]),xt='xFocal',yt='yFocal',size=20,colorbar=True)
+    fig.tight_layout()
+    pdb.set_trace()
