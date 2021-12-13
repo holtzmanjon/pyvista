@@ -1,8 +1,8 @@
 ---
 channels : ['a','b','c']
 formstr  : ['-a-{:08d}.apz','-b-{:08d}.apz','-c-{:08d}.apz']
-gain     : [2]
-rn       : [7]
+gain     : [1.9,1.9,1.9]
+rn       : [20,20,20]
 crbox    : [1,11]
 scat     : 10
 biastype : -1
