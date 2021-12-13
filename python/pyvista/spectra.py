@@ -21,6 +21,13 @@ from tools import plots
 
 class SpecData(CCDData) :
     """ Class to include a wavelength array on top of CCDData, with simple read/write/plot methods
+
+    Parameters
+    ----------
+
+    Attributes
+    ----------
+
     """
     def __init__(self,data,wave=None) :
         if type(data) is str :

@@ -26,11 +26,11 @@ Contents:
 
    installation
    tv
-   image
    imred
    reduce
    spectra
    stars
+   image
    etc
 
 

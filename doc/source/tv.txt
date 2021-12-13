@@ -64,25 +64,41 @@ the S/N image (data extension divided by uncertainty dimension).
 Given a TV object with image data loaded, various asynchronous functions are
 available in the main display window:
 
-  |  left mouse  : zoom in, centered on cursor
-  |  center mouse: zoom out, centered on cursor
-  |  right mouse : pan, center to cursor
-  |  r           : redraw at default zoom
-  |  +/=         : toggle to next image in stack
-  |  -           : toggle to previous image in stack
-  |  arrow keys  : move single image pixels
-  |  a           : toggle axes on/off
-  |  h/?         : print this help
+left mouse     
+  zoom in, centered on cursor
+center mouse   
+  zoom out, centered on cursor
+right mouse    
+  pan, center to cursor
+r              
+  redraw at default zoom
++/=            
+  toggle to next image in stack
+\-              
+  toggle to previous image in stack
+arrow keys     
+  move single image pixels (with pyautogui)
+a              
+  toggle axes on/off
+h/? 
+  print this help
 
 Several synchronous (waits for input) methods are also available:
 
-  |  imexam(size=11,fwhm=5,scale=1,pafixed=False)  : draws radial profiles and fits Gaussian around cursor position when key is hit
-  |  tvmark() :   returns (x,y,key) when a key is hit at (data) position (x,y)
-  |  clear() :   clears the display
-  |  tvbox(x,y,box=None,size=3,color='m') : displays square of specified size at input position (or pyvista box object) with specified color
-  |  tvvcirc(x,y,rad=3,color='m') : displays circle of specified size and color at input position
-  |  tvclear() :  clears graphics patches from display
-  |  flip() :  toggles vertical flip of displays (default starts with origin in lower left)
+imexam(size=11,fwhm=5,scale=1,pafixed=False)  : 
+  draws radial profiles and fits Gaussian around cursor position when key is hit
+tvmark() :   
+  returns (x,y,key) when a key is hit at (data) position (x,y)
+clear() :   
+  clears the display
+tvbox(x,y,box=None,size=3,color='m') : 
+  displays square of specified size at input position (or pyvista box object) with specified color
+tvvcirc(x,y,rad=3,color='m') : 
+  displays circle of specified size and color at input position
+tvclear() :  
+  clears graphics patches from display
+flip() :  
+  toggles vertical flip of displays (default starts with origin in lower left)
 
 
 Module functions
