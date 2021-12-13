@@ -200,7 +200,7 @@ class Reducer() :
             for box in self.normbox :
                 box.show()
 
-    def rd(self,num, ext=0) :
+    def rd(self,num, ext=0, dark=None) :
         """ Read an image
 
         Args :
@@ -234,7 +234,7 @@ class Reducer() :
             # read the file into a CCDData object
             if self.verbose : print('  Reading file: {:s}'.format(file)) 
             if self.inst == 'APOGEE' :
-                im=apogee.cds(file)
+                im=apogee.cds(file,dark=dark)
             else :
                 try : im=CCDData.read(file,hdu=ext,unit=u.dimensionless_unscaled)
                 except : raise RuntimeError('Error reading file: {:s}'.format(file))
@@ -402,6 +402,7 @@ class Reducer() :
          """
          # only subtract if we are given a superdark!
          if superdark is None : return im
+         if self.inst == 'APOGEE' : return im
 
          # work with lists so that we can handle multi-channel instruments
          if type(im) is not list : ims=[im]
@@ -700,7 +701,7 @@ class Reducer() :
                scat=None,badpix=None,solve=False,return_list=False,display=None,trim=False,seeing=2) :
         """ Full reduction
         """
-        im=self.rd(num)
+        im=self.rd(num,dark=dark)
         self.overscan(im,display=display)
         im=self.bias(im,superbias=bias)
         im=self.dark(im,superdark=dark)
