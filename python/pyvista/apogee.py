@@ -2,9 +2,11 @@ from astropy.io import fits
 import astropy.units as u
 import numpy as np
 import pdb
+import os
 from pydl.pydlutils.yanny import yanny
 from tools import plots, match
 from ccdproc import CCDData
+import matplotlib.pyplot as plt
 
 def unzip(file,dark=None) :
     """ Read APOGEE .apz file, get CDS image
@@ -83,18 +85,28 @@ def config(cid,specid=2) :
     gd =np.where((conf['FIBERMAP']['spectrographId'] == specid) & (conf['FIBERMAP']['fiberId'] > 0) )[0]
     return conf['FIBERMAP'][gd]
 
-def flux(im,apogee=True) :
+def flux(im,inst='APOGEE') :
+    """ Plots of median flux vs various
+    """
     flux = np.median(im.data,axis=1)
-    if apogee :
+    if inst == 'APOGEE' :
+        print(im.header['CONFIGFL'])
+        fil=os.path.basename(im.header['FILENAME'])
+        cid=os.path.basename(im.header['CONFIGFL'])
+        des=im.header['DESIGNID']
         c = config(im.header['CONFIGFL'])
         i1, i2 = match.match(300-np.arange(300),c['fiberId'])
         mag=c['h_mag']
     else :
+        print(im.header['CONFID'])
+        cid=str(im.header['CONFID'])
+        des=im.header['DESIGNID']
         c = config(im.header['CONFID'],specid=1)
         i1, i2 = match.match(1+np.arange(500),c['fiberId'])
         mag=c['mag'][:,1]
     print('found match for {:d} fibers'.format(len(i1)))
     fig,ax=plots.multi(2,2)
+    fig.suptitle('File: {:s}  Design: {:d}   Config: {:s}'.format(fil,des,cid))
     plots.plotp(ax[0,0],c['fiberId'][i2],flux[i1],xt='fiberId',yt='flux',color='r')
     assigned=np.where(c['assigned'][i2] == 1)[0]
     plots.plotp(ax[0,0],c['fiberId'][i2[assigned]],flux[i1[assigned]],color='g',size=20)
@@ -108,3 +120,4 @@ def flux(im,apogee=True) :
     plots.plotc(ax[1,1],c['xFocal'][i2[gd]],c['yFocal'][i2[gd]],mag[i2[gd]]+2.5*np.log10(flux[i1[gd]]),xt='xFocal',yt='yFocal',size=20,colorbar=True)
     fig.tight_layout()
     pdb.set_trace()
+    plt.close()
