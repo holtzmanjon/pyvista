@@ -16,7 +16,7 @@ import yaml
 import subprocess
 import sys
 import tempfile
-from pyvista import stars
+from pyvista import stars, apogee, image, tv
 import pyvista.data as DATA
 
 import warnings
@@ -29,8 +29,6 @@ import glob
 import bz2
 import os
 import pdb
-from pyvista import image
-from pyvista import tv
 import importlib_resources
 try: 
     import pyds9
@@ -190,7 +188,7 @@ class Reducer() :
         for form,gain,rn in zip(self.formstr,self.gain,self.rn) :
             # find the files that match the directory/format
             if type(num) is int :
-                search=self.dir+'/'+self.root+form.format(num)+'.*'
+                search=self.dir+'/'+self.root+form.format(num)
             elif type(num) is str or type(num) is np.str_ :
                 if num.find('/') >= 0 :
                     search=num+'*'
@@ -209,9 +207,12 @@ class Reducer() :
 
             # read the file into a CCDData object
             if self.verbose : print('  Reading file: {:s}'.format(file)) 
-            try : im=CCDData.read(file,hdu=ext,unit=u.dimensionless_unscaled)
-            except : raise RuntimeError('Error reading file: {:s}'.format(file))
-            im.data = im.data.astype(np.float32)
+            if self.inst == 'APOGEE' :
+                im=apogee.cds(file)
+            else :
+                try : im=CCDData.read(file,hdu=ext,unit=u.dimensionless_unscaled)
+                except : raise RuntimeError('Error reading file: {:s}'.format(file))
+                im.data = im.data.astype(np.float32)
             im.header['FILE'] = os.path.basename(file)
             if 'OBJECT' not in im.header  or im.header['OBJECT'] == '':
                 try: im.header['OBJECT'] = im.header['OBJNAME']
