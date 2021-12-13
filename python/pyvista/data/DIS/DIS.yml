@@ -1,6 +1,6 @@
 ---
 channels : ['blue','red']
-formstr  : ['{:04d}b','{:04d}r']
+formstr  : ['{:04d}b.f*','{:04d}r.f*']
 gain     : [1.68,1.88]
 rn       : [4.9,4.6]
 crbox    : [1,11]
