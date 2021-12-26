@@ -943,16 +943,15 @@ class Trace() :
         if self.transpose :
             im = image.transpose(hd)
         else :
-            im = copy.deepcopy(hd.data)
-       
+            im = copy.deepcopy(hd)
+      
         # if we have a window, zero array outside of window
-        spec=im[:,self.sc0]
+        spec=im.data[:,self.sc0-50:self.sc0+50].sum(axis=1)
         try:
             spec[:self.rows[0]] = 0.  
             spec[self.rows[1]:] = 0.  
         except: pass
         fitpeak,shift = image.xcorr(self.spectrum,spec,lags)
-        pdb.set_trace()
         pixshift=(fitpeak+lags[0])[0]
         if plot is not None :
             plot.clear()
@@ -971,6 +970,7 @@ class Trace() :
             plt.draw()
             getinput('  See spectra and cross-correlation. Hit any key in display window to continue....',plot.fig)
         self.pix0=fitpeak+lags[0]
+        print('shift: ',fitpeak+lags[0])
         return fitpeak+lags[0]
  
     def extract(self,im,rad=None,scat=False,plot=None,medfilt=None,nout=None) :
