@@ -200,7 +200,7 @@ class Reducer() :
             for box in self.normbox :
                 box.show()
 
-    def rd(self,num, ext=0, dark=None) :
+    def rd(self,num, ext=0, dark=None, channel=None) :
         """ Read an image
 
         Args :
@@ -211,7 +211,13 @@ class Reducer() :
         out=[]
         # loop over different channels (if any)
         idet=0 
-        for form,gain,rn in zip(self.formstr,self.gain,self.rn) :
+        if channel is not None : channels=[channel]
+        else : channels = range(len(self.formstr))
+        for chan in channels :
+            form = self.formstr[chan]
+            gain = self.gain[chan]
+            rn = self.rn[chan]
+        #for form,gain,rn in zip(self.formstr,self.gain,self.rn) :
             # find the files that match the directory/format
             if type(num) is int :
                 search=self.dir+'/'+self.root+form.format(num)
@@ -697,11 +703,11 @@ class Reducer() :
         for i, im in enumerate(ims) :
             display.tv(im)
 
-    def reduce(self,num,crbox=None,bias=None,dark=None,flat=None,
+    def reduce(self,num,channel=None,crbox=None,bias=None,dark=None,flat=None,
                scat=None,badpix=None,solve=False,return_list=False,display=None,trim=False,seeing=2) :
         """ Full reduction
         """
-        im=self.rd(num,dark=dark)
+        im=self.rd(num,dark=dark,channel=channel)
         self.overscan(im,display=display)
         im=self.bias(im,superbias=bias)
         im=self.dark(im,superdark=dark)
