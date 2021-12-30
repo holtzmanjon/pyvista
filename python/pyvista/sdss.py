@@ -37,22 +37,22 @@ def qlhtml(mjd5,clobber=False) :
     fp.write('</TABLE></BODY></HTML>\n')
     fp.close()
 
-def config(cid,specid=2,parent=True) :
+def config(cid,specid=2,struct='FIBERMAP') :
     """ Get FIBERMAP structure from configuration file for specified instrument
            including getting parent_configuration if needed (for scrambled configurations)
     """
     if isinstance(cid,str):
         conf = yanny(cid)
     else :
-        conf = yanny('/home/sdss5/software/sdsscore/main/apo/summary_files/{:04d}XX/confSummary-{:d}.par'.format(cid//100,cid))
+        conf = yanny(os.environ['SDSSCORE_DIR']+'/apo/summary_files/{:04d}XX/confSummary-{:d}.par'.format(cid//100,cid))
         try :
             parent = int(conf['parent_configuration'])
             if parent > 0 :
-                conf = yanny('/home/sdss5/software/sdsscore/main/apo/summary_files/{:04d}XX/confSummary-{:d}.par'.format(parent//100,parent))
+                conf = yanny(os.environ['SDSSCORE_DIR']+'/apo/summary_files/{:04d}XX/confSummary-{:d}.par'.format(parent//100,parent))
         except :  pass
 
-    gd =np.where((conf['FIBERMAP']['spectrographId'] == specid) & (conf['FIBERMAP']['fiberId'] > 0) )[0]
-    return conf['FIBERMAP'][gd]
+    gd =np.where((conf[struct]['spectrographId'] == specid) & (conf[struct]['fiberId'] > 0) )[0]
+    return conf[struct][gd]
 
 def flux(im,inst='APOGEE',thresh=100,cid=None,hard=False) :
     """ Plots of median flux vs various
