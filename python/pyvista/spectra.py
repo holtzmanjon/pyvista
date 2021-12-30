@@ -80,8 +80,6 @@ class SpecData(CCDData) :
         med=np.nanmedian(self.data[gd])
         ax.set_ylim(0,2*med)
         
-
-
 class WaveCal() :
     """ Class for wavelength solutions
 
