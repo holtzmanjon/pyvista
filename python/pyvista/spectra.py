@@ -1,6 +1,7 @@
 import matplotlib
 from importlib_resources import files
 import matplotlib.pyplot as plt
+import multiprocessing as mp
 import os
 import pdb
 import pickle
@@ -824,7 +825,7 @@ class Trace() :
         return tab
 
 
-    def trace(self,im,srows,sc0=None,plot=None,thresh=20,rows=True) :
+    def trace(self,im,srows,sc0=None,plot=None,thresh=20,index=None,skip=1) :
         """ Trace a spectrum from starting position
         """
 
@@ -834,6 +835,9 @@ class Trace() :
         else :
             raise ValueError('unknown fitting type: '+self.type)
             return
+
+        if index is not None and len(index) != len(srows) :
+            raise ValueError('length of index and srows must be the same')
 
         if self.transpose :
             hd = image.transpose(im)
@@ -850,7 +854,7 @@ class Trace() :
         ypos = np.zeros(ncol)
         ysum = np.zeros(ncol)
         yvar = np.zeros(ncol)
-        ymask = np.zeros(ncol,dtype=bool)
+        ymask = np.ones(ncol,dtype=bool)
 
         # we want to handle multiple traces, so make sure srows is iterable
         if type(srows ) is int or type(srows) is float : srows=[srows]
@@ -870,7 +874,7 @@ class Trace() :
             sr=int(round(sr))
             sr=hd.data[sr-rad:sr+rad+1,self.sc0].argmax()+sr-rad
             # march left from center
-            for col in range(self.sc0,0,-1) :
+            for col in range(self.sc0,0,-skip) :
                 # centroid
                 cr=sr-rad+hd.data[sr-rad:sr+rad+1,col].argmax()
                 ysum[col] = np.sum(hd.data[cr-rad:cr+rad+1,col]) 
@@ -878,14 +882,14 @@ class Trace() :
                 yvar[col] = np.sum(hd.uncertainty.array[cr-rad:cr+rad+1,col]**2) 
                 ymask[col] = np.any(hd.mask[cr-rad:cr+rad+1,col]) 
                 # if centroid is too far from starting guess, mask as bad
-                if np.abs(ypos[col]-sr) > rad/2. : ymask[col] = True
+                if np.abs(ypos[col]-sr) > np.max([rad/2.,0.75]) : ymask[col] = True
                 # use this position as starting center for next if above threshold S/N
                 if (not ymask[col]) & np.isfinite(ysum[col]) & (ysum[col]/np.sqrt(yvar[col]) > thresh)  : sr=int(round(ypos[col]))
             sr=copy.copy(srow)
             sr=int(round(sr))
             sr=hd.data[sr-rad:sr+rad+1,self.sc0].argmax()+sr-rad
             # march right from center
-            for col in range(self.sc0+1,ncol,1) :
+            for col in range(self.sc0+1,ncol,skip) :
                 # centroid
                 cr=sr-rad+hd.data[sr-rad:sr+rad+1,col].argmax()
                 ysum[col] = np.sum(hd.data[cr-rad:cr+rad+1,col]) 
@@ -893,8 +897,7 @@ class Trace() :
                 yvar[col] = np.sum(hd.uncertainty.array[cr-rad:cr+rad+1,col]**2) 
                 ymask[col] = np.any(hd.mask[cr-rad:cr+rad+1,col]) 
                 # use this position as starting center for next if above threshold S/N
-                if np.abs(ypos[col]-sr) > rad/2. : 
-                    ymask[col] = True
+                if np.abs(ypos[col]-sr) > np.max([rad/2.,0.75]) : ymask[col] = True
                 if (not ymask[col]) & np.isfinite(ysum[col]) & (ysum[col]/np.sqrt(yvar[col]) > thresh)  : sr=int(round(ypos[col]))
 
             cols=np.arange(ncol)
@@ -921,6 +924,8 @@ class Trace() :
                 #plt.pause(0.05)
 
         self.pix0=0
+        if index is not None : self.index = index
+        else : self.index=np.range(len(self.model))
         print("")
         if plot : 
             while getinput('  See trace. Hit space bar to continue....',plot.fig)[2] != ' ' :
@@ -973,7 +978,7 @@ class Trace() :
         print('shift: ',fitpeak+lags[0])
         return fitpeak+lags[0]
  
-    def extract(self,im,rad=None,scat=False,plot=None,medfilt=None,nout=None) :
+    def extract(self,im,rad=None,scat=False,plot=None,medfilt=None,nout=None,threads=0) :
         """ Extract spectrum given trace(s)
         """
         if self.transpose :
@@ -993,43 +998,48 @@ class Trace() :
             sig = np.zeros([len(self.model),hd.data.shape[1]])
             mask = np.zeros([len(self.model),hd.data.shape[1]],dtype=bool)
 
+        pars=[]
+        if threads == 0 : 
+            skip=1
+            npars=ncols
+        else : 
+            skip=ncols//threads
+            npars=threads
+        for col in range(npars) :
+            if col == threads-1 : ec=ncols
+            else : ec=col*skip+skip
+            pars.append((hd.data[:,col*skip:ec],
+                         hd.uncertainty.array[:,col*skip:ec],
+                         hd.mask[:,col*skip:ec],
+                         np.arange(col*skip,ec),self.model,self.rad,self.pix0))
+        if threads > 0 :
+            pool = mp.Pool(threads)
+            output = pool.map_async(extract_col, pars).get()
+            pool.close()
+            pool.join()
+            col=0
+            for out in output :
+                nc=out[0].shape[1]
+                spec[self.index,col:col+nc] = out[0]
+                sig[self.index,col:col+nc] = out[1]
+                mask[self.index,col:col+nc] = out[2]
+                col+=skip
+        else :
+            col=0
+            for par in pars :
+                out=extract_col(par)
+                spec[self.index,col:col+skip] = out[0]
+                sig[self.index,col:col+skip] = out[1]
+                mask[self.index,col:col+skip] = out[2]
+                col+=skip
+
         if plot is not None:
             plot.clear()
             plot.tv(hd)
 
         for j,model in enumerate(self.model) :
 
-            if nout is not None :
-                i=self.index[j]
-            else :
-                i=j
-            cr=model(np.arange(ncols))+self.pix0
-            print('  extracting aperture {:d}'.format(i),end='\r')
-            icr=np.round(cr).astype(int)
-            rfrac=cr-icr+0.5   # add 0.5 because we rounded
-            rlo=[]
-            rhi=[]
-            for col in range(ncols) :
-                try :
-                    r1=icr[col]-rad
-                    r2=icr[col]+rad
-                    # sum inner pixels directly
-                    # outer pixels depending on fractional pixel location of trace
-                    if r1>=0 and r2<nrows :
-                        spec[i,col]=np.sum(hd.data[r1+1:r2,col])
-                        sig[i,col]=np.sum(hd.uncertainty.array[r1+1:r2,col]**2)
-                        spec[i,col]+=hd.data[r1,col]*(1-rfrac[col])
-                        sig[i,col]+=hd.uncertainty.array[r1,col]**2*(1-rfrac[col])
-                        spec[i,col]+=hd.data[r2,col]*rfrac[col]
-                        sig[i,col]+=hd.uncertainty.array[r2,col]**2*rfrac[col]
-                        sig[i,col]=np.sqrt(sig[i,col])
-                        mask[i,col] = np.any(hd.mask[r1:r2+1,col]) 
-                except : 
-                    print('      extraction failed')
-                    mask[i,col] = True
-                if plot is not None :
-                    rlo.append(r1)
-                    rhi.append(r2-1)
+            i=self.index[j]
             if medfilt is not None :
                 boxcar = Box1DKernel(medfilt)
                 median = convolve(spec[i,:],boxcar,boundary='extend')
@@ -1037,11 +1047,12 @@ class Trace() :
                 sig[i,:]/=median
 
             if plot is not None :
+                cr=model(np.arange(ncols))+self.pix0
                 if i%2 == 0 : color='b'
                 else : color='m'
                 plot.ax.plot(range(ncols),cr,color='g',linewidth=3)
-                plot.ax.plot(range(ncols),rlo,color=color,linewidth=1)
-                plot.ax.plot(range(ncols),rhi,color=color,linewidth=1)
+                plot.ax.plot(range(ncols),cr-rad,color=color,linewidth=1)
+                plot.ax.plot(range(ncols),cr+rad,color=color,linewidth=1)
                 plot.plotax2.cla()
                 plot.plotax2.plot(range(ncols),spec[i],color=color,linewidth=1)
                 plot.plotax2.text(0.05,0.95,'Extracted spectrum',
@@ -1052,6 +1063,7 @@ class Trace() :
                 pass
         print("")
         return CCDData(spec,uncertainty=StdDevUncertainty(sig),mask=mask,header=hd.header,unit='adu')
+
   
     def extract2d(self,im,rows=None,plot=None) :
         """  Extract 2D spectrum given trace(s)
@@ -1115,6 +1127,25 @@ def gauss(x, *p):
     A, mu, sigma = p
     return A*np.exp(-(x-mu)**2/(2.*sigma**2))
 
+def findpeak(x,thresh,diff=10,bundle=20) :
+    """ Find peaks in vector x above input threshold
+        attempts to associate an index with each depending on spacing
+    """
+    j=[]
+    fiber=[]
+    f=0
+    for i in range(len(x)) :
+        if i>0 and i < len(x)-1 and x[i]>x[i-1] and x[i]>x[i+1] and x[i]>thresh :
+            j.append(i)
+            fiber.append(f)
+            #print(i,f)
+            if len(j)>1 and j[-1]-j[-2] > diff and f%bundle != 0: 
+                print(j[-1],j[-2],f)
+                f=f+1
+            f=f+1
+          
+    return j,fiber
+ 
 def getinput(prompt,fig=None) :
     """  Get input from terminal or matplotlib figure
     """
@@ -1123,3 +1154,33 @@ def getinput(prompt,fig=None) :
     get = plots.mark(fig)
     return get
 
+def extract_col(pars) :
+    """ Extract a single column, using boxcar extraction for multiple traces
+    """
+    data,err,mask,cols,models,rad,pix0 = pars
+    spec = np.zeros([len(models),len(cols)])
+    sig = np.zeros([len(models),len(cols)])
+    mask = np.zeros([len(models),len(cols)],dtype=bool)
+    for i,model in enumerate(models) :
+      for j,col in enumerate(cols) :
+        cr=model(col)+pix0
+        icr=np.round(cr).astype(int)
+        rfrac=cr-icr+0.5   # add 0.5 because we rounded
+        r1=icr-rad
+        r2=icr+rad
+        try :
+            # sum inner pixels directly
+            # outer pixels depending on fractional pixel location of trace
+            if r1>=0 and r2<data.size :
+                spec[i,j]=np.sum(data[r1+1:r2,j])
+                sig[i,j]=np.sum(err[r1+1:r2,j]**2)
+                spec[i,j]+=data[r1,j]*(1-rfrac)
+                sig[i,j]+=err[r1,j]**2*(1-rfrac)
+                spec[i,j]+=data[r2,j]*rfrac
+                sig[i,j]+=err[r2,j]**2*rfrac
+                sig[i,j]=np.sqrt(sig[i,j])
+                mask[i,j] = np.any(mask[r1:r2+1,j]) 
+        except : 
+            print('      extraction failed',i,j,col)
+            mask[i,j] = True
+    return spec,sig, mask
