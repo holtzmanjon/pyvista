@@ -1,6 +1,6 @@
 ---
 channels : ['']
-formstr  : ['{:04d}']
+formstr  : ['{:04d}.f*']
 gain     : [3.5]
 rn       : [18]
 crbox    : [1,11]

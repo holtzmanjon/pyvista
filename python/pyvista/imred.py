@@ -16,7 +16,7 @@ import yaml
 import subprocess
 import sys
 import tempfile
-from pyvista import stars
+from pyvista import stars, apogee, image, tv
 import pyvista.data as DATA
 
 import warnings
@@ -29,8 +29,6 @@ import glob
 import bz2
 import os
 import pdb
-from pyvista import image
-from pyvista import tv
 import importlib_resources
 try: 
     import pyds9
@@ -202,7 +200,7 @@ class Reducer() :
             for box in self.normbox :
                 box.show()
 
-    def rd(self,num, ext=0) :
+    def rd(self,num, ext=0, dark=None, channel=None) :
         """ Read an image
 
         Args :
@@ -213,10 +211,16 @@ class Reducer() :
         out=[]
         # loop over different channels (if any)
         idet=0 
-        for form,gain,rn in zip(self.formstr,self.gain,self.rn) :
+        if channel is not None : channels=[channel]
+        else : channels = range(len(self.formstr))
+        for chan in channels :
+            form = self.formstr[chan]
+            gain = self.gain[chan]
+            rn = self.rn[chan]
+        #for form,gain,rn in zip(self.formstr,self.gain,self.rn) :
             # find the files that match the directory/format
             if type(num) is int :
-                search=self.dir+'/'+self.root+form.format(num)+'.*'
+                search=self.dir+'/'+self.root+form.format(num)
             elif type(num) is str or type(num) is np.str_ :
                 if num.find('/') >= 0 :
                     search=num+'*'
@@ -235,9 +239,12 @@ class Reducer() :
 
             # read the file into a CCDData object
             if self.verbose : print('  Reading file: {:s}'.format(file)) 
-            try : im=CCDData.read(file,hdu=ext,unit=u.dimensionless_unscaled)
-            except : raise RuntimeError('Error reading file: {:s}'.format(file))
-            im.data = im.data.astype(np.float32)
+            if self.inst == 'APOGEE' :
+                im=apogee.cds(file,dark=dark)
+            else :
+                try : im=CCDData.read(file,hdu=ext,unit=u.dimensionless_unscaled)
+                except : raise RuntimeError('Error reading file: {:s}'.format(file))
+                im.data = im.data.astype(np.float32)
             im.header['FILE'] = os.path.basename(file)
             if 'OBJECT' not in im.header  or im.header['OBJECT'] == '':
                 try: im.header['OBJECT'] = im.header['OBJNAME']
@@ -401,6 +408,7 @@ class Reducer() :
          """
          # only subtract if we are given a superdark!
          if superdark is None : return im
+         if self.inst == 'APOGEE' : return im
 
          # work with lists so that we can handle multi-channel instruments
          if type(im) is not list : ims=[im]
@@ -695,11 +703,11 @@ class Reducer() :
         for i, im in enumerate(ims) :
             display.tv(im)
 
-    def reduce(self,num,crbox=None,bias=None,dark=None,flat=None,
+    def reduce(self,num,channel=None,crbox=None,bias=None,dark=None,flat=None,
                scat=None,badpix=None,solve=False,return_list=False,display=None,trim=False,seeing=2) :
         """ Full reduction
         """
-        im=self.rd(num)
+        im=self.rd(num,dark=dark,channel=channel)
         self.overscan(im,display=display)
         im=self.bias(im,superbias=bias)
         im=self.dark(im,superdark=dark)
