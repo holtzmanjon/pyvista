@@ -16,8 +16,30 @@ from astropy.time import Time
 from pyvista import mmm, tv
 from astropy.stats import sigma_clipped_stats
 from photutils import CircularAperture, CircularAnnulus,aperture_photometry
+from photutils.detection import DAOStarFinder
 from tools import plots,html
 import matplotlib.pyplot as plt
+
+@support_nddata
+def find(data,fwhm=4,thresh=4000) :
+    """ Star finding using DAOStarfinder
+    """
+    daofind = DAOStarFinder(fwhm=fwhm,threshold=thresh)
+    sources=daofind(data)
+    sources.rename_column['xcentroid','x']
+    sources.rename_column['ycentroid','y']
+    return sources
+
+@support_nddata
+def automark(data,stars) :
+    """ Recentroid existing star list on input data array
+    """
+    new=copy.copy(stars)
+    for star in stars :
+        x,y = centroid(data,star['x'],star['y'],rad)
+        new['x'] = x
+        new['y'] = y
+    return new
 
 def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False):
     """ Interactive mark stars on TV, or recenter current list 
