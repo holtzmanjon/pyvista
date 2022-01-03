@@ -26,19 +26,19 @@ def find(data,fwhm=4,thresh=4000) :
     """
     daofind = DAOStarFinder(fwhm=fwhm,threshold=thresh)
     sources=daofind(data)
-    sources.rename_column['xcentroid','x']
-    sources.rename_column['ycentroid','y']
+    sources.rename_column('xcentroid','x')
+    sources.rename_column('ycentroid','y')
     return sources
 
 @support_nddata
-def automark(data,stars) :
+def automark(data,stars,rad=3) :
     """ Recentroid existing star list on input data array
     """
-    new=copy.copy(stars)
-    for star in stars :
+    new=copy.deepcopy(stars)
+    for star in new :
         x,y = centroid(data,star['x'],star['y'],rad)
-        new['x'] = x
-        new['y'] = y
+        star['x'] = x
+        star['y'] = y
     return new
 
 def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False):
@@ -301,7 +301,7 @@ def centroid(data,x,y,r,verbose=False) :
         yold = round(y)
         if verbose: print(iter,x,y)
         iter+=1
-    if iter > 5 : print('possible centroiding convergence issues, consider using a larger radius?')
+    if iter > 9 : print('possible centroiding convergence issues, consider using a larger radius?')
     return x,y
 
 def process_all(files,red,tab,bias=None,dark=None,flat=None,threads=8, display=None, solve=True,
