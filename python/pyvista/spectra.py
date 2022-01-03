@@ -923,7 +923,7 @@ class Trace() :
 
         self.pix0=0
         if index is not None : self.index = index
-        else : self.index=np.range(len(self.model))
+        else : self.index=np.arange(len(self.model))
         print("")
         if plot : 
             while getinput('  See trace. Hit space bar to continue....',plot.fig)[2] != ' ' :
