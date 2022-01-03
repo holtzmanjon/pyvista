@@ -37,10 +37,10 @@ def visit(planfile,tracefile=None) :
         out=CCDData.read(name.replace('sdR','sp1D'))
         mapname=plan['SPEXP']['mapname'][obj].astype(str)
         if mapname == 'fps' :
-            plug=sdss.config(out.header['CONFID'],specid=1)
+            plug=sdss.config(out.header['CONFID'],specid=1)[0]
             isky=np.where(plug['category'] == b'sky_boss')[0]
         else :
-            plug=sdss.config(os.environ['MAPPER_DATA_N']+'/'+mapname.split('-')[1]+'/plPlugMapM-'+mapname+'.par',specid=1,struct='PLUGMAPOBJ')
+            plug=sdss.config(os.environ['MAPPER_DATA_N']+'/'+mapname.split('-')[1]+'/plPlugMapM-'+mapname+'.par',specid=1,struct='PLUGMAPOBJ')[0]
             isky=np.where(plug['objType'] == b'SKY')[0]
         i1,i2=match.match(np.arange(500)+1,plug['fiberId'])
         if channel == 0 : 

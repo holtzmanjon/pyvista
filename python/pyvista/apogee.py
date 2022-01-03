@@ -107,10 +107,10 @@ def visit(planfile,tracefile=None) :
         print(name,out.header['NREAD'])
         mapname=plan['plugmap']
         if np.char.find(mapname,'conf') >=0 :
-            plug=sdss.config(out.header['CONFIGID'],specid=2)
+            plug=sdss.config(out.header['CONFIGID'],specid=2)[0]
             hmag=plug['h_mag']
         else :
-            plug=sdss.config(os.environ['MAPPER_DATA_N']+'/'+mapname.split('-')[1]+'/plPlugMapM-'+mapname+'.par',specid=2,struct='PLUGMAPOBJ')
+            plug=sdss.config(os.environ['MAPPER_DATA_N']+'/'+mapname.split('-')[1]+'/plPlugMapM-'+mapname+'.par',specid=2,struct='PLUGMAPOBJ')[0]
             plate=int(mapname.split('-')[0])
             holes=yanny('{:s}/plates/{:04d}XX/{:06d}/plateHolesSorted-{:06d}.par'.format(
                   os.environ['PLATELIST_DIR'],plate//100,plate,plate))
