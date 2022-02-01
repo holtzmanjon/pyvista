@@ -987,8 +987,11 @@ class Trace() :
         if rad is None : rad=self.rad
         if len(back) > 0 :
             for bk in back:
-                if len(bk) != 2 or not isinstance(bk[0],int) or not isinstance(bk[1],int) :
-                    raise ValueError('back must be list of [backlo,backhi] pairs')
+                try :
+                    if len(bk) != 2 or not isinstance(bk[0],int) or not isinstance(bk[1],int) :
+                        raise ValueError('back must be list of [backlo,backhi] integer pairs')
+                except :
+                    raise ValueError('back must be list of [backlo,backhi] integer pairs')
         nrows=hd.data.shape[0]
         ncols=hd.data.shape[-1]
         if nout is not None :
@@ -1186,8 +1189,8 @@ def extract_col(pars) :
                 bpix = np.array([])
                 bvar = np.array([])
                 for bk in back :
-                    np.append(bpix,spec[bk[0]:bk[1],j])
-                    np.append(bvar,sig[bk[0]:bk[1],j]**2)
+                    bpix=np.append(bpix,data[icr+bk[0]:icr+bk[1],j])
+                    bvar=np.append(bvar,err[icr+bk[0]:icr+bk[1],j]**2)
                 spec[i,j] -= np.median(bpix)
                 sig[i,j] = np.sqrt(sig[i,j]**2+np.sum(bvar)/(len(bvar)-1))
           
