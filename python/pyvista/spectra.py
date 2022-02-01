@@ -976,7 +976,7 @@ class Trace() :
         print('shift: ',fitpeak+lags[0])
         return fitpeak+lags[0]
  
-    def extract(self,im,rad=None,scat=False,plot=None,medfilt=None,nout=None,threads=0) :
+    def extract(self,im,rad=None,back=[],scat=False,plot=None,medfilt=None,nout=None,threads=0) :
         """ Extract spectrum given trace(s)
         """
         if self.transpose :
@@ -985,6 +985,10 @@ class Trace() :
             hd = im
 
         if rad is None : rad=self.rad
+        if len(back) > 0 :
+            for bk in back:
+                if len(bk) != 2 or not isinstance(bk[0],int) or not isinstance(bk[1],int) :
+                    raise ValueError('back must be list of [backlo,backhi] pairs')
         nrows=hd.data.shape[0]
         ncols=hd.data.shape[-1]
         if nout is not None :
@@ -1009,7 +1013,7 @@ class Trace() :
             pars.append((hd.data[:,col*skip:ec],
                          hd.uncertainty.array[:,col*skip:ec],
                          hd.mask[:,col*skip:ec],
-                         np.arange(col*skip,ec),self.model,self.rad,self.pix0))
+                         np.arange(col*skip,ec),self.model,self.rad,self.pix0,back))
         if threads > 0 :
             pool = mp.Pool(threads)
             output = pool.map_async(extract_col, pars).get()
@@ -1155,7 +1159,7 @@ def getinput(prompt,fig=None) :
 def extract_col(pars) :
     """ Extract a single column, using boxcar extraction for multiple traces
     """
-    data,err,mask,cols,models,rad,pix0 = pars
+    data,err,mask,cols,models,rad,pix0,back = pars
     spec = np.zeros([len(models),len(cols)])
     sig = np.zeros([len(models),len(cols)])
     mask = np.zeros([len(models),len(cols)],dtype=bool)
@@ -1178,6 +1182,15 @@ def extract_col(pars) :
                 sig[i,j]+=err[r2,j]**2*rfrac
                 sig[i,j]=np.sqrt(sig[i,j])
                 mask[i,j] = np.any(mask[r1:r2+1,j]) 
+            if len(back) > 0 :
+                bpix = np.array([])
+                bvar = np.array([])
+                for bk in back :
+                    np.append(bpix,spec[bk[0]:bk[1],j])
+                    np.append(bvar,sig[bk[0]:bk[1],j]**2)
+                spec[i,j] -= np.median(bpix)
+                sig[i,j] = np.sqrt(sig[i,j]**2+np.sum(bvar)/(len(bvar)-1))
+          
         except : 
             print('      extraction failed',i,j,col)
             mask[i,j] = True
