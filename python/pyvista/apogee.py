@@ -114,12 +114,16 @@ def visit(planfile,tracefile=None) :
             plug=sdss.config(out.header['CONFIGID'],specid=2)[0]
             hmag=plug['h_mag']
         else :
-            plug=sdss.config(os.environ['MAPPER_DATA_N']+'/'+mapname.split('-')[1]+'/plPlugMapM-'+mapname+'.par',specid=2,struct='PLUGMAPOBJ')[0]
+            plug=sdss.config(os.environ['MAPPER_DATA_N']+'/'+
+                  mapname.split('-')[1]+'/plPlugMapM-'+mapname+'.par',
+                  specid=2,struct='PLUGMAPOBJ')[0]
             plate=int(mapname.split('-')[0])
             holes=yanny('{:s}/plates/{:04d}XX/{:06d}/plateHolesSorted-{:06d}.par'.format(
                   os.environ['PLATELIST_DIR'],plate//100,plate,plate))
             h=esutil.htm.HTM()
-            m1,m2,rad=h.match(plug['ra'],plug['dec'],holes['STRUCT1']['target_ra'],holes['STRUCT1']['target_dec'],0.1/3600.,maxmatch=500)
+            m1,m2,rad=h.match(plug['ra'],plug['dec'],
+                  holes['STRUCT1']['target_ra'],holes['STRUCT1']['target_dec'],
+                  0.1/3600.,maxmatch=500)
             hmag=plug['mag'][:,1]
             hmag[m1]=holes['STRUCT1']['tmass_h'][m2]
 
@@ -217,12 +221,15 @@ def do_visit(planfile=None,channel=0,clobber=False,nfibers=300,threads=12) :
 
     # set up Reducer
     red=imred.Reducer('APOGEE',dir=os.environ['APOGEE_DATA_N']+'/'+str(plan['mjd']))
+
     # get Dark
-    name='apDark-{:s}-{:08d}.fits'.format(chan[channel],plan['darkid'])
-    try :
-       dark=fits.open('{:s}/{:s}/cal/{:s}/darkcorr/{:s}'.format(os.environ['APOGEE_REDUX'],plan['apogee_drp_ver'],plan['instrument'],name))[1].data
-    except :
-       dark=fits.open('/uufs/chpc.utah.edu/common/home/sdss/apogeework/apogee/spectro/redux/dr17/cal/darkcorr/{:s}'.format(name))[1].data
+    if plan['darkid'] > 0 :
+        name='apDark-{:s}-{:08d}.fits'.format(chan[channel],plan['darkid'])
+        try :
+           dark=fits.open('{:s}/{:s}/cal/{:s}/darkcorr/{:s}'.format(os.environ['APOGEE_REDUX'],plan['apogee_drp_ver'],plan['instrument'],name))[1].data
+        except :
+           dark=fits.open('/uufs/chpc.utah.edu/common/home/sdss/apogeework/apogee/spectro/redux/dr17/cal/darkcorr/{:s}'.format(name))[1].data
+    else : dark = None
 
     # get Trace/PSF if needed
     name='apTrace-{:s}-{:08d}.fits'.format(chan[channel],plan['psfid'])
