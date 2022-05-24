@@ -8,7 +8,7 @@ from tools import match,plots
 from ccdproc import CCDData
 import multiprocessing as mp
 
-def visit(planfile,tracefile=None) :
+def visit(planfile,tracefile=None,clobber=False) :
     """ Reduce BOSS visit
 
         Driver for parallell processing of b and r channels
@@ -17,7 +17,7 @@ def visit(planfile,tracefile=None) :
     # reduce b1 and r1 in parallel
     procs=[]
     for channel in [0,1] :
-        kw={'planfile' : planfile, 'channel' : channel, 'clobber' : False}
+        kw={'planfile' : planfile, 'channel' : channel, 'clobber' : clobber}
         procs.append(mp.Process(target=do_visit,kwargs=kw))
     for proc in procs : proc.start()
     for proc in procs : proc.join()
@@ -36,7 +36,7 @@ def visit(planfile,tracefile=None) :
         print(name)
         out=CCDData.read(name.replace('sdR','sp1D'))
         mapname=plan['SPEXP']['mapname'][obj].astype(str)
-        if mapname == 'fps' :
+        if int(plan['MJD']) > 59600 :
             plug=sdss.config(out.header['CONFID'],specid=1)[0]
             isky=np.where(plug['category'] == b'sky_boss')[0]
         else :
@@ -50,10 +50,14 @@ def visit(planfile,tracefile=None) :
             mag='i'
             imag=3
         skyfiber=plug['fiberId'][isky]
-        sky=np.median(out.data[skyfiber-1,:])
+        p1=1500
+        p2=2500
+        sky=np.median(out.data[skyfiber-1,p1:p2])
         print(len(skyfiber),sky)
         rad=np.sqrt(plug['xFocal'][i2]**2+plug['yFocal'][i2]**2)
-        plots.plotp(ax[channel],plug['mag'][i2,imag],2.5*np.log10(np.median((out.data-sky)/out.header['EXPTIME'],axis=1))[i1],color=None,
+        plots.plotp(ax[channel],plug['mag'][i2,imag],2.5*np.log10(np.median((out.data[:,p1:p2]-sky)/out.header['EXPTIME'],axis=1))[i1],color=None,
+                    zr=[0,300],xr=[10,20],yr=[0,5],size=20,label=name,xt=mag,yt='-2.5*log(cnts/exptime)')
+        plots.plotp(ax[channel],plug['mag'][i2,imag],2.5*np.log10(np.median((out.data[:,p1:p2])/out.header['EXPTIME'],axis=1))[i1],color=None,
                     zr=[0,300],xr=[10,20],yr=[0,5],size=20,label=name,xt=mag,yt='-2.5*log(cnts/exptime)')
         mags.append(plug['mag'][i2,imag])
         inst.append(-2.5*np.log10(np.median((out.data-sky)/out.header['EXPTIME'],axis=1))[i1])
@@ -66,7 +70,7 @@ def visit(planfile,tracefile=None) :
     fig.savefig(planfile.replace('.par','.png'))
     return allmags,allinst
     
-def do_visit(planfile=None,channel=0,clobber=False,nfibers=50) :
+def do_visit(planfile=None,channel=0,clobber=False,nfibers=500,threads=12,display=None) :
     """ Read raw image (eventually, 2D calibration and extract,
         using specified flat/trace
     """
@@ -95,7 +99,8 @@ def do_visit(planfile=None,channel=0,clobber=False,nfibers=50) :
         else : thresh=0.2e6
         peaks,fiber=spectra.findpeak(ff,thresh=thresh)
         print('found {:d} peaks'.format(len(peaks)))
-        trace.trace(flat,peaks[0:nfibers],index=fiber[0:nfibers])
+        trace.trace(flat,peaks[0:nfibers],index=fiber[0:nfibers],skip=20,
+                    plot=display)
         trace.write(name.replace('sdR','spTrace')) 
 
     # reduce and extract science frames
@@ -106,7 +111,7 @@ def do_visit(planfile=None,channel=0,clobber=False,nfibers=50) :
             out=CCDData.read(name.replace('sdR','sp1D'))
         else :
             im=red.reduce(name,channel=channel)
-            out=trace.extract(im,threads=1,nout=500)
+            out=trace.extract(im,threads=threads,nout=500,plot=display)
             out.write(name.replace('sdR','sp1D'),overwrite=True)
 
     return out
