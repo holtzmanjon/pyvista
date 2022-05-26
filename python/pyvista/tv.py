@@ -700,6 +700,13 @@ class TV:
             ycen=g[0].y_mean.value
             self.tvcirc(xcen,ycen,np.sqrt(xfwhm*yfwhm)/2.)
 
+    def savefig(self,name) :
+        """ hardcopy of only display Axes
+        """
+        extent = self.ax.get_window_extent().transformed(self.fig.dpi_scale_trans.inverted())
+        self.fig.savefig(name, bbox_inches=extent)
+
+
 
 @support_nddata
 def minmax(data,mask=None, low=3,high=10):

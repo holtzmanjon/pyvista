@@ -1,4 +1,5 @@
 from astropy.io import fits
+from astropy.table import Table
 import astropy.units as u
 import esutil
 import glob
@@ -97,6 +98,9 @@ def visit(planfile,tracefile=None) :
     fig,ax=plots.multi(1,1)
     allmags=[]
     allinst=[]
+
+    tab_exp=Table()
+    tab_spec=Table()
     for ichan,channel in enumerate([1]) :
       mags=[]
       inst=[]
@@ -110,12 +114,16 @@ def visit(planfile,tracefile=None) :
             plug=sdss.config(out.header['CONFIGID'],specid=2)[0]
             hmag=plug['h_mag']
         else :
-            plug=sdss.config(os.environ['MAPPER_DATA_N']+'/'+mapname.split('-')[1]+'/plPlugMapM-'+mapname+'.par',specid=2,struct='PLUGMAPOBJ')[0]
+            plug=sdss.config(os.environ['MAPPER_DATA_N']+'/'+
+                  mapname.split('-')[1]+'/plPlugMapM-'+mapname+'.par',
+                  specid=2,struct='PLUGMAPOBJ')[0]
             plate=int(mapname.split('-')[0])
             holes=yanny('{:s}/plates/{:04d}XX/{:06d}/plateHolesSorted-{:06d}.par'.format(
                   os.environ['PLATELIST_DIR'],plate//100,plate,plate))
             h=esutil.htm.HTM()
-            m1,m2,rad=h.match(plug['ra'],plug['dec'],holes['STRUCT1']['target_ra'],holes['STRUCT1']['target_dec'],0.1/3600.,maxmatch=500)
+            m1,m2,rad=h.match(plug['ra'],plug['dec'],
+                  holes['STRUCT1']['target_ra'],holes['STRUCT1']['target_dec'],
+                  0.1/3600.,maxmatch=500)
             hmag=plug['mag'][:,1]
             hmag[m1]=holes['STRUCT1']['tmass_h'][m2]
 
@@ -126,13 +134,75 @@ def visit(planfile,tracefile=None) :
                     zr=[0,300],xr=[8,15],size=20,label=name,xt=mag,yt='-2.5*log(cnts/read)')
         mags.append(hmag[i2])
         inst.append(-2.5*np.log10(np.median(out.data/(out.header['NREAD']-2),axis=1))[i1])
+
+        tab_exp['exp_no' ] = [obj['name']]
+        tab_exp['camera' ] = [chan[channel]]
+        tab_exp['exptime' ] = [out.header['EXPTIME']]
+        tab_exp['dateobs' ] = [out.header['DATE-OBS']]
+        tab_exp['ra' ] = [out.header['RA']]
+        tab_exp['dec' ] = [out.header['DEC']]
+        tab_exp['cherno_offset_ra' ] = [0.]
+        tab_exp['cherno_offset_dec' ] = [0.]
+        tab_exp['pa' ] = [out.header['ROTPOS']]
+        tab_exp['ipa' ] = [out.header['IPA']]
+        tab_exp['secz' ] = [1/np.cos((90-out.header['ALT'])*np.pi/180.)]
+        tab_exp['config_id' ] = [out.header['CONFIGID']]
+        tab_exp['design_id' ] = [out.header['DESIGNID']]
+        try: tab_exp['seeing' ] = [out.header['SEEING']]
+        except: tab_exp['seeing' ] = [0.]
+        tab_exp['fwhm'] = [0.]
+        tab_exp['gdrms'] = [0.]
+        tab_exp['guider_zero' ] = [0.]
+        tab_exp['dithered' ] = [0]
+        tab_exp['flag' ] = [0]
+      
+        pdb.set_trace()
+
+        tab_spec['fiber'] = plug['fiberId']
+        tab_spec['catalogid' ] = plug['catalogid']
+        tab_spec['assigned'] = plug['assigned']
+        tab_spec['on_target'] = plug['on_target']
+        tab_spec['valid'] = plug['valid']
+        tab_spec['cadence'] = plug['cadence']
+        tab_spec['program'] = plug['program']
+        tab_spec['category'] = plug['category']
+        tab_spec['racat'] = plug['racat']
+        tab_spec['deccat'] = plug['deccat']
+        tab_spec['ra'] = plug['ra']
+        tab_spec['dec'] = plug['dec']
+        tab_spec['offset_ra'] = plug['offset_ra']
+        tab_spec['offset_dec'] = plug['offset_dec']
+        tab_spec['delta_ra'] = plug['delta_ra']
+        tab_spec['delta_dec'] = plug['delta_dec']
+        tab_spec['xfocal'] = plug['xfocal']
+        tab_spec['yfocal'] = plug['yfocal']
+        tab_spec['xFVC'] = plug['xFVC']
+        tab_spec['yFVC'] = plug['yFVC']
+        tab_spec['alpha'] = plug['alpha']
+        tab_spec['beta'] = plug['beta']
+        tab_spec['zeronorm'] = plug['zeronorm']
+        tab_spec['mag'] = plug['mag']
+        tab_spec['mag_g'] = plug['mag_g']
+        tab_spec['mag_r'] = plug['mag_r']
+        tab_spec['mag_i'] = plug['mag_i']
+        tab_spec['bp_mag'] = plug['bpmag']
+        tab_spec['rp_mag'] = plug['rpmag']
+        tab_spec['hmag'] = plug['hmag']
+        tab_spec['spectroflux'] = plug['spectroflux']
+  
+ 
       ax.grid()
       ax.legend()
       allmags.append(mags)
       allinst.append(inst)
     fig.suptitle(planfile)
     fig.tight_layout()
-    fig.savefig(planfile.replace('.yaml','.png'))
+    fig.savefig(os.path.basename(planfile).replace('.yaml','.png'))
+
+    tab_visit=Table()
+    tab_visit['mjd'] = plan['mjd']
+    tab_visit['field_id'] =  plan['field_id']
+
     return allmags,allinst
     
 def do_visit(planfile=None,channel=0,clobber=False,nfibers=300,threads=12) :
@@ -151,9 +221,15 @@ def do_visit(planfile=None,channel=0,clobber=False,nfibers=300,threads=12) :
 
     # set up Reducer
     red=imred.Reducer('APOGEE',dir=os.environ['APOGEE_DATA_N']+'/'+str(plan['mjd']))
+
     # get Dark
-    name='apDark-{:s}-{:08d}.fits'.format(chan[channel],plan['darkid'])
-    dark=fits.open('{:s}/{:s}/cal/{:s}/darkcorr/{:s}'.format(os.environ['APOGEE_REDUX'],plan['apogee_drp_ver'],plan['instrument'],name))[1].data
+    if plan['darkid'] > 0 :
+        name='apDark-{:s}-{:08d}.fits'.format(chan[channel],plan['darkid'])
+        try :
+           dark=fits.open('{:s}/{:s}/cal/{:s}/darkcorr/{:s}'.format(os.environ['APOGEE_REDUX'],plan['apogee_drp_ver'],plan['instrument'],name))[1].data
+        except :
+           dark=fits.open('/uufs/chpc.utah.edu/common/home/sdss/apogeework/apogee/spectro/redux/dr17/cal/darkcorr/{:s}'.format(name))[1].data
+    else : dark = None
 
     # get Trace/PSF if needed
     name='apTrace-{:s}-{:08d}.fits'.format(chan[channel],plan['psfid'])
@@ -168,10 +244,19 @@ def do_visit(planfile=None,channel=0,clobber=False,nfibers=300,threads=12) :
         peaks,fiber=spectra.findpeak(ff,thresh=thresh)
         print('found {:d} peaks'.format(len(peaks)))
         trace.trace(flat,peaks[0:nfibers],index=fiber[0:nfibers],skip=4)
-        pdb.set_trace()
         trace.write(name)
 
-    # now reduce and extract
+    # now reduce and extract flux
+    name='ap1D-{:s}-{:08d}.fits'.format(chan[channel],plan['fluxid'])
+    print('flux: ', name)
+    if os.path.exists(name) and not clobber : 
+        flux=CCDData.read(name)
+    else :
+        im=red.reduce(plan['fluxid'],channel=channel,dark=dark)
+        flux=trace.extract(im,threads=threads,nout=300)
+        flux.write(name,overwrite=True)
+
+    # now reduce and extract object
     for obj in plan['APEXP'] :
         if obj['flavor']  != 'object' : continue
         name='ap1D-{:s}-{:08d}.fits'.format(chan[channel],obj['name'])

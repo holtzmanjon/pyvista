@@ -16,7 +16,9 @@ import yaml
 import subprocess
 import sys
 import tempfile
-from pyvista import stars, apogee, image, tv
+from pyvista import stars, image, tv
+try: from pyvista import apogee
+except : pass
 import pyvista.data as DATA
 
 import warnings

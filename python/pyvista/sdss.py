@@ -54,6 +54,9 @@ def config(cid,specid=2,struct='FIBERMAP',useparent=True,useconfF=False) :
                     conf = yanny(os.environ['SDSSCORE_DIR']+'/apo/summary_files/{:04d}XX/{:s}-{:d}.par'.format(parent//100,confname,parent))
             except :  pass
 
+    if conf == None or len(conf) == 0 :
+        raise FileNotFoundError('error opening file',cid)
+
     gd =np.where((conf[struct]['spectrographId'] == specid) & (conf[struct]['fiberId'] > 0) )[0]
     return conf[struct][gd],conf.new_dict_from_pairs()
 

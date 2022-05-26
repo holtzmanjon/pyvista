@@ -987,8 +987,11 @@ class Trace() :
         if rad is None : rad=self.rad
         if len(back) > 0 :
             for bk in back:
-                if len(bk) != 2 or not isinstance(bk[0],int) or not isinstance(bk[1],int) :
-                    raise ValueError('back must be list of [backlo,backhi] pairs')
+                try :
+                    if len(bk) != 2 or not isinstance(bk[0],int) or not isinstance(bk[1],int) :
+                        raise ValueError('back must be list of [backlo,backhi] integer pairs')
+                except :
+                    raise ValueError('back must be list of [backlo,backhi] integer pairs')
         nrows=hd.data.shape[0]
         ncols=hd.data.shape[-1]
         if nout is not None :
@@ -1108,7 +1111,7 @@ class Trace() :
         if len(out) == 1 : return out[0]
         else : return out
 
-def gfit(data,x0,rad=10,sig=3) :
+def gfit(data,x0,rad=10,sig=3,back=None) :
     """ Fit 1D gaussian
     """ 
     xx = np.arange(x0-rad,x0+rad+1)
@@ -1116,8 +1119,9 @@ def gfit(data,x0,rad=10,sig=3) :
     peak=yy.argmax()+x0-rad
     xx = np.arange(peak-rad,peak+rad+1)
     yy = data[peak-rad:peak+rad+1]
-    p0 = [data[peak],peak,sig]
-
+    if back == None : p0 = [data[peak],peak,sig]
+    else : p0 = [data[peak],peak,sig,back]
+    
     coeff, var_matrix = curve_fit(gauss, xx, yy, p0=p0)
     fit = gauss(xx,*coeff)
     print(coeff)
@@ -1126,8 +1130,15 @@ def gfit(data,x0,rad=10,sig=3) :
 def gauss(x, *p):
     """ Gaussian function
     """
-    A, mu, sigma = p
-    return A*np.exp(-(x-mu)**2/(2.*sigma**2))
+    if len(p) == 3 : 
+        A, mu, sigma, back = p, 0.
+    elif len(p) == 4 : 
+        A, mu, sigma, back = p
+    elif len(p) == 7 : 
+        A, mu, sigma, B, Bmu, Bsigma, back = p
+        return A*np.exp(-(x-mu)**2/(2.*sigma**2))+B*np.exp(-(x-Bmu)**2/2.*Bsigma**2)+back
+
+    return A*np.exp(-(x-mu)**2/(2.*sigma**2))+back
 
 def findpeak(x,thresh,diff=10,bundle=20) :
     """ Find peaks in vector x above input threshold
@@ -1138,12 +1149,12 @@ def findpeak(x,thresh,diff=10,bundle=20) :
     f=0
     for i in range(len(x)) :
         if i>0 and i < len(x)-1 and x[i]>x[i-1] and x[i]>x[i+1] and x[i]>thresh :
-            j.append(i)
-            fiber.append(f)
             #print(i,f)
+            j.append(i)
             if len(j)>1 and j[-1]-j[-2] > diff and f%bundle != 0: 
-                print(j[-1],j[-2],f)
+                #print(j[-1],j[-2],f)
                 f=f+1
+            fiber.append(f)
             f=f+1
           
     return j,fiber
@@ -1186,8 +1197,8 @@ def extract_col(pars) :
                 bpix = np.array([])
                 bvar = np.array([])
                 for bk in back :
-                    np.append(bpix,spec[bk[0]:bk[1],j])
-                    np.append(bvar,sig[bk[0]:bk[1],j]**2)
+                    bpix=np.append(bpix,data[icr+bk[0]:icr+bk[1],j])
+                    bvar=np.append(bvar,err[icr+bk[0]:icr+bk[1],j]**2)
                 spec[i,j] -= np.median(bpix)
                 sig[i,j] = np.sqrt(sig[i,j]**2+np.sum(bvar)/(len(bvar)-1))
           
