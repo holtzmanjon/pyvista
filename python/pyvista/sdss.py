@@ -1,4 +1,5 @@
 from astropy.io import fits
+from astropy.table import Table
 import astropy.units as u
 import glob
 import numpy as np
@@ -187,7 +188,7 @@ def map(ims,keys,cid=None,thresh=100) :
     pdb.set_trace()
     plt.close()
         
-def db_exp(exp_no,cam,header) :
+def db_exp(exp_no,cam,header,config=None) :
 
     tab_exp=Table()
     tab_exp['exp_no' ] = [exp_no]
@@ -201,19 +202,24 @@ def db_exp(exp_no,cam,header) :
     tab_exp['pa' ] = [header['ROTPOS']]
     tab_exp['ipa' ] = [header['IPA']]
     tab_exp['secz' ] = [1/np.cos((90-header['ALT'])*np.pi/180.)]
-    tab_exp['config_id' ] = [config_id]
-    try: tab_exp['design_id' ] = [header['DESIGNID']]
-    except :tab_exp['design_id' ] = [0]
-    try: seeing = header['SEEING']
-    except : seeing = 0.
+    if 'CONFIGID' in header.keys() : tab_exp['config_id' ] = [header['CONFIGID']]
+    elif 'CONFID' in header.keys() : tab_exp['config_id' ] = [header['CONFID']]
+    elif 'PLATEID' in header.keys() : tab_exp['config_id' ] = [header['PLATEID']]
+    else : tab_exp['config_id'] = 0
+    if 'DESIGNID' in header.keys() : tab_exp['design_id' ] = [header['DESIGNID']]
+    else :tab_exp['design_id' ] = [0]
+    if 'SEEING' in header.keys() : seeing = header['SEEING']
+    else : seeing  = 0.
     tab_exp['seeing' ] = [seeing]
     tab_exp['fwhm'] = [np.array([seeing,seeing,seeing])]
     tab_exp['gdrms'] = [0.] 
     tab_exp['guider_zero' ] = [0.]
     tab_exp['dithered' ] = [0]
     tab_exp['flag' ] = [0]
-    gd = np.where(hmag[i2] > 0)[0]
-    tab_exp['zeronorm' ] = [[np.nan.np.nan,np.nan]]
+    tab_exp['zeronorm' ] = [[np.nan,np.nan,np.nan]]
+    if config != None :
+        for key in ['focal_scale','temperature','fvc_rms','fvc_90_perc'] :
+            if key in config.keys() : tab_exp[key] = config[key]
 
     return tab_exp
 
@@ -222,62 +228,60 @@ def db_spec(plug, header, confSummary = True) :
     tab_spec=Table()
     tab_spec['fiber'] = plug['fiberId']
     if confSummary :
-        tab_spec['catalogid' ] = plug['catalogid'][i2]
-        tab_spec['assigned'] = plug['assigned'][i2]
-        tab_spec['on_target'] = plug['on_target'][i2]
-        tab_spec['valid'] = plug['valid'][i2]
-        tab_spec['cadence'] = plug['cadence'][i2].astype(str)
-        tab_spec['program'] = plug['program'][i2].astype(str)
-        tab_spec['category'] = plug['category'][i2].astype(str)
-        tab_spec['racat'] = plug['racat'][i2]
-        tab_spec['deccat'] = plug['deccat'][i2]
-        tab_spec['offset_ra'] = plug['delta_ra'][i2]
-        tab_spec['offset_dec'] = plug['delta_dec'][i2]
-        tab_spec['delta_ra'] = plug['delta_ra'][i2]
-        tab_spec['delta_dec'] = plug['delta_dec'][i2]
+        tab_spec['catalogid' ] = plug['catalogid']
+        tab_spec['assigned'] = plug['assigned']
+        tab_spec['on_target'] = plug['on_target']
+        tab_spec['valid'] = plug['valid']
+        tab_spec['cadence'] = plug['cadence'].astype(str)
+        tab_spec['program'] = plug['program'].astype(str)
+        tab_spec['category'] = plug['category'].astype(str)
+        tab_spec['racat'] = plug['racat']
+        tab_spec['deccat'] = plug['deccat']
+        tab_spec['ra'] = plug['ra']
+        tab_spec['dec'] = plug['dec']
+        tab_spec['offset_ra'] = plug['delta_ra']
+        tab_spec['offset_dec'] = plug['delta_dec']
         dt = (float(header['epoch'])-2457204.)/365.26
         j = np.where((plug['pmdec']<-998) & (plug['pmdec']>-1000) )[0]
         plug['pmdec'][j] = 0.
         plug['pmra'][j] = 0.
         tab_spec['delta_ra'] = ((plug['ra']-plug['racat'])*np.cos(float(header['decCen'])*np.pi/180.)*3600.
-                                -plug['pmra']/1000.*dt)[i2]
+                                -plug['pmra']/1000.*dt)
         tab_spec['delta_dec'] = ((plug['dec']-plug['deccat'])*3600.
-                                 -plug['pmdec']/1000.*dt)[i2]
+                                 -plug['pmdec']/1000.*dt)
 
-        tab_spec['xfocal'] = plug['xfocal'][i2]
-        tab_spec['yfocal'] = plug['yfocal'][i2]
-        if 'xFVC' in plug.keys() :
-            tab_spec['xFVC'] = plug['xFVC'][i2]
-            tab_spec['yFVC'] = plug['yFVC'][i2]
-        else :
+        tab_spec['xfocal'] = plug['xFocal']
+        tab_spec['yfocal'] = plug['yFocal']
+        try :
+            tab_spec['xFVC'] = plug['xFVC']
+            tab_spec['yFVC'] = plug['yFVC']
+        except :
             tab_spec['xFVC'] = 0.
             tab_spec['yFVC'] = 0.
-        tab_spec['alpha'] = plug['alpha'][i2]
-        tab_spec['beta'] = plug['beta'][i2]
-        if 'mag_g' in plug.keys() :
-            tab_spec['mag_g'] = plug['mag_g'][i2]
-            tab_spec['mag_r'] = plug['mag_r'][i2]
-            tab_spec['mag_i'] = plug['mag_i'][i2]
-        else :
-            tab_spec['mag_g'] = -999.
-            tab_spec['mag_r'] = -999.
-            tab_spec['mag_i'] = -999.
-        tab_spec['bp_mag'] = plug['bpmag'][i2]
-        tab_spec['rp_mag'] = plug['rpmag'][i2]
-        tab_spec['mag'] = plug['mag'][i2]
+        tab_spec['alpha'] = plug['alpha']
+        tab_spec['beta'] = plug['beta']
+        tab_spec['bp_mag'] = plug['bp_mag']
+        tab_spec['rp_mag'] = plug['rp_mag']
+        tab_spec['hmag'] = plug['h_mag']
+        tab_spec['mag'] = plug['mag']
+        tab_spec['mag_g'] = np.nan
+        tab_spec['mag_r'] = np.nan
+        tab_spec['mag_i'] = np.nan
     else :
-        for key in ['catalogid','assigned','on_target','valid'] : tab_spec[key]=0
-        for key in ['cadence','program','category'] : tab_spec[key]=''
+        for key in ['catalogid','assigned','on_target','valid'] : tab_spec[key]=-1
+        for key in ['cadence','program'] : tab_spec[key]=''
         for key in ['racat','deccat','offset_ra','offset_dec', 'xFVC','yFVC',
-                    'alpha','beta','mag_g','mag_r','mag_i','bp_mag','rp_mag','hmag' ] :
-                tab_spec[key] = 0.
-        tab_spec['category'] = plug['objType'][i2].astype(str)
-        tab_spec['hmag'] = hmag[i2]
-        tab_spec['ra'] = plug['ra'][i2]
-        tab_spec['dec'] = plug['dec'][i2]
-        tab_spec['xfocal'] = plug['xFocal'][i2]
-        tab_spec['yfocal'] = plug['yFocal'][i2]
-        tab_spec['mag'] = plug['mag'][i2]
+                    'alpha','beta','mag_g','mag_r','mag_i','bp_mag','rp_mag' ] :
+                tab_spec[key] = np.nan
+        tab_spec['category'] = plug['objType'].astype(str)
+        tab_spec['hmag'] = plug['mag'][:,1]
+        tab_spec['ra'] = plug['ra']
+        tab_spec['dec'] = plug['dec']
+        tab_spec['xfocal'] = plug['xFocal']
+        tab_spec['yfocal'] = plug['yFocal']
+        tab_spec['mag'] = plug['mag']
+
+    return tab_spec
 
 def db_visit(mjd, field) :
 
