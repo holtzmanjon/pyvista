@@ -572,7 +572,6 @@ class WaveCal() :
                   if ( (peak < xmin+rad) or (peak > xmax-rad)) : continue
                   if isinstance(display,pyvista.tv.TV) :
                       display.ax.scatter(peak,row,marker='o',color='r',s=2)
-
                   # S/N threshold
                   if (spectrum.data[row,peak-rad:peak+rad+1]/
                       spectrum.uncertainty.array[row,peak-rad:peak+rad+1]).max() > thresh:
@@ -581,10 +580,9 @@ class WaveCal() :
                     niter=0
                     xx = np.arange(peak-rad,peak+rad+1)
                     yy = spectrum.data[row,peak-rad:peak+rad+1]
-
                     try :  
                       while peak != oldpeak and  niter<10:
-                        p0 = [spectrum.data[row,peak],peak,rad]
+                        p0 = [spectrum.data[row,peak],peak,rad,0.]
                         coeff, var_matrix = curve_fit(gauss, xx, yy, p0=p0)
                         cent = coeff[1]
                         oldpeak = peak
@@ -962,7 +960,7 @@ class Trace() :
             plot.plotax1.cla()
             plot.plotax1.text(0.05,0.95,'obj and ref cross-section',transform=plot.plotax1.transAxes)
             plot.plotax1.plot(self.spectrum/self.spectrum.max())
-            plot.plotax1.plot(im[:,self.sc0]/im[:,self.sc0].max())
+            plot.plotax1.plot(im.data[:,self.sc0]/im.data[:,self.sc0].max())
             plot.plotax1.set_xlabel('row')
             plot.histclick=False
             plot.plotax2.cla()
@@ -973,7 +971,8 @@ class Trace() :
             plt.draw()
             getinput('  See spectra and cross-correlation. Hit any key in display window to continue....',plot.fig)
         self.pix0=fitpeak+lags[0]
-        print('shift: ',fitpeak+lags[0])
+        self.pix0=pixshift
+        print('shift: ',fitpeak+lags[0],fitpeak,lags[0])
         return fitpeak+lags[0]
  
     def extract(self,im,rad=None,back=[],scat=False,plot=None,medfilt=None,nout=None,threads=0) :
@@ -1131,7 +1130,8 @@ def gauss(x, *p):
     """ Gaussian function
     """
     if len(p) == 3 : 
-        A, mu, sigma, back = p, 0.
+        A, mu, sigma = p
+        back = 0.
     elif len(p) == 4 : 
         A, mu, sigma, back = p
     elif len(p) == 7 : 
