@@ -821,9 +821,12 @@ class Trace() :
         return tab
 
 
-    def trace(self,im,srows,sc0=None,plot=None,thresh=20,index=None,skip=1) :
+    def trace(self,im,srows,sc0=None,plot=None,display=None,
+              thresh=20,index=None,skip=1) :
         """ Trace a spectrum from starting position
         """
+
+        if plot == None and display != None : plot = display
 
         fitter=fitting.LinearLSQFitter()
         if self.type == 'Polynomial1D' :
@@ -927,19 +930,22 @@ class Trace() :
             while getinput('  See trace. Hit space bar to continue....',plot.fig)[2] != ' ' :
                 pass
 
-    def retrace(self,hd,plot=None,thresh=20) :
+    def retrace(self,hd,plot=None,display=None,thresh=20) :
         """ Retrace starting with existing model
         """
+        if plot == None and display != None : plot = display
         self.find(hd)
         srows = []
         for row in range(len(self.model)) :
-            srows.append(self.model[row](self.sc0))
+            print("Using shift: ",self.pix0)
+            srows.append(self.model[row](self.sc0)+self.pix0)
         self.trace(hd,srows,plot=plot,thresh=thresh)
      
-    def find(self,hd,lags=None,plot=None) :
+    def find(self,hd,lags=None,plot=None,display=None) :
         """ Determine shift from existing trace to input frame
         """
         if lags is None : lags = self.lags
+        if plot == None and display != None : plot = display
 
         if self.transpose :
             im = image.transpose(hd)
@@ -972,12 +978,13 @@ class Trace() :
             getinput('  See spectra and cross-correlation. Hit any key in display window to continue....',plot.fig)
         self.pix0=fitpeak+lags[0]
         self.pix0=pixshift
-        print('shift: ',fitpeak+lags[0],fitpeak,lags[0])
         return fitpeak+lags[0]
  
-    def extract(self,im,rad=None,back=[],scat=False,plot=None,medfilt=None,nout=None,threads=0) :
+    def extract(self,im,rad=None,back=[],scat=False,
+                display=None,plot=None,medfilt=None,nout=None,threads=0) :
         """ Extract spectrum given trace(s)
         """
+        if plot == None and display != None : plot = display
         if self.transpose :
             hd = image.transpose(im)
         else :
