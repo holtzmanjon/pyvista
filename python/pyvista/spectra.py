@@ -1022,7 +1022,7 @@ class Trace() :
             pars.append((hd.data[:,col*skip:ec],
                          hd.uncertainty.array[:,col*skip:ec],
                          hd.mask[:,col*skip:ec],
-                         np.arange(col*skip,ec),self.model,self.rad,self.pix0,back))
+                         np.arange(col*skip,ec),self.model,rad,self.pix0,back))
         if threads > 0 :
             pool = mp.Pool(threads)
             output = pool.map_async(extract_col, pars).get()
@@ -1189,11 +1189,11 @@ def extract_col(pars) :
         r1=icr-rad
         r2=icr+rad
         try :
-            # sum inner pixels directly
-            # outer pixels depending on fractional pixel location of trace
             if r1>=0 and r2<data.size :
+                # sum inner pixels directly
                 spec[i,j]=np.sum(data[r1+1:r2,j])
                 sig[i,j]=np.sum(err[r1+1:r2,j]**2)
+                # outer pixels depending on fractional pixel location of trace
                 spec[i,j]+=data[r1,j]*(1-rfrac)
                 sig[i,j]+=err[r1,j]**2*(1-rfrac)
                 spec[i,j]+=data[r2,j]*rfrac
@@ -1206,7 +1206,7 @@ def extract_col(pars) :
                 for bk in back :
                     bpix=np.append(bpix,data[icr+bk[0]:icr+bk[1],j])
                     bvar=np.append(bvar,err[icr+bk[0]:icr+bk[1],j]**2)
-                spec[i,j] -= np.median(bpix)
+                spec[i,j] -= np.median(bpix)*(r2-r1) #+1)
                 sig[i,j] = np.sqrt(sig[i,j]**2+np.sum(bvar)/(len(bvar)-1))
           
         except : 
