@@ -1,12 +1,31 @@
 Installation
 ============
 
-To install pyvista, first clone (or fork, if you are interested in contributing)
+Coming soon (!) : pip install astro-pyvista
+
+Istallation from github
+
+first clone (or fork, if you are interested in contributing)
 the project from gihub:
 
 .. code-block:: csh
 
    git clone https://github.com/holtzmanjon/pyvista
+
+Installation into Python distribution
+-------------------------------------
+Once downloaded, you can install with the usual
+
+.. code-block:: csh
+
+   python setup.py install
+
+for development, i.e., if you will be pulling from the github repository, use
+
+.. code-block:: csh
+
+   python setup.py develop
+
 
 Note that pyvista has several dependencies for different packages
    - numpy
@@ -17,18 +36,12 @@ Note that pyvista has several dependencies for different packages
    - ccdproc (required for imred)
    - photutils (required for stars)
 
-Installation into Python distribution
--------------------------------------
-Once downloaded, you can install with the usual
-
-.. code-block:: csh
-
-   python setup.py install
+The setup.py should install these for you.
 
 Installation using environment variables
 ----------------------------------------
-Alternatively, define an environment variable PYVISTA_DIR that refers to the top
-level pyvista directory, e.g.
+As an alternative to using setup.py, define an environment 
+variable PYVISTA_DIR that refers to the top level pyvista directory, e.g.
 
 .. code-block:: csh
 

@@ -277,6 +277,7 @@ class WaveCal() :
                 scat=self.ax[1].scatter(self.waves,diff,marker='o',c=self.y,s=5)
                 plots.plotp(self.ax[1],self.waves[bd],diff[bd],
                             marker='o',color='r',size=5)
+
                 xlim=self.ax[1].get_xlim()
                 self.ax[1].set_ylim(diff.min()-0.5,diff.max()+0.5)
                 self.ax[1].plot(xlim,[0,0],linestyle=':')
@@ -337,6 +338,8 @@ class WaveCal() :
                     if len(bd) > 0 : 
                         self.ax[1].plot(self.waves[bd],diff[bd],'ro')
                     self.ax[1].set_ylim(diff[gd].min()-0.5,diff[gd].max()+0.5)
+                    plots._data_x = self.waves[irow][np.isfinite(self.waves[irow])]
+                    plots._data_y = diff[irow][np.isfinite(diff[irow])]
                     for i in range(len(self.pix[irow])) :
                         j = irow[i]
                         self.ax[1].text(self.waves[j],diff[j],'{:2d}'.format(
@@ -350,7 +353,8 @@ class WaveCal() :
                     plt.draw()
 
                     # get input from user on lines to remove
-                    i = getinput('  input from plot window...', self.fig)
+                    i = getinput('  input from plot window...', 
+                                 self.fig,index=True)
                     if i == '' :
                         done = True
                     elif i[2] == 'l' :
@@ -361,6 +365,7 @@ class WaveCal() :
                         self.weights[irow[bd]] = 0.
                     elif i[2] == 'n' :
                         bd=np.argmin(np.abs(self.waves[irow]-i[0]))
+                        bd=i[3]
                         self.weights[irow[bd]] = 0.
                     elif i == 'O' :
                         print('  current degree of fit: {:d}'.format(
@@ -821,9 +826,12 @@ class Trace() :
         return tab
 
 
-    def trace(self,im,srows,sc0=None,plot=None,thresh=20,index=None,skip=1) :
+    def trace(self,im,srows,sc0=None,plot=None,display=None,
+              thresh=20,index=None,skip=1) :
         """ Trace a spectrum from starting position
         """
+
+        if plot == None and display != None : plot = display
 
         fitter=fitting.LinearLSQFitter()
         if self.type == 'Polynomial1D' :
@@ -927,19 +935,22 @@ class Trace() :
             while getinput('  See trace. Hit space bar to continue....',plot.fig)[2] != ' ' :
                 pass
 
-    def retrace(self,hd,plot=None,thresh=20) :
+    def retrace(self,hd,plot=None,display=None,thresh=20) :
         """ Retrace starting with existing model
         """
+        if plot == None and display != None : plot = display
         self.find(hd)
         srows = []
         for row in range(len(self.model)) :
-            srows.append(self.model[row](self.sc0))
+            print("Using shift: ",self.pix0)
+            srows.append(self.model[row](self.sc0)+self.pix0)
         self.trace(hd,srows,plot=plot,thresh=thresh)
      
-    def find(self,hd,lags=None,plot=None) :
+    def find(self,hd,lags=None,plot=None,display=None) :
         """ Determine shift from existing trace to input frame
         """
         if lags is None : lags = self.lags
+        if plot == None and display != None : plot = display
 
         if self.transpose :
             im = image.transpose(hd)
@@ -972,12 +983,13 @@ class Trace() :
             getinput('  See spectra and cross-correlation. Hit any key in display window to continue....',plot.fig)
         self.pix0=fitpeak+lags[0]
         self.pix0=pixshift
-        print('shift: ',fitpeak+lags[0],fitpeak,lags[0])
         return fitpeak+lags[0]
  
-    def extract(self,im,rad=None,back=[],scat=False,plot=None,medfilt=None,nout=None,threads=0) :
+    def extract(self,im,rad=None,back=[],scat=False,
+                display=None,plot=None,medfilt=None,nout=None,threads=0) :
         """ Extract spectrum given trace(s)
         """
+        if plot == None and display != None : plot = display
         if self.transpose :
             hd = image.transpose(im)
         else :
@@ -1015,7 +1027,7 @@ class Trace() :
             pars.append((hd.data[:,col*skip:ec],
                          hd.uncertainty.array[:,col*skip:ec],
                          hd.mask[:,col*skip:ec],
-                         np.arange(col*skip,ec),self.model,self.rad,self.pix0,back))
+                         np.arange(col*skip,ec),self.model,rad,self.pix0,back))
         if threads > 0 :
             pool = mp.Pool(threads)
             output = pool.map_async(extract_col, pars).get()
@@ -1159,12 +1171,12 @@ def findpeak(x,thresh,diff=10,bundle=20) :
           
     return j,fiber
  
-def getinput(prompt,fig=None) :
+def getinput(prompt,fig=None,index=False) :
     """  Get input from terminal or matplotlib figure
     """
     if fig == None : return '','',input(prompt)
     print(prompt)
-    get = plots.mark(fig)
+    get = plots.mark(fig,index=index)
     return get
 
 def extract_col(pars) :
@@ -1182,11 +1194,11 @@ def extract_col(pars) :
         r1=icr-rad
         r2=icr+rad
         try :
-            # sum inner pixels directly
-            # outer pixels depending on fractional pixel location of trace
             if r1>=0 and r2<data.size :
+                # sum inner pixels directly
                 spec[i,j]=np.sum(data[r1+1:r2,j])
                 sig[i,j]=np.sum(err[r1+1:r2,j]**2)
+                # outer pixels depending on fractional pixel location of trace
                 spec[i,j]+=data[r1,j]*(1-rfrac)
                 sig[i,j]+=err[r1,j]**2*(1-rfrac)
                 spec[i,j]+=data[r2,j]*rfrac
@@ -1199,7 +1211,7 @@ def extract_col(pars) :
                 for bk in back :
                     bpix=np.append(bpix,data[icr+bk[0]:icr+bk[1],j])
                     bvar=np.append(bvar,err[icr+bk[0]:icr+bk[1],j]**2)
-                spec[i,j] -= np.median(bpix)
+                spec[i,j] -= np.median(bpix)*(r2-r1) #+1)
                 sig[i,j] = np.sqrt(sig[i,j]**2+np.sum(bvar)/(len(bvar)-1))
           
         except : 

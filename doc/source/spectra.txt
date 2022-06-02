@@ -20,14 +20,32 @@ In more detail:
 Trace 
 =====
 
+The Trace object is used to store functional forms and locations of spectral
+traces. It supports multiple traces per image, e.g., for a multiobject spectrograph.
+
+Create a trace from scratch: instantiate a trace object with an initial model, rows= (to specify window), lags= (to specify how far search can extend for 
+translation of trace).
+
+To retrace, use trace.retrace(spectrum). This will do a cross-correlation 
+of saved cross-section with input spectrum to determine a shift, then will
+use that as a starting location to retrace.
+
+To trace using fixed trace, use trace.trace(spectrum)
+
+To extract, use trace.extract(spectrum,rad=,[back=[[b1,b2],[b3,b4]])
+
 Attributes
-   - type
-   - order
-   - pix0
-   - spectrum
-   - rad
-   - model
-   - sc0
+   - type : type of astropy model to use for trace shape (currently, just Polynomial1D)
+   - model : array of astropy models for each trace
+   - degree : polynomial degree
+   - rad : radius in pixels to use for calculating centroid
+   - sc0 : starting column for trace, will work both directions from here
+   - spectrum : reference spatial slice at sc0
+   - pix0 : derived shift of current image relative to reference
+   - lags : array of lags to try when finding object location
+   - transpose : boolean for whether axes need transposing to put spectra along rows
+   - rows : range of slit length
+   - index : identification for each trace
 
 
 Methods:
