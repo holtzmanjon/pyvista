@@ -532,8 +532,15 @@ class Reducer() :
         im.data -= grid_z
 
     def crrej(self,im,crbox=None,nsig=5,display=None) :
-        """ CR rejection
+        """ Cosmic ray rejection using spatial median filter or lacosmic
+
+            Parameters
+            ----------
+            crbox=[nx,ny] or 'lacosmic' : shape of box to use for median filters, or 'lacosmic'
+            nsig=  : threshold for CR rejection if using spatial median filter
+            display= : None for no display, pyvista TV object to display
         """
+
         if crbox is None: return im
         if type(im) is not list : ims=[im]
         else : ims = im
