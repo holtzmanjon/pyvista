@@ -5,7 +5,7 @@ imred is a module that implements some classes/tools for basic data reduction:
 overscan subraction, bias subtraction, dark subtraction, and flat fielding.
 An object class is included for basic combination of images that
 can be used to make basic calibration products.  Data are read and
-processed using NDData structures, which carry along both the image
+processed using CCDData/NDData structures, which carry along both the image
 data and associated uncertainty and mask arrays.
 
 The routines are implemented with the Reducer class, which
@@ -50,11 +50,13 @@ calibration frames are loaded.
 
 The reduce() method will read and perform some reductions. It will
 perform overscan subtraction if self.biastype has been set >=0,
-and cosmic ray rejection if cosmic ray rejection parameters have
-been set.  It will perform bias frame subtraction if a bias frame has been
-loaded, dark subtraction if a dark frame has been loaded, scattered
-light subtraction if a scattered light parameter has been set,
-flat fields if a flat frame has been load, bad pixel masking if
+It will perform bias frame subtraction if a bias frame is passed
+with the bias= keyword, dark subtraction if a dark frame is passed 
+with the dark= keyword, and flat fielding if a flat frame is passed
+with the flat= keyword; see below for construction of calibration
+frames. There is also the possibility of scattered
+light subtraction (e.g., for a multi-order spectrograph) if a scattered
+light parameter has been set, and bad pixel masking if
 a bad pixel mask has been set.
 
 Calibration frames can be created using the mkbias,
@@ -85,7 +87,7 @@ Attributes:
   - trimbox : pyvista BOX object giving region(s) to trim reduced image to, if requested
   - normbox : pyvista BOX object giving region(s) to use for normalization of flats
 
-Methods :
+Methods (see below for full description with keywords) :
   - rd:  reads image from disk. For convenience, files can be identified by a 
     sequence number alone, and the input directory will be searched for files matching
     the input format ({dir}/{root}{formstr}.fits*) with the input file number
@@ -93,7 +95,7 @@ Methods :
   - bias : subtracts input combined bias frame
   - flat : divides by input combined flat frame
   - reduce :  reads, overscan subtracts (per biastype), bias subtracts if
-             given a combined bias, flat fields if given a combined flat
+             given a combined bias, flat fields if given a combined flat, etc.
   - getcube: reads a set of frames into a data cube
   - median:  median filters images in cube
   - sum: :   sums images in cube
