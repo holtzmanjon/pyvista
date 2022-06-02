@@ -277,6 +277,7 @@ class WaveCal() :
                 scat=self.ax[1].scatter(self.waves,diff,marker='o',c=self.y,s=5)
                 plots.plotp(self.ax[1],self.waves[bd],diff[bd],
                             marker='o',color='r',size=5)
+
                 xlim=self.ax[1].get_xlim()
                 self.ax[1].set_ylim(diff.min()-0.5,diff.max()+0.5)
                 self.ax[1].plot(xlim,[0,0],linestyle=':')
@@ -337,6 +338,8 @@ class WaveCal() :
                     if len(bd) > 0 : 
                         self.ax[1].plot(self.waves[bd],diff[bd],'ro')
                     self.ax[1].set_ylim(diff[gd].min()-0.5,diff[gd].max()+0.5)
+                    plots._data_x = self.waves[irow][np.isfinite(self.waves[irow])]
+                    plots._data_y = diff[irow][np.isfinite(diff[irow])]
                     for i in range(len(self.pix[irow])) :
                         j = irow[i]
                         self.ax[1].text(self.waves[j],diff[j],'{:2d}'.format(
@@ -350,7 +353,8 @@ class WaveCal() :
                     plt.draw()
 
                     # get input from user on lines to remove
-                    i = getinput('  input from plot window...', self.fig)
+                    i = getinput('  input from plot window...', 
+                                 self.fig,index=True)
                     if i == '' :
                         done = True
                     elif i[2] == 'l' :
@@ -361,6 +365,7 @@ class WaveCal() :
                         self.weights[irow[bd]] = 0.
                     elif i[2] == 'n' :
                         bd=np.argmin(np.abs(self.waves[irow]-i[0]))
+                        bd=i[3]
                         self.weights[irow[bd]] = 0.
                     elif i == 'O' :
                         print('  current degree of fit: {:d}'.format(
@@ -1166,12 +1171,12 @@ def findpeak(x,thresh,diff=10,bundle=20) :
           
     return j,fiber
  
-def getinput(prompt,fig=None) :
+def getinput(prompt,fig=None,index=False) :
     """  Get input from terminal or matplotlib figure
     """
     if fig == None : return '','',input(prompt)
     print(prompt)
-    get = plots.mark(fig)
+    get = plots.mark(fig,index=index)
     return get
 
 def extract_col(pars) :
