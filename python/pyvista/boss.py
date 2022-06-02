@@ -196,7 +196,7 @@ def do_visit(planfile=None,channel=0,clobber=False,nfibers=500,threads=12,displa
         ff=np.sum(flat.data[2000:2100],axis=0)
         if channel==0 : thresh=0.4e6
         else : thresh=0.2e6
-        peaks,fiber=spectra.findpeak(ff,thresh=thresh)
+        peaks,fiber=spectra.findpeak(ff,thresh=thresh,diff=10,bundle=20)
         print('found {:d} peaks'.format(len(peaks)))
         trace.trace(flat,peaks[0:nfibers],index=fiber[0:nfibers],skip=20,
                     plot=display)
