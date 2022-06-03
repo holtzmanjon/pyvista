@@ -536,9 +536,9 @@ class Reducer() :
 
             Parameters
             ----------
-            crbox=[nx,ny] or 'lacosmic' : shape of box to use for median filters, or 'lacosmic'
-            nsig=  : threshold for CR rejection if using spatial median filter
-            display= : None for no display, pyvista TV object to display
+            crbox : list, int shape of box to use for median filters, or 'lacosmic'
+            nsig  : threshold for CR rejection if using spatial median filter
+            display : None for no display, pyvista TV object to display
         """
 
         if crbox is None: return im
