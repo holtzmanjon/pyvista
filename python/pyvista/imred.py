@@ -554,6 +554,12 @@ class Reducer() :
                        gain=gain*u.dimensionless_unscaled,readnoise=rn*u.dimensionless_unscaled)
             else :
                 if self.verbose : print('  zapping CRs with filter [{:d},{:d}]...'.format(*crbox))
+                if crbox[0]%2 == 0 or crbox[1]%2 == 0 :
+                    raise ValueError('cosmic ray rejection box dimensions must be odd numbers...')
+                if crbox[0]*crbox[1] > 49 :
+                    print('WARNING: large rejection box may take a long time to complete!')
+                    tmp=input(" Hit c to continue anyway, else quit")
+                    if tmp != 'c' : return
                 image.zap(im,crbox,nsig=nsig)
             if display is not None : 
                 display.tv(im)
