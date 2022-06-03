@@ -1112,8 +1112,7 @@ class Trace() :
     def extract2d(self,im,rows=None,plot=None) :
         """  Extract 2D spectrum given trace(s)
 
-             Assumes all requests row uses same trace, just offset, 
-               not a 2D model for traces
+             Assumes all requests row uses same trace, just offset, not a 2D model for traces. Linear interpolation is used.
         """
         if self.transpose :
             hd = image.transpose(im)
