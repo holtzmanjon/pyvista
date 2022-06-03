@@ -364,7 +364,7 @@ class WaveCal() :
                         bd=np.where(self.waves[irow]>i[0])[0]
                         self.weights[irow[bd]] = 0.
                     elif i[2] == 'n' :
-                        bd=np.argmin(np.abs(self.waves[irow]-i[0]))
+                        #bd=np.argmin(np.abs(self.waves[irow]-i[0]))
                         bd=i[3]
                         self.weights[irow[bd]] = 0.
                     elif i == 'O' :
@@ -945,7 +945,31 @@ class Trace() :
             print("Using shift: ",self.pix0)
             srows.append(self.model[row](self.sc0)+self.pix0)
         self.trace(hd,srows,plot=plot,thresh=thresh)
-     
+    
+    def findpeak(self,hd,width=100,thresh=500,plot=False) :
+        """ Find peaks for tracing
+        """
+        if self.transpose :
+            im = image.transpose(hd)
+        else :
+            im = copy.deepcopy(hd)
+
+        print('looking for peaks using {:d} pixels around {:d}, threshhold of {:f}'.
+              format(2*width,self.sc0,thresh))
+
+        back =np.median(im.data[self.rows[0]:self.rows[1],
+                                self.sc0-width:self.sc0+width])
+
+        if plot :
+            plt.figure()
+            plt.plot(np.median(im.data[self.rows[0]:self.rows[1],
+                                       self.sc0-width:self.sc0+width],axis=1)-back)
+        peaks,fiber = findpeak(np.median(im.data[self.rows[0]:self.rows[1],
+                                           self.sc0-width:self.sc0+width],axis=1)-back,
+                         thresh=thresh)
+        return peaks+self.rows[0], fiber
+
+ 
     def find(self,hd,lags=None,plot=None,display=None) :
         """ Determine shift from existing trace to input frame
         """
@@ -1069,6 +1093,10 @@ class Trace() :
                 plot.ax.plot(range(ncols),cr,color='g',linewidth=3)
                 plot.ax.plot(range(ncols),cr-rad,color=color,linewidth=1)
                 plot.ax.plot(range(ncols),cr+rad,color=color,linewidth=1)
+                if len(back) > 0 :
+                    for bk in back:
+                        plot.ax.plot(range(ncols),cr+bk[0],color='r',linewidth=1)
+                        plot.ax.plot(range(ncols),cr+bk[1],color='r',linewidth=1)
                 plot.plotax2.cla()
                 plot.plotax2.plot(range(ncols),spec[i],color=color,linewidth=1)
                 plot.plotax2.text(0.05,0.95,'Extracted spectrum',
@@ -1152,7 +1180,7 @@ def gauss(x, *p):
 
     return A*np.exp(-(x-mu)**2/(2.*sigma**2))+back
 
-def findpeak(x,thresh,diff=10,bundle=20) :
+def findpeak(x,thresh,diff=10000,bundle=10000) :
     """ Find peaks in vector x above input threshold
         attempts to associate an index with each depending on spacing
     """
@@ -1211,7 +1239,7 @@ def extract_col(pars) :
                 for bk in back :
                     bpix=np.append(bpix,data[icr+bk[0]:icr+bk[1],j])
                     bvar=np.append(bvar,err[icr+bk[0]:icr+bk[1],j]**2)
-                spec[i,j] -= np.median(bpix)*(r2-r1) #+1)
+                spec[i,j] -= np.median(bpix)*(r2-r1)
                 sig[i,j] = np.sqrt(sig[i,j]**2+np.sum(bvar)/(len(bvar)-1))
           
         except : 
