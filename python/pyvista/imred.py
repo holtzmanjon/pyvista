@@ -531,13 +531,24 @@ class Reducer() :
 
         im.data -= grid_z
 
-    def crrej(self,im,crbox=None,nsig=5,display=None) :
-        """ Cosmic ray rejection using spatial median filter or lacosmic
+    def crrej(self,im,crbox=None,nsig=5,display=None,mask=False) :
+        """ Cosmic ray rejection using spatial median filter or lacosmic. 
+
+            If crbox is given as a 2-element list, then a box of this shape is
+            run over the image. At each location, the median in the box is determined.
+            For each pixel in the box, if the value is larger than nsig*uncertainty
+            (where uncertainty is taken from the input.uncertainty.array), the pixel
+            is replaced by the median. If the mask keyword is set to True, then
+            the pixel is also flagged in input.mask
+
+            If crbox='lacosmic', the LA Cosmic routine, as implemented in ccdproc
+            (using astroscrappy) is run on the image. Other keywords are ignored
 
             Parameters
             ----------
             crbox : list, int shape of box to use for median filters, or 'lacosmic'
-            nsig  : threshold for CR rejection if using spatial median filter
+            nsig  : float, default 5, threshold for CR rejection if using spatial median filter
+            mask : bool, default False, set to True to set CR-identified pixels mask to True
             display : None for no display, pyvista TV object to display
         """
 
