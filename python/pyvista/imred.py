@@ -542,7 +542,7 @@ class Reducer() :
             the pixel is also flagged in input.mask
 
             If crbox='lacosmic', the LA Cosmic routine, as implemented in ccdproc
-            (using astroscrappy) is run on the image. Other keywords are ignored
+            (using astroscrappy) is run on the image, with default options. Other keywords are ignored.
 
             Parameters
             ----------
@@ -558,10 +558,11 @@ class Reducer() :
         out=[]
         for i,(im,gain,rn) in enumerate(zip(ims,self.gain,self.rn)) :
             if display is not None : 
+                display.clear()
                 display.tv(im)
             if crbox == 'lacosmic':
                 if self.verbose : print('  zapping CRs with ccdproc.cosmicray_lacosmic')
-                im= ccdproc.cosmicray_lacosmic(im,gain_apply=False,
+                outim= ccdproc.cosmicray_lacosmic(im,gain_apply=False,
                        gain=gain*u.dimensionless_unscaled,readnoise=rn*u.dimensionless_unscaled)
             else :
                 if self.verbose : print('  zapping CRs with filter [{:d},{:d}]...'.format(*crbox))
@@ -571,11 +572,13 @@ class Reducer() :
                     print('WARNING: large rejection box may take a long time to complete!')
                     tmp=input(" Hit c to continue anyway, else quit")
                     if tmp != 'c' : return
-                image.zap(im,crbox,nsig=nsig)
+                outim=copy.deepcopy(im)
+                image.zap(outim,crbox,nsig=nsig)
             if display is not None : 
-                display.tv(im)
-                getinput("  See CR-zapped image and original with - key",display)
-            out.append(im)
+                display.tv(outim)
+                display.tv(im.subtract(outim))
+                getinput("  See CRs and CR-zapped image and original using - key",display)
+            out.append(outim)
         if len(out) == 1 : return out[0]
         else : return out
 
