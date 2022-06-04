@@ -11,22 +11,31 @@ from the display.
 
 It can take as input either a numpy array, an astropy NDData/CCDData or a FITS HDU object (e.g., from
 astropy.io.fits), and will display it in the window. Pixel and value readout
-is provided. Normal matplotlib options/buttons (zoom/pan) are available.
-For FITS input, WCS as well as pixel locations are given, as is the OBJECT
+is provided.  For FITS input, WCS as well as pixel locations are given, as is the OBJECT
 information.  Two plot windows are created for use with some built-in
 functions (row and column plots, radial profiles).
 
-Four images are stored internally, allowing for rapid cycling (blinking)
+While normal matplotlib options/buttons (zoom/pan) are available, the tool
+includes an event handler that by default responds to mouse clicks in the 
+image display section, so it can be very confusing to use the matplotlib 
+tools here. The event handler in the main display window can be toggled
+on/off using the 'z' key, if users prefer to use the matplotlib buttons.
+
+Several keys are defined to do asynchronous interaction with the data in the
+display.  In particular, four images are stored internally, allowing for rapid cycling (blinking)
 between them using the '-' and '+/=' keys.
 
-A method is provided to allow the user to retrieve the location of a keystroke
+A tvmark() method is provided to allow the user to retrieve the location of a keystroke
 event in the window along with the key that was pressed.
 
-Installation
-++++++++++++
+A imexam() method allows for interactive measurement of objects in the image.
 
-The tv module is part of pyvista,  is available at http://github.com/holtzmanjon/pyvista
-To load it:
+tvbox() and tvcirc() allow the user to overlay graphics.
+
+Usage
++++++
+
+The tv module is part of pyvista, and defines a TV object.  To load it:
 
 .. code-block:: python
 
@@ -37,10 +46,7 @@ required for interactive functions that move the cursor. Note that for some vers
 of MacOSX, the controlling application needs to be given permission to access
 the mouse.
 
-Usage
-+++++
-
-A display tool is created when a TV object is instantiated, e.g.
+A display tool is created when a pyvista TV object is instantiated, e.g.
 
 .. code-block:: python
 
@@ -70,6 +76,8 @@ center mouse
   zoom out, centered on cursor
 right mouse    
   pan, center to cursor
+z
+  toggle use of mouse clicks in main display, e.g. if users prefer to use matplotlib button
 r              
   redraw at default zoom
 +/=            
@@ -93,7 +101,7 @@ clear() :
   clears the display
 tvbox(x,y,box=None,size=3,color='m') : 
   displays square of specified size at input position (or pyvista box object) with specified color
-tvvcirc(x,y,rad=3,color='m') : 
+tvcirc(x,y,rad=3,color='m') : 
   displays circle of specified size and color at input position
 tvclear() :  
   clears graphics patches from display
@@ -105,6 +113,3 @@ Module functions
 ++++++++++++++++
 .. automodule:: pyvista.tv
    :members:
-
-
-
