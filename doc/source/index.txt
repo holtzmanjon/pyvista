@@ -22,7 +22,7 @@ is achieved. See the Installation page for how to download and set up.
 
 The name pyvista was adopted because it shares some history and a tiny bit of
 look-and-feel with the VISTA package developed during the 1980s at the
-University of California by Richard Stover, Tod Lauer, Don Terndrup, a
+University of California by Richard Stover, Tod Lauer, Don Terndrup,
 and others. However, the code is completely independent. The original VISTA
 was written in Fortran for a VAX/VMS system.  It was ported to Unix/X11 by Jon Holtzman,
 with X11 display routines largely developed by John Tonry. 
@@ -32,7 +32,7 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
-   installation : how-to install
+   installation 
    tv
    imred
    spectra
