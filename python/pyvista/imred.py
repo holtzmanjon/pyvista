@@ -791,6 +791,8 @@ class Reducer() :
         for im in ims :
             if type(im) is not astropy.nddata.CCDData :
                 data = self.reduce(im, **kwargs)
+            else :
+                data = im
             allcube.append(data)
 
         # if just one frame, put in 2D list anyway so we can use same code, allcube[nframe][nchip]
