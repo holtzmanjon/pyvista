@@ -202,13 +202,63 @@ class Reducer() :
             for box in self.normbox :
                 box.show()
 
+    def reduce(self,num,channel=None,crbox=None,bias=None,dark=None,flat=None,
+               scat=None,badpix=None,solve=False,return_list=False,display=None,trim=False,seeing=2) :
+        """ Reads data from disk, and performs reduction steps as determined from command line parameters
+
+            Parameters
+            ----------
+            id : int or str
+                 Number or string specifying file to read. If a number, the filename will be constructed
+                 based on dir and formstr attributed of Reducer object. Without any additional command-line
+                 arguments, data will be read, overscan subtracted, and uncertainty array populated based
+                 on gain and readout noise in Reducer attributes
+            display : TV object, default=None
+                 if specified, pyvista TV object to display data in as various reduction steps are taken
+            channel : int, default= None
+                 if specified, channel to reduce if instrument is multi-channel (multi-file), otherwise
+                 all channels will be read/reduced
+            bias : CCDData object, default= None
+                 if specified, superbias frame to subtract
+            dark : CCDData object, default= None
+                 if specified, superdark frame to subtract
+            flat : CCDData object, default= None
+                 if specified, superflat frame to divide by
+            crbox : list or str, default=None
+                 if specified, parameter to pass to CR rejection routine, either 2-element list giving
+                 shape of box for median filter, or 'lacosmic'
+            scat :
+            badpix :
+            trim :
+            solve :
+            seeing :
+
+        """
+        im=self.rd(num,dark=dark,channel=channel)
+        self.overscan(im,display=display)
+        im=self.bias(im,superbias=bias)
+        im=self.dark(im,superdark=dark)
+        self.scatter(im,scat=scat,display=display)
+        im=self.flat(im,superflat=flat,display=display)
+        self.badpix_fix(im,val=badpix)
+        if trim and display is not None: display.tvclear()
+        if trim : im=self.trim(im,trimimage=trim)
+        im=self.crrej(im,crbox=crbox,display=display)
+        if solve : 
+            im=self.platesolve(im,display=display,scale=self.scale,seeing=seeing)
+        if return_list and type(im) is not list : im=[im]
+        return im
+
     def rd(self,num, ext=0, dark=None, channel=None) :
         """ Read an image
 
-        Args :
+        Parameters
+        ----------
             num (str or int) : name or number of image to read
-        Returns :
-            image (CCDData ) : CCDData object
+
+        Returns 
+        -------
+            image (CCDData ) : CCDData object, but noise will be incorrect without overscan subtraction
         """
         out=[]
         # loop over different channels (if any)
@@ -731,25 +781,6 @@ class Reducer() :
         else : ims = im
         for i, im in enumerate(ims) :
             display.tv(im)
-
-    def reduce(self,num,channel=None,crbox=None,bias=None,dark=None,flat=None,
-               scat=None,badpix=None,solve=False,return_list=False,display=None,trim=False,seeing=2) :
-        """ Full reduction
-        """
-        im=self.rd(num,dark=dark,channel=channel)
-        self.overscan(im,display=display)
-        im=self.bias(im,superbias=bias)
-        im=self.dark(im,superdark=dark)
-        self.scatter(im,scat=scat,display=display)
-        im=self.flat(im,superflat=flat,display=display)
-        self.badpix_fix(im,val=badpix)
-        if trim and display is not None: display.tvclear()
-        if trim : im=self.trim(im,trimimage=trim)
-        im=self.crrej(im,crbox=crbox,display=display)
-        if solve : 
-            im=self.platesolve(im,display=display,scale=self.scale,seeing=seeing)
-        if return_list and type(im) is not list : im=[im]
-        return im
 
     def write(self,im,name,overwrite=True,png=False,wave=None) :
         """ write out image, deal with multiple channels 
