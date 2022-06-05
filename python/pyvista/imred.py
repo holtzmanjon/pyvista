@@ -945,6 +945,30 @@ class Reducer() :
                type='median',sigreject=5,spec=False,width=101) :
         """ Driver for superflat combination 
              (with superbias if specified, normalize to normbox
+
+            Parameters
+            ----------
+            ims : list of frames to combine
+            display : TV object, default= None
+                      if specified, displays flat and individual frames/flat for inspection
+            bias : CCDData object, default=None
+                  if specified, superbias to subtract before combining flats
+            dark : CCDData object, default=None
+                  if specified, superdark to subtract before combining flats
+            scat : 
+            type : str, default='median'
+                  combine method
+            sigreject : float
+                  rejection threshold for combine type='reject'
+            spec : bool, default=False
+                  if True, creates "spectral" flat by taking out wavelength
+                  shape
+            width : int, default=101
+                  window width for removing spectral shape for spec=True
+
+        Returns
+        -------
+            CCDData object with combined flat
         """
         flat= self.combine(ims,bias=bias,dark=dark,normalize=True,
                  scat=scat,display=display,type=type,sigreject=sigreject)
@@ -967,6 +991,7 @@ class Reducer() :
             else :
                 tmp = copy.deepcopy(flat)
             nrows=tmp.data.shape[0]
+            # limit region for spectral shape to high S/N area (slit width)
             snmed = np.nanmedian(tmp.data/tmp.uncertainty.array,axis=1)
             gdrows = np.where(snmed>50)[0]
             med = convolve(np.nanmedian(tmp[gdrows,:],axis=0),
