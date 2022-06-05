@@ -116,7 +116,7 @@ def visit(planfile,tracefile=None,clobber=False,db=None, schema='obs2',maxobj=No
                 seeing = 0.
                 if gcam != None :
                     mjd_obs = Time(out.header['DATE-OBS']).mjd
-                    gnearest = np.argmin(np.abs(gcam['mjd']-dateobs))
+                    gnearest = np.argmin(np.abs(gcam['mjd']-mjd_obs))
                     gd = np.where(gcam['nstars'][gnearest]>0)[0]
                     seeing = np.median(gcam['fwhm'][gnearest][gd])
                 elif plates != None :
