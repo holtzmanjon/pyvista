@@ -704,7 +704,7 @@ class WaveCal() :
             sig[i,w2:w1] += np.sqrt(
                             np.interp(wav[w2:w1],w[i,sort],hd.uncertainty.array[i,sort]**2))
 
-        return CCDData(out,StdDevUncertainty(sig),unit='adu'))
+        return CCDData(out,StdDevUncertainty(sig),unit='adu')
 
 class Trace() :
     """ Class for spectral traces
@@ -977,7 +977,8 @@ class Trace() :
 
         if plot :
             plt.figure()
-            plt.plot(self.rows[0]:self.rows[1],np.median(im.data[self.rows[0]:self.rows[1],
+            plt.plot(np.arange(self.rows[0],self.rows[1]),
+                     np.median(im.data[self.rows[0]:self.rows[1],
                                        self.sc0-width:self.sc0+width],axis=1)-back)
             plt.xlabel('Spatial pixel')
             plt.ylabel('Median flux')
