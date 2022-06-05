@@ -157,10 +157,8 @@ class WaveCal() :
 
             Parameters 
             ----------
-            file : str
-              name of output file to write to
-            append : bool
-              append to existing file (untested)
+            file : str, name of output file to write to, FITS format
+            append : bool, append to existing file (untested)
         """
         tab=Table()
         for tag in ['type','degree','ydegree','waves','waves_order',
@@ -688,14 +686,13 @@ class WaveCal() :
 
         Parameters
         ----------
-        hd : array or CCDData
-          input image to resample
-        wav : array_like
-          new wavelengths to interpolate to
+        hd : CCDData, input image to resample
+        wav : array_like, new wavelengths to interpolate to
 
         """
 
         out=np.zeros([hd.data.shape[0],len(wav)])
+        sig=np.zeros_like(out)
         w=self.wave(image=hd.data.shape)
         for i in range(len(out)) :
             sort=np.argsort(w[i,:])
@@ -704,8 +701,10 @@ class WaveCal() :
             w2=np.abs(wav-wmin).argmin()
             w1=np.abs(wav-wmax).argmin()
             out[i,w2:w1] += np.interp(wav[w2:w1],w[i,sort],hd.data[i,sort])
+            sig[i,w2:w1] += np.sqrt(
+                            np.interp(wav[w2:w1],w[i,sort],hd.uncertainty.array[i,sort]**2))
 
-        return out
+        return CCDData(out,StdDevUncertainty(sig),unit='adu'))
 
 class Trace() :
     """ Class for spectral traces
