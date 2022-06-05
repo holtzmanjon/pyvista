@@ -9,6 +9,7 @@ from ccdproc import CCDData
 import multiprocessing as mp
 from astropy.table import Table
 from astropy.io import fits
+from astropy.time import Time
 
 def visit(planfile,tracefile=None,clobber=False,db=None, schema='obs2',maxobj=None) :
     """ Reduce BOSS visit

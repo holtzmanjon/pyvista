@@ -3,7 +3,7 @@ IMRED module
 
 imred is a module that implements some classes/tools for basic data reduction:
 overscan subraction, bias subtraction, dark subtraction, and flat fielding.
-An object class is included for basic combination of images that
+Routines are included for basic combination of images that
 can be used to make basic calibration products.  Data are read and
 processed using CCDData/NDData structures, which carry along both the image
 data and associated uncertainty and mask arrays.
@@ -15,8 +15,8 @@ for constructing calibration frames
 
 Reducer
 =======
-Given information about instrument detector, reads and reduces
-images. A class is instantiated for a given instrument. Necesseary information
+Given information about instrument detector, a reducer object reads and reduces
+images. A class is instantiated for a given instrument. Necessary information
 can be specified on instantiation, but generally is loaded given an input
 instrument name, e.g., ARCTIC, ARCES, DIS, TSPEC. In this case, configuration
 is read from a configuration file called {inst}_config.yml; pyvista contains
@@ -56,7 +56,8 @@ with the dark= keyword, and flat fielding if a flat frame is passed
 with the flat= keyword; see below for construction of calibration
 frames. There is also the possibility of scattered
 light subtraction (e.g., for a multi-order spectrograph) if a scattered
-light parameter has been set, and bad pixel masking if
+light parameter has been set, cosmic ray rejection if a cosmic
+ray parameter is passed with crbox=, and bad pixel masking if
 a bad pixel mask has been set.
 
 Calibration frames can be created using the mkbias,
@@ -68,7 +69,7 @@ in the calibration products can be assessed, and propagated.
 
 Processing can be done with associated description and
 image display of the steps being taken. If the verbose attribute
-is set to True, more text is display. If the display attribute is
+is set to True, more text is displayed. If the display attribute is
 set to a pyvista TV object, then frames will be displayed as they
 are processed, and user input is requested to proceed from step
 to step, to allow the user to look at the frames.

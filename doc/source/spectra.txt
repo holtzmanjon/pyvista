@@ -3,19 +3,14 @@ SPECTRA module
 
 spectra is a module that implements some classes/tools for handling
 basic spectral data reduction: extraction of spectra and wavelength calibration.
-The routines allow fo both longslit data, echelle data, and a
+The routines allow for both longslit data, multiobject data, echelle data, and a
 combination (multiple orders with longslit, or multiple slitlets).
 
 Data are read and processed using NDData structures, which carry along both 
 the image data and an associated uncertainty array.
 
-The routines are implemented with two basic classes:
-
-spectra.Trace :
-
-spectra.WaveCal : 
-
-In more detail:
+The routines are implemented with two basic classes, the Trace object and
+the WaveCal object.  In more detail:
 
 Trace 
 =====
@@ -49,6 +44,9 @@ Attributes
 
 
 Methods:
+  - find
+  - findpeak
+  - retrace
   - trace
   - extract
   - extract2d
@@ -102,7 +100,7 @@ An example, given an extracted spectrum spec, might proceed as follows:
    wav=spectra.WaveCal(files='KOSMOS/KOSMOS_blue_waves.fits')
    wav.identify(spec,plot=True)
    # if you removed a bunch of lines, especally at short and long wavelength ends,
-   #   you can try to recover them using your reviseed solution:
+   #   you can try to recover them using your revised solution:
    wav.weights[:] = 1.
    wav.identify(spec,plot=True,lags=range(-50,50))
 

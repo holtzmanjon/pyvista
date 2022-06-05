@@ -945,8 +945,22 @@ class Trace() :
             srows.append(self.model[row](self.sc0)+self.pix0)
         self.trace(hd,srows,plot=plot,thresh=thresh)
     
-    def findpeak(self,hd,width=100,thresh=500,plot=False) :
-        """ Find peaks for tracing
+    def findpeak(self,hd,width=100,thresh=5,plot=False) :
+        """ Find peaks in spatial profile for subsequent tracing
+
+            Parameters
+            ----------
+            hd : CCDData object
+                 Input image
+            width : int, default=100
+                 width of window around central wavelength to median to give spatial profile
+            thresh : float, default = 5
+                 threshold for finding objects, as a factor to be multiplied by the median uncertainty
+
+            Returns
+            -------
+            list of peak locations
+
         """
         if self.transpose :
             im = image.transpose(hd)
@@ -958,14 +972,18 @@ class Trace() :
 
         back =np.median(im.data[self.rows[0]:self.rows[1],
                                 self.sc0-width:self.sc0+width])
+        sig =np.median(im.uncertainty.array[self.rows[0]:self.rows[1],
+                                self.sc0-width:self.sc0+width])
 
         if plot :
             plt.figure()
-            plt.plot(np.median(im.data[self.rows[0]:self.rows[1],
+            plt.plot(self.rows[0]:self.rows[1],np.median(im.data[self.rows[0]:self.rows[1],
                                        self.sc0-width:self.sc0+width],axis=1)-back)
+            plt.xlabel('Spatial pixel')
+            plt.ylabel('Median flux')
         peaks,fiber = findpeak(np.median(im.data[self.rows[0]:self.rows[1],
-                                           self.sc0-width:self.sc0+width],axis=1)-back,
-                         thresh=thresh)
+                                         self.sc0-width:self.sc0+width],axis=1)-back,
+                         thresh=thresh*sig)
         return peaks+self.rows[0], fiber
 
  
