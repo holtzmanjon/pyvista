@@ -5,6 +5,7 @@ import glob
 import numpy as np
 import pdb
 import os
+import esutil
 from pydl.pydlutils.yanny import yanny
 from tools import plots, match
 import matplotlib
@@ -37,6 +38,61 @@ def qlhtml(mjd5,clobber=False) :
 
     fp.write('</TABLE></BODY></HTML>\n')
     fp.close()
+
+def getconfig(config_id=None,plugid=None,specid=1) :
+    """ read confSummary or plPlugMap file, return data
+    """
+    if config_id is not None :
+        plug,header=config(config_id,specid=specid,useconfF=True,useparent=False)
+        sky=np.where(plug['category'] == b'sky_boss')[0]
+        stan=np.where(np.char.find(plug['category'].astype(str),'standard') >= 0)[0]
+        if specid == 1 :
+            # substitude GAIA transformed mags for gri for gaia_g < 15
+            x = plug['bp_mag']-plug['rp_mag']
+            x2 = x * x
+            x3 = x * x * x
+            gaia_G = plug['gaia_g_mag']
+            j = np.where(gaia_G < 15)[0]
+            plug['mag'][j,1] = -1 * (0.13518 - 0.46245 * x[j] - 0.25171 * x2[j] + 0.021349 * x3[j]) + gaia_G[j]
+            plug['mag'][j,2] = -1 * (-0.12879 + 0.24662 * x[j] - 0.027464 * x2[j] - 0.049465 * x3[j]) + gaia_G[j]
+            plug['mag'][j,3] = -1 * (-0.29676 + 0.64728 * x[j] - 0.10141 * x2[j]) + gaia_G[j]
+    elif plugid is not None :
+        plug,header=config(os.environ['MAPPER_DATA_N']+'/'+plugid.split('-')[1]+'/plPlugMapM-'+plugid+'.par',specid=specid,struct='PLUGMAPOBJ')
+        sky=np.where(plug['objType'] == b'SKY')[0]
+        stan=np.where(np.char.find(plug['objType'].astype(str),'STD') >= 0)[0]
+        plug=Table(plug)
+        plug['h_mag']=np.nan
+
+        # get plateHoles file
+        plate=int(plugid.split('-')[0])
+        # substitute H mag from plateHoles
+        holes=yanny('{:s}/plates/{:04d}XX/{:06d}/plateHolesSorted-{:06d}.par'.format(
+                  os.environ['PLATELIST_DIR'],plate//100,plate,plate))
+        h=esutil.htm.HTM()
+        m1,m2,rad=h.match(plug['ra'],plug['dec'],
+                  holes['STRUCT1']['target_ra'],holes['STRUCT1']['target_dec'],
+                  0.1/3600.,maxmatch=500)
+        if specid == 1 :
+            if int(header['plateId']) >= 15000 :
+                corr = fits.open(
+                         os.environ['IDLSPEC2D_DIR']+'/catfiles/Corrected_values_plate{:s}_design{:s}.fits'.format(
+                         header['plateId'],header['designid']))[1].data
+                h1,h2,rad=h.match(plug['ra'][m1],plug['dec'][m1], corr['RA'],corr['DEC'],
+                          0.1/3600.,maxmatch=500)
+                bd=np.where(holes['STRUCT1']['catalogid'][m2[h1]] == np.array(corr['Original_CatalogID'],dtype=np.int64)[h2])[0]
+                j=np.where(corr[h2[bd]]['Mag_Change'])[0]
+                print(plugid,len(bd),len(j))
+                plug['mag'][m1[h1[bd]],1] = corr['gmag'][h2[bd]]
+                plug['mag'][m1[h1[bd]],2] = corr['rmag'][h2[bd]]
+                plug['mag'][m1[h1[bd]],3] = corr['imag'][h2[bd]]
+                plug['mag'][m1[h1[bd]],4] = corr['zmag'][h2[bd]]
+        elif specid == 2 :
+            plug['h_mag'][m1] = holes['STRUCT1']['tmass_h'][m2]
+    else :
+        raise ValueError('either config_id or plugid needs to be set')
+
+    return np.array(plug),header,sky,stan
+
 
 def config(cid,specid=2,struct='FIBERMAP',useparent=True,useconfF=False) :
     """ Get FIBERMAP structure from configuration file for specified instrument
@@ -274,7 +330,7 @@ def db_spec(plug, header, confSummary = True) :
                     'alpha','beta','mag_g','mag_r','mag_i','bp_mag','rp_mag' ] :
                 tab_spec[key] = np.nan
         tab_spec['category'] = plug['objType'].astype(str)
-        tab_spec['hmag'] = plug['mag'][:,1]
+        tab_spec['hmag'] = plug['h_mag']
         tab_spec['ra'] = plug['ra']
         tab_spec['dec'] = plug['dec']
         tab_spec['xfocal'] = plug['xFocal']
