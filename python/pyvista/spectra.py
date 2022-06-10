@@ -1167,6 +1167,20 @@ class Trace() :
         if len(out) == 1 : return out[0]
         else : return out
 
+class FluxCal() :
+    """ Class for flux calibration
+
+    Parameters
+    ----------
+
+    Attributes
+    ----------
+    """
+
+    def __init__() :
+
+    def extinct() :
+
 def gfit(data,x0,rad=10,sig=3,back=None) :
     """ Fit 1D gaussian
     """ 
