@@ -78,7 +78,7 @@ def vert(data) :
 
     return data
 
-def visit(planfile,tracefile=None,clobber=False,db=None,schema='obs2',maxobj=None) :
+def visit(planfile,tracefile=None,clobber=False,db=None,schema='obs2',maxobj=None,threads=16) :
     """ Reduce an APOGEE visit
  
         Driver to do 3 chips in parallel
@@ -89,124 +89,26 @@ def visit(planfile,tracefile=None,clobber=False,db=None,schema='obs2',maxobj=Non
     chan=['a','b','c' ]
     procs=[]
     for channel in [1] :
-        kw={'planfile' : planfile, 'channel' : channel, 'clobber' : clobber, 'maxobj' : maxobj}
-        procs.append(mp.Process(target=do_visit,kwargs=kw))
+        kw={'planfile' : planfile, 'channel' : channel, 'clobber' : clobber, 'maxobj' : maxobj, 'threads' : threads}
+        procs.append(mp.Process(target=visit_channel,kwargs=kw))
     for proc in procs : proc.start()
     for proc in procs : proc.join()
-
-    plan=yaml.load(open(planfile,'r'), Loader=yaml.BaseLoader)
-
-    fig,ax=plots.multi(1,1)
-    allmags=[]
-    allinst=[]
-
-    # read reduced files and configuration/plugmap file
-    for ichan,channel in enumerate([1]) :
-      mags=[]
-      inst=[]
-      for obj in plan['APEXP'][0:maxobj] :
-        exp_no = int(obj['name'])
-        if obj['flavor']  != 'object' : continue
-        name='ap1D-{:s}-{:08d}.fits'.format(chan[channel],exp_no)
-        out=CCDData.read(name)
-        print(name,out.header['NREAD'])
-        mapname=plan['plugmap']
-        if np.char.find(mapname,'conf') >=0 :
-            conf= True
-            config_id = out.header['CONFIGID']
-            plug,header=sdss.config(config_id,specid=2,useconfF=True)
-            hmag=plug['h_mag']
-        else :
-            conf= False
-            plug,header=sdss.config(os.environ['MAPPER_DATA_N']+'/'+
-                  mapname.split('-')[1]+'/plPlugMapM-'+mapname+'.par',
-                  specid=2,struct='PLUGMAPOBJ')
-            plate=int(mapname.split('-')[0])
-            # substitute H mag from plateHoles
-            holes=yanny('{:s}/plates/{:04d}XX/{:06d}/plateHolesSorted-{:06d}.par'.format(
-                  os.environ['PLATELIST_DIR'],plate//100,plate,plate))
-            h=esutil.htm.HTM()
-            m1,m2,rad=h.match(plug['ra'],plug['dec'],
-                  holes['STRUCT1']['target_ra'],holes['STRUCT1']['target_dec'],
-                  0.1/3600.,maxmatch=500)
-            hmag=plug['mag'][:,1]
-            hmag[m1]=holes['STRUCT1']['tmass_h'][m2]
-            plug['mag'][:,1] = hmag
-            star = np.where(plug['objType'] != b'SKY')[0]
-            std = np.where(plug['objType'] != b'SPECTROPHOTO_STD')[0]
-
-        # make sure we have objects (could be APOGEE with all BOSS targets)
-        if len(np.where(hmag > 0.)[0]) == 0 : continue
-
-        # match configuration/plugmap file with fiber
-        i1,i2=match.match(300-np.arange(300),plug['fiberId'])
-        mag='H'
-        rad=np.sqrt(plug['xFocal'][i2]**2+plug['yFocal'][i2]**2)
-        plots.plotp(ax,hmag[i2],
-            +2.5*np.log10(np.median(out.data/(out.header['NREAD']-2),axis=1))[i1],
-            color=None, zr=[0,300],xr=[8,15],size=20,label=name,xt=mag,
-            yt='-2.5*log(cnts/read)')
-        mags.append(hmag[i2])
-        spectroflux =np.median(out.data/(out.header['NREAD']-2),axis=1)[i1]
-        instmag = -2.5*np.log10(np.median(out.data/(out.header['NREAD']-2),axis=1))[i1]
-        zeronorm = hmag[i2]-instmag
-        bd = np.where(~np.isfinite(zeronorm))[0]
-        zeronorm[bd] = np.nan
-        inst.append(instmag)
-
-        if db is not None :
-            cam = chan[channel]
-            tab_exp = sdss.db_exp(exp_no,cam,out.header,config=header)
-            gd = np.where(hmag[i2] > 0)[0]
-            perc=np.nanpercentile(zeronorm[gd],[50,25,75])
-            tab_exp['zeronorm' ] = [perc]
-      
-            tab_spec=sdss.db_spec(plug[i2],header,confSummary=conf)
-            tab_spec['spectroflux'] = spectroflux
-            tab_spec['zeronorm'] = zeronorm
-
-            mjd = int(plan['mjd'])
-            try : field = int(plan['field_id'])
-            except : field = int(plan['plateid'])
-            tab_visit=sdss.db_visit(mjd,field)
-
-            db.ingest(schema+'.visit',tab_visit,onconflict='update')
-            out=db.query(
-                sql=('SELECT visit_pk from {:s}.visit where mjd = {:d} and field_id = {:d}')
-                     .format(schema,mjd,field))
-            tab_exp['visit_pk' ] = [out['visit_pk'][0]]
-            try : db.ingest(schema+'.exposure',tab_exp,onconflict='update')
-            except : pdb.set_trace()
-
-            out=db.query(
-                sql=("SELECT exp_pk,config_id from {:s}.exposure where exp_no = {:d} and camera = '{:s}'")
-                     .format(schema,exp_no,cam))
-            tab_spec['exp_pk'] = out['exp_pk'][0]
-            db.ingest(schema+'.spectrum',tab_spec,onconflict='update')
- 
-      ax.grid()
-      ax.legend()
-      allmags.append(mags)
-      allinst.append(inst)
-    fig.suptitle(os.path.basename(planfile))
-    fig.tight_layout()
-    fig.savefig(os.path.basename(planfile).replace('.yaml','.png'))
-
-    return allmags,allinst
     
-def do_visit(planfile=None,channel=0,clobber=False,nfibers=300,threads=24,maxobj=None) :
+def visit_channel(planfile=None,channel=0,clobber=False,nfibers=300,threads=24,maxobj=None,display=None) :
     """ Read raw image (eventually, 2D calibration) and extract,
         using specified flat/trace
     """
     chan=['a','b','c' ]
     plan=yaml.load(open(planfile,'r'), Loader=yaml.BaseLoader)
+    dir=os.path.dirname(planfile)+'/'
+
     # are all files already created?
     done =True
     for obj in plan['APEXP'][0:maxobj] :
         exp_no = int(obj['name'])
         if obj['flavor']  != 'object' : continue
         name='ap1D-{:s}-{:08d}.fits'.format(chan[channel],exp_no)
-        if not os.path.exists(name) or clobber :  done = False
+        if not os.path.exists(dir+name) or clobber :  done = False
     if done :  return
 
     # set up Reducer
@@ -218,13 +120,13 @@ def do_visit(planfile=None,channel=0,clobber=False,nfibers=300,threads=24,maxobj
         try :
            dark=fits.open('{:s}/{:s}/cal/{:s}/darkcorr/{:s}'.format(os.environ['APOGEE_REDUX'],plan['apogee_drp_ver'],plan['instrument'],name))[1].data
         except :
-           dark=fits.open(os.environ['APOGEE_REDUX']+'/cal/darkcorr/{:s}'.format(name))[1].data
+           dark=fits.open('/uufs/chpc.utah.edu/common/home/sdss/dr17/apogee/spectro/redux/dr17/cal/darkcorr/{:s}'.format(name))[1].data
     else : dark = None
 
     # get Trace/PSF if needed
     name='apTrace-{:s}-{:08d}.fits'.format(chan[channel],int(plan['psfid']))
-    if os.path.exists(name) and not clobber : 
-        trace=spectra.Trace('./'+name)
+    if os.path.exists(dir+name) and not clobber : 
+        trace=spectra.Trace(dir+name)
     else :
         flat=red.reduce(int(plan['psfid']),channel=channel,dark=dark)
         trace=spectra.Trace(transpose=red.transpose,rad=2,lags=np.arange(-3,4))
@@ -234,28 +136,70 @@ def do_visit(planfile=None,channel=0,clobber=False,nfibers=300,threads=24,maxobj
         peaks,fiber=spectra.findpeak(ff,diff=10,bundle=10000,thresh=thresh)
         print('found {:d} peaks'.format(len(peaks)))
         trace.trace(flat,peaks[0:nfibers],index=fiber[0:nfibers],skip=4)
-        trace.write(name)
+        trace.write(dir+name)
 
     # now reduce and extract flux
     name='ap1D-{:s}-{:08d}.fits'.format(chan[channel],int(plan['fluxid']))
     print('flux: ', name)
-    if os.path.exists(name) and not clobber : 
-        flux=CCDData.read(name)
+    if os.path.exists(dir+name) and not clobber : 
+        flux=CCDData.read(dir+name)
     else :
         im=red.reduce(int(plan['fluxid']),channel=channel,dark=dark)
         flux=trace.extract(im,threads=threads,nout=300)
-        flux.write(name,overwrite=True)
+        flux.write(dir+name,overwrite=True)
+    f=np.median(flux.data[:,500:1500],axis=1)
+    f/=np.median(f)
+    np.savetxt(dir+name.replace('.fits','.txt'),f)
+    fim=np.tile(f,(2048,1)).T
+
+    # wavelength calibration
+#    chan = ['a','b','c']
+#    name='apWave-{:s}-{:08d}.fits'.format(chan[channel],int(plan['waveid']))
+#    if os.path.exists(dir+name) and not clobber :
+#        wavs=[]
+#        rows=[]
+#        wfits=fits.open(dir+name)
+#        for w in wfits[1:] :
+#            wav= spectra.WaveCal(w.data)
+#            wavs.append(wav)
+#            rows.append(wav.index)
+#    else :
+#        im=red.reduce(int(plan['waveid']),channel=channel)
+#        arcec=trace.extract(im,threads=threads,nout=500,plot=display)
+#        wav=spectra.WaveCal('APOGEE/APOGEE_{:s}_waves.fits'.format(chan[channel]))
+#        wavs=[]
+#        rows=[]
+#        for irow in range(150,300) :
+#            if irow in trace.index :
+#                wav.identify(arcec[irow],plot=None,thresh=5,rad=5)
+#                wavs.append(copy.deepcopy(wav))
+#                rows.append(irow)
+#
+    #    wav=spectra.WaveCal('APOGEE/APOGEE_{:s}_waves.fits'.format(chan[channel]))
+    #    for irow in range(149,-1,-1) :
+    #        if irow in trace.index :
+    #            wav.identify(arcec[irow],plot=None,thresh=5)
+    #            wavs.append(copy.deepcopy(wav))
+    #            rows.append(irow)
+    #    wavs[0].index = rows[0]
+    #    wavs[0].write(dir+name)
+    #    for wav,row in zip(wavs[1:],rows[1:]) :
+    #        wav.index = row
+    #        wav.write(dir+name,append=True)
+    #rows = np.array(rows)
 
     # now reduce and extract object
     for obj in plan['APEXP'][0:maxobj] :
         exp_no = int(obj['name'])
         if obj['flavor']  != 'object' : continue
         name='ap1D-{:s}-{:08d}.fits'.format(chan[channel],exp_no)
-        if os.path.exists(name) and not clobber : 
-            out=CCDData.read(name)
+        if os.path.exists(dir+name) and not clobber : 
+            out=CCDData.read(dir+name)
         else :
-            im=red.reduce(exp_no,channel=channel,dark=dark)
-            out=trace.extract(im,threads=threads,nout=300)
-            out.write(name,overwrite=True)
+            im=red.reduce(exp_no,channel=channel,dark=dark,display=display)
+            out=trace.extract(im,threads=threads,nout=300,display=display)
+            out.data /= fim
+            out.uncertainty.array /= fim
+            out.write(dir+name,overwrite=True)
 
     return out
