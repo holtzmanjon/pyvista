@@ -164,10 +164,8 @@ class WaveCal() :
 
             Parameters 
             ----------
-            file : str
-              name of output file to write to
-            append : bool
-              append to existing file (untested)
+            file : str, name of output file to write to, FITS format
+            append : bool, append to existing file (untested)
         """
         tab=Table()
         for tag in ['type','degree','ydegree','waves','waves_order',
@@ -695,14 +693,13 @@ class WaveCal() :
 
         Parameters
         ----------
-        hd : array or CCDData
-          input image to resample
-        wav : array_like
-          new wavelengths to interpolate to
+        hd : CCDData, input image to resample
+        wav : array_like, new wavelengths to interpolate to
 
         """
 
         out=np.zeros([hd.data.shape[0],len(wav)])
+        sig=np.zeros_like(out)
         w=self.wave(image=hd.data.shape)
         for i in range(len(out)) :
             sort=np.argsort(w[i,:])
@@ -711,8 +708,10 @@ class WaveCal() :
             w2=np.abs(wav-wmin).argmin()
             w1=np.abs(wav-wmax).argmin()
             out[i,w2:w1] += np.interp(wav[w2:w1],w[i,sort],hd.data[i,sort])
+            sig[i,w2:w1] += np.sqrt(
+                            np.interp(wav[w2:w1],w[i,sort],hd.uncertainty.array[i,sort]**2))
 
-        return out
+        return CCDData(out,StdDevUncertainty(sig),unit='adu')
 
 class Trace() :
     """ Class for spectral traces
@@ -953,8 +952,22 @@ class Trace() :
             srows.append(self.model[row](self.sc0)+self.pix0)
         self.trace(hd,srows,plot=plot,thresh=thresh)
     
-    def findpeak(self,hd,width=100,thresh=500,plot=False) :
-        """ Find peaks for tracing
+    def findpeak(self,hd,width=100,thresh=5,plot=False) :
+        """ Find peaks in spatial profile for subsequent tracing
+
+            Parameters
+            ----------
+            hd : CCDData object
+                 Input image
+            width : int, default=100
+                 width of window around central wavelength to median to give spatial profile
+            thresh : float, default = 5
+                 threshold for finding objects, as a factor to be multiplied by the median uncertainty
+
+            Returns
+            -------
+            list of peak locations
+
         """
         if self.transpose :
             im = image.transpose(hd)
@@ -966,14 +979,19 @@ class Trace() :
 
         back =np.median(im.data[self.rows[0]:self.rows[1],
                                 self.sc0-width:self.sc0+width])
+        sig =np.median(im.uncertainty.array[self.rows[0]:self.rows[1],
+                                self.sc0-width:self.sc0+width])
 
         if plot :
             plt.figure()
-            plt.plot(np.median(im.data[self.rows[0]:self.rows[1],
+            plt.plot(np.arange(self.rows[0],self.rows[1]),
+                     np.median(im.data[self.rows[0]:self.rows[1],
                                        self.sc0-width:self.sc0+width],axis=1)-back)
+            plt.xlabel('Spatial pixel')
+            plt.ylabel('Median flux')
         peaks,fiber = findpeak(np.median(im.data[self.rows[0]:self.rows[1],
-                                           self.sc0-width:self.sc0+width],axis=1)-back,
-                         thresh=thresh)
+                                         self.sc0-width:self.sc0+width],axis=1)-back,
+                         thresh=thresh*sig)
         return peaks+self.rows[0], fiber
 
  
