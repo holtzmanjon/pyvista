@@ -10,6 +10,7 @@ import scipy.signal
 import scipy.interpolate
 from scipy.optimize import curve_fit
 import numpy as np
+import astropy
 from astropy.modeling import models, fitting
 from astropy.nddata import CCDData, StdDevUncertainty
 from astropy.io import ascii, fits
@@ -124,16 +125,21 @@ class WaveCal() :
     """
 
     def __init__ (self,file=None, type='chebyshev',degree=2,ydegree=2,
-                  pix0=0) :
+                  pix0=0,index=0) :
         if file is not None :
-            if str(file)[0] == '.' or str(file)[0] == '/' :
+            if isinstance(file,astropy.io.fits.fitsrec.FITS_rec) :
+                tab=Table(file)
+            elif str(file)[0] == '.' or str(file)[0] == '/' :
                 tab=Table.read(file)
             else :
                 tab=Table.read(files(pyvista.data).joinpath(file))
             for tag in ['type','degree','ydegree','waves',
-                        'waves_order','orders',
+                        'waves_order','orders','index',
                         'pix0','pix','y','spectrum','weights'] :
-                setattr(self,tag,tab[tag][0])
+                if tag in tab.keys() :
+                    setattr(self,tag,tab[tag][0])
+                else :
+                    setattr(self,tag,None)
             self.orders=np.atleast_1d(self.orders)
             # make the initial models from the saved data
             self.model = None
@@ -151,6 +157,7 @@ class WaveCal() :
             self.ax = None
             self.spectrum = None
             self.orders = [1]
+            self.index = None
 
     def write(self,file,append=False) :
         """ Save object to file
@@ -164,7 +171,7 @@ class WaveCal() :
         """
         tab=Table()
         for tag in ['type','degree','ydegree','waves','waves_order',
-                    'orders','pix0','pix','y','weights','spectrum'] :
+                    'orders','index','pix0','pix','y','weights','spectrum'] :
             tab[tag] = [getattr(self,tag)]
         if append :
             tab.write(file,append=True)
@@ -244,7 +251,6 @@ class WaveCal() :
             degree : int, optional
               degree of polynomial in wavelength, else as previously set in object
         """
-        print("doing wavelength fit")
         # set up fitter and model
         twod='2D' in self.type
         fitter=fitting.LinearLSQFitter()
@@ -302,7 +308,7 @@ class WaveCal() :
                              self.waves[irow]*self.waves_order[irow],
                              weights=self.weights[irow])
             diff=self.waves-self.wave(pixels=[self.pix,self.y])
-            print('  rms: {:8.3f} Angstroms'.format(diff[irow].std()))
+            print('  rms: {:8.3f} Angstroms ({:d} lines)'.format(diff[irow].std(),len(irow)))
             if self.ax is not None :
                 # iterate allowing for interactive removal of points
                 done = False
@@ -433,13 +439,27 @@ class WaveCal() :
         # get initial reference wavelengths if not given
         if wav is None :
             pix=np.arange(sz[-1])
-            if self.spectrum is not None :
+            if inter :
+                f,a=plots.multi(1,1)
+                a.plot(spectrum.data[0,:])
+                for i in range(2) :
+                    print('mark location of known line with m key')
+                    ret=plots.mark(f)
+                    w=input('wavelength of line: ')
+                    if i==0 :
+                        w0=float(w)
+                        pix0=ret[0]
+                    else :
+                        disp = (float(w)-w0)/(ret[0]-pix0)
+                print(w0,pix0,disp)
+                wav=np.atleast_2d(w0+(pix-pix0)*disp)
+            elif self.spectrum is not None :
                 # cross correlate with reference image to get pixel shift
-                print('  cross correlating with reference spectrum using lags: ', lags)
+                if verbose :print('  cross correlating with reference spectrum using lags: ', lags)
                 fitpeak,shift = image.xcorr(self.spectrum,spectrum.data,lags)
                 if shift.ndim == 1 :
                     pixshift=(fitpeak+lags[0])[0]
-                    print('  Derived pixel shift from input wcal: ',fitpeak+lags[0])
+                    if verbose : print('  Derived pixel shift from input wcal: ',fitpeak+lags[0])
                     if display is not None :
                         display.plotax1.cla()
                         display.plotax1.text(0.05,0.95,'spectrum and reference',transform=display.plotax1.transAxes)
@@ -479,20 +499,6 @@ class WaveCal() :
                     self.model = None
                     self.orders = orders
                     print("")
-            elif inter :
-                f,a=plots.multi(1,1)
-                a.plot(spectrum.data[0,:])
-                for i in range(2) :
-                    print('mark location of known line with m key')
-                    ret=plots.mark(f)
-                    w=input('wavelength of line: ')
-                    if i==0 :
-                        w0=float(w)
-                        pix0=ret[0]
-                    else :
-                        disp = (float(w)-w0)/(ret[0]-pix0)
-                print(w0,pix0,disp)
-                wav=np.atleast_2d(w0+(pix-pix0)*disp)
             else :
                 # get dispersion guess from header cards if not given in disp
                 if disp is None: disp=spectrum.header['DISPDW']
@@ -538,7 +544,7 @@ class WaveCal() :
             display.ax.cla()
             display.ax.axis('off')
             display.tv(spectrum.data)
-        if plot is None :
+        if plot is None or plot == False:
             self.ax = None
         else :
             if type(plot) is matplotlib.figure.Figure :
@@ -558,7 +564,7 @@ class WaveCal() :
 
         if plot is not None : ax[0].cla()
         for row in range(0,nrow,nskip) :
-            print('  identifying lines in row: ', row,end='\r')
+            if verbose :print('  identifying lines in row: ', row,end='\r')
             if plot is not None :
                 # next line for pixel plot
                 if pixplot : ax[0].plot(spectrum.data[row,:])
@@ -587,14 +593,15 @@ class WaveCal() :
                     yy = spectrum.data[row,peak-rad:peak+rad+1]
                     try :  
                       while peak != oldpeak and  niter<10:
-                        p0 = [spectrum.data[row,peak],peak,rad,0.]
+                        p0 = [spectrum.data[row,peak],peak,rad/2.354,0.]
                         coeff, var_matrix = curve_fit(gauss, xx, yy, p0=p0)
                         cent = coeff[1]
                         oldpeak = peak
                         peak = int(cent)
                         niter+=1
-                      if niter == 10 : continue
-                    except : continue
+                      #if niter == 10 : continue
+                    except : 
+                        continue
                     if verbose : print(line,peak,*coeff)
                     if display is not None and  isinstance(display,pyvista.tv.TV) :
                         display.ax.scatter(cent,row,marker='o',color='g',s=2)
@@ -652,7 +659,7 @@ class WaveCal() :
         for i in range(np.atleast_2d(hd).shape[0]) :
             sort=np.argsort(w[i,:])
             if usemask : 
-                gd = np.where(~hd.mask[i,sort])
+                gd = np.where(~np.atleast_2d(hd.mask)[i,sort])
                 sort= sort[gd]
             if len(gd[0]) == 0 : continue
             wmin=w[i,sort].min()
