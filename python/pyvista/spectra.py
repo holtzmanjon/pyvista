@@ -1186,7 +1186,41 @@ class FluxCal() :
 
     def __init__() :
 
-    def extinct() :
+    def extinct(self,hd,wav,file='apoextinct.dat') :
+        """ Correct input image for atmospheric extinction
+        """
+        if str(file)[0] == '.' or str(file)[0] == '/' :
+            tab=Table.read(file)
+        else :
+            tab=Table.read(files(pyvista.data).joinpath(file))
+        if 'AIRMASS' in hd.header :
+          x = hd.header['AIRMASS']
+        elif 'SECZ' in hd.header :
+          x = hd.header['SECZ']
+        else :
+          raise ValueError('no AIRMASS or SECZ in header')
+
+        ext = np.interp(wav,tab['wave'],tab['mag'])
+        corr = 10**(-0.4*ext*x)
+        hd.multipy(corr)
+
+    def mkflux(self,hd,wav,file=None ) :
+        """ Derive flux calibration vector from standard star
+        """
+        if str(file)[0] == '.' or str(file)[0] == '/' :
+            tab=Table.read(file)
+        else :
+            tab=Table.read(files(pyvista.data).joinpath(file))
+        for line in tab :
+            w1=tab['wave']-tab['bin']/2.
+            w2=tab['wave']+tab['bin']/2.
+            if w1 > wav[0] and w2 < wav[-1] :
+                j=np.where((wav >= w1) & (wav <= w2) )[0]
+                obs.append(np.mean(hd.data[j]))
+                w.append(line['flux'])
+                true.append(line['flux'])
+        plt.plot(w,obs/true)
+           
 
 def gfit(data,x0,rad=10,sig=3,back=None) :
     """ Fit 1D gaussian
