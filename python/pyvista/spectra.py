@@ -1106,8 +1106,8 @@ class Trace() :
         if len(back) > 0 :
             for bk in back:
                 try :
-                    if len(bk) != 2 or not isinstance(bk[0],int) 
-                    or not isinstance(bk[1],int) :
+                    if (len(bk) != 2 or not isinstance(bk[0],int) 
+                       or not isinstance(bk[1],int) ) :
                         raise ValueError('back must be list of [backlo,backhi] integer pairs')
                 except :
                     raise ValueError('back must be list of [backlo,backhi] integer pairs')
