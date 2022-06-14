@@ -982,9 +982,11 @@ class Trace() :
             hd : CCDData object
                  Input image
             width : int, default=100
-                 width of window around central wavelength to median to give spatial profile
+                 width of window around central wavelength to median 
+                 to give spatial profile
             thresh : float, default = 5
-                 threshold for finding objects, as a factor to be multiplied by the median uncertainty
+                 threshold for finding objects, as a factor to be 
+                 multiplied by the median uncertainty
 
             Returns
             -------
@@ -1008,17 +1010,29 @@ class Trace() :
             plt.figure()
             plt.plot(np.arange(self.rows[0],self.rows[1]),
                      np.median(im.data[self.rows[0]:self.rows[1],
-                                       self.sc0-width:self.sc0+width],axis=1)-back)
+                               self.sc0-width:self.sc0+width],axis=1)-back)
             plt.xlabel('Spatial pixel')
             plt.ylabel('Median flux')
         peaks,fiber = findpeak(np.median(im.data[self.rows[0]:self.rows[1],
-                                         self.sc0-width:self.sc0+width],axis=1)-back,
+                               self.sc0-width:self.sc0+width],axis=1)-back,
                          thresh=thresh*sig)
         return peaks+self.rows[0], fiber
 
  
-    def find(self,hd,lags=None,plot=None,display=None) :
+    def find(self,hd,width=100,lags=None,plot=None,display=None) :
         """ Determine shift from existing trace to input frame
+
+            Parameters
+            ----------
+            hd : CCDData object
+                 Input image
+            width : int, default=100
+                 width of window around central wavelength to median 
+                 to give spatial profile
+            lags : array-like, default=self.lags
+                 range of cross-correlation lags to allow
+            display : pyvista.tv object, default=None
+                 if not None, tv object to display in
         """
         if lags is None : lags = self.lags
         if plot == None and display != None : plot = display
@@ -1028,12 +1042,16 @@ class Trace() :
         else :
             im = copy.deepcopy(hd)
       
+        # get median around central column
+        spec=np.median(im.data[:,self.sc0-width:self.sc0+width],axis=1)
+
         # if we have a window, zero array outside of window
-        spec=im.data[:,self.sc0-50:self.sc0+50].sum(axis=1)
         try:
             spec[:self.rows[0]] = 0.  
             spec[self.rows[1]:] = 0.  
         except: pass
+
+        # cross-correlate with saved spectrum to get shift
         fitpeak,shift = image.xcorr(self.spectrum,spec,lags)
         pixshift=(fitpeak+lags[0])[0]
         if plot is not None :
@@ -1058,9 +1076,25 @@ class Trace() :
         self.pix0=pixshift
         return fitpeak+lags[0]
  
-    def extract(self,im,rad=None,back=[],scat=False,
+    def extract(self,im,rad=None,back=[],
                 display=None,plot=None,medfilt=None,nout=None,threads=0) :
         """ Extract spectrum given trace(s)
+
+            Parameters
+            ----------
+            hd : CCDData object
+                 Input image
+            rad : float, default=self.rad
+                 radius for extraction window
+            back : array-like of array-like
+                 list of two-element lists giving start and end of
+                 background window(s), in units of pixels relative to
+                 trace location
+            nout : integer, default=None
+                 used for multi-object spectra.
+                 If not None, specifies number of rows of output image;
+                 each extracted spectrum will be loaded into indices
+                 loaded into index attribute, with an index for each trace
         """
         if plot == None and display != None : plot = display
         if self.transpose :
@@ -1072,7 +1106,8 @@ class Trace() :
         if len(back) > 0 :
             for bk in back:
                 try :
-                    if len(bk) != 2 or not isinstance(bk[0],int) or not isinstance(bk[1],int) :
+                    if len(bk) != 2 or not isinstance(bk[0],int) 
+                    or not isinstance(bk[1],int) :
                         raise ValueError('back must be list of [backlo,backhi] integer pairs')
                 except :
                     raise ValueError('back must be list of [backlo,backhi] integer pairs')
