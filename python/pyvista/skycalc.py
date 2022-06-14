@@ -84,3 +84,12 @@ def airmass(ra=0., dec=0., obs='apo', date='2019-10-01',name='object',plot=False
 
         plot_airmass(obj,site,time,ax=ax[0])
         plot_parallactic(obj,site,time,ax=ax[1])
+
+def parang(hd,obs='apo',tz='US/Mountain') :
+    site=Observer.at_site(obs,timezone=tz)
+    time=Time(hd.header['DATE-OBS'])
+    obj=FixedTarget(coord=SkyCoord(hd.header['RA']+'h',hd.header['DEC']+'d'))
+    print(time)
+    print(obj)
+    site.parallactic_angle(time,obj).deg
+
