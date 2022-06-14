@@ -1186,11 +1186,12 @@ class FluxCal() :
 
     def __init__(self,degree=3) :
         self.nstars = 0
-        self.fig = plt.figure()
         self.waves = []
+        self.weights = []
         self.obs = []
         self.obscorr = []
         self.true = []
+        self.weights = []
         self.file = []
         self.degree = degree
 
@@ -1226,6 +1227,7 @@ class FluxCal() :
         obscorr=[]
         w=[]
         true=[]
+        weights=[]
         for line in tab :
             w1=line['wave']-line['bin']/2.
             w2=line['wave']+line['bin']/2.
@@ -1235,9 +1237,17 @@ class FluxCal() :
                 obscorr.append(np.mean(extcorr.data[j]))
                 w.append(line['wave'])
                 true.append(line['flux'])
-        self.waves.append(np.array(w))
+                weights.append(1.)
+        w=np.array(w)
+        self.waves.append(w)
         self.obs.append(np.array(obs))
         self.obscorr.append(np.array(obscorr))
+        weights=np.array(weights)
+        bdlines = [[7570,7730], [6850,7000], [6520, 6600]]
+        for line in bdlines :
+            bd=np.where((w>=line[0]) & (w<=line[1]) )[0]
+            weights[bd] = 0.
+        self.weights.append(np.array(weights))
         self.true.append(np.array(true))
         self.file.append(hd.header['FILE'])
         self.nstars += 1
@@ -1245,35 +1255,53 @@ class FluxCal() :
         plt.plot(w,np.log10(np.array(obscorr)/np.array(true)),lw=1,marker='o',
                    markersize=2, label='{:s} {:f}'.format(
                    hd.header['FILE'],hd.header['AIRMASS']))
-        #plt.plot(w,np.log10(np.array(obs)/np.array(true)),lw=1,marker='o',
-        #           markersize=2)
         plt.legend(fontsize='xx-small')
 
-    def mkflux(self) :
+    def mkflux(self,degree=None,inter=False,plot=True) :
+
         if self.nstars < 1 :
             raise ValueError('you must add at least one star with addstar')
+        if degree is not None :
+            self.degree = degree
+
         des=[]
         rhs=[]
-        for istar,(wav,obs,true) in enumerate(
-               zip(self.waves,self.obscorr,self.true)) :
-            vander=np.vander(wav,self.degree+1)    
-            design=np.zeros([len(wav),self.degree+self.nstars-1])
+        if plot : plt.figure()
+        for istar,(wav,obs,true,weight,file) in enumerate(
+               zip(self.waves,self.obscorr,self.true,self.weights,self.file)) :
+            gd=np.where(weight > 0.)[0]
+            vander=np.vander(wav[gd],self.degree+1)    
+            design=np.zeros([len(gd),self.degree+self.nstars-1])
             design[:,0:self.degree]=vander[:,0:self.degree]
             if istar>0 : design[:,self.degree+istar-1] = 1.
             des.append(design)
-            rhs.append(np.log10(np.array(obs)/np.array(true)))
+            rhs.append(np.log10(np.array(obs[gd])/np.array(true[gd])))
+            if plot :
+                line,=plt.plot(wav,np.log10(np.array(obs)/np.array(true)),lw=1)
+                plt.plot(wav[gd],np.log10(np.array(obs[gd])/np.array(true[gd])),
+                        lw=0,marker='o',color=line.get_color(),
+                        markersize=2, label='{:s}'.format(file))
         design=np.vstack(des)
         rhs=np.vstack(rhs).flatten()
         out=np.linalg.solve(np.dot(design.T,design),np.dot(design.T,rhs))
-        for istar,wav in enumerate(self.waves) :
-            if istar>0 : 
-                vec = np.append(out[0:self.degree],out[self.degree+istar-1])
-            else :
-                vec = np.append(out[0:self.degree],0.)
-            plt.plot(wav,np.polyval(vec,wav))
+        self.coeffs = np.append(out[0:self.degree],0.)
+        if plot :
+            plt.gca().set_prop_cycle(None)
+            for istar,wav in enumerate(self.waves) :
+                if istar>0 : 
+                    vec = np.append(out[0:self.degree],out[self.degree+istar-1])
+                else :
+                    vec = np.append(out[0:self.degree],0.)
+                    self.coeffs = vec
+                plt.plot(wav,np.polyval(vec,wav))
+            plt.set_xlabel('Wavelength')
+            plt.set_ylabel('log(obs flux/true flux)')
 
-
-
+    def correct(self,hd,wav) :
+        """ Apply flux correction to input spectrum
+        """
+        extcorr = self.extinct(hd,wav)
+        return hd.divide(10.**np.polyval(self.coeffs,wav))
 
     def refraction(self,h=2000,temp=10,rh=0.25) :
         p0=101325
@@ -1283,7 +1311,6 @@ class FluxCal() :
         R0 = 8.314462618
         pressure = p0 *np.exp(-g*h*M/T0/R0)*10
         ref=erfa.refco(pressure,temp,rh,wav)[0]*206265
-           
 
 def gfit(data,x0,rad=10,sig=3,back=None) :
     """ Fit 1D gaussian
