@@ -708,6 +708,7 @@ class WaveCal() :
 
         out=np.zeros([hd.data.shape[0],len(wav)])
         sig=np.zeros_like(out)
+        mask=np.zeros_like(out,dtype=bool)
         w=self.wave(image=hd.data.shape)
         for i in range(len(out)) :
             sort=np.argsort(w[i,:])
@@ -719,7 +720,7 @@ class WaveCal() :
             sig[i,w2:w1] += np.sqrt(
                             np.interp(wav[w2:w1],w[i,sort],hd.uncertainty.array[i,sort]**2))
 
-        return CCDData(out,StdDevUncertainty(sig),unit='adu')
+        return CCDData(out,StdDevUncertainty(sig),mask,unit='adu')
 
 class Trace() :
     """ Class for spectral traces
@@ -1016,7 +1017,7 @@ class Trace() :
         peaks,fiber = findpeak(np.median(im.data[self.rows[0]:self.rows[1],
                                self.sc0-width:self.sc0+width],axis=1)-back,
                          thresh=thresh*sig)
-        return peaks+self.rows[0], fiber
+        return np.array(peaks)+self.rows[0], fiber
 
  
     def find(self,hd,width=100,lags=None,plot=None,display=None) :
@@ -1323,7 +1324,7 @@ class FluxCal() :
         self.obs.append(np.array(obs))
         self.obscorr.append(np.array(obscorr))
         weights=np.array(weights)
-        bdlines = [[7570,7730], [6850,7000], [6520, 6600]]
+        bdlines = [[7570,7730], [6850,7000], [6520, 6600], [4820,4900], [4300,4380]]
         for line in bdlines :
             bd=np.where((w>=line[0]) & (w<=line[1]) )[0]
             weights[bd] = 0.
