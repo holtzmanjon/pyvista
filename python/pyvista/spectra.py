@@ -1184,15 +1184,23 @@ class FluxCal() :
     ----------
     """
 
-    def __init__() :
+    def __init__(self,degree=3) :
+        self.nstars = 0
+        self.fig = plt.figure()
+        self.waves = []
+        self.obs = []
+        self.obscorr = []
+        self.true = []
+        self.file = []
+        self.degree = degree
 
-    def extinct(self,hd,wav,file='apoextinct.dat') :
+    def extinct(self,hd,wav,file='flux/apo_extinct.dat') :
         """ Correct input image for atmospheric extinction
         """
         if str(file)[0] == '.' or str(file)[0] == '/' :
-            tab=Table.read(file)
+            tab=Table.read(file,format='ascii')
         else :
-            tab=Table.read(files(pyvista.data).joinpath(file))
+            tab=Table.read(files(pyvista.data).joinpath(file),format='ascii')
         if 'AIRMASS' in hd.header :
           x = hd.header['AIRMASS']
         elif 'SECZ' in hd.header :
@@ -1202,24 +1210,79 @@ class FluxCal() :
 
         ext = np.interp(wav,tab['wave'],tab['mag'])
         corr = 10**(-0.4*ext*x)
-        hd.multipy(corr)
+        return hd.divide(corr)
 
-    def mkflux(self,hd,wav,file=None ) :
+    def addstar(self,hd,wav,file=None ) :
         """ Derive flux calibration vector from standard star
         """
         if str(file)[0] == '.' or str(file)[0] == '/' :
-            tab=Table.read(file)
+            tab=Table.read(file,names=['wave','flux','mjy','bin'],format='ascii')
         else :
-            tab=Table.read(files(pyvista.data).joinpath(file))
+            tab=Table.read(files(pyvista.data).joinpath(file),
+                   names=['wave','flux','mjy','bin'],format='ascii')
+
+        extcorr = self.extinct(hd,wav)
+        obs=[]
+        obscorr=[]
+        w=[]
+        true=[]
         for line in tab :
-            w1=tab['wave']-tab['bin']/2.
-            w2=tab['wave']+tab['bin']/2.
-            if w1 > wav[0] and w2 < wav[-1] :
+            w1=line['wave']-line['bin']/2.
+            w2=line['wave']+line['bin']/2.
+            if w1 > wav.min() and w2 < wav.max() :
                 j=np.where((wav >= w1) & (wav <= w2) )[0]
                 obs.append(np.mean(hd.data[j]))
-                w.append(line['flux'])
+                obscorr.append(np.mean(extcorr.data[j]))
+                w.append(line['wave'])
                 true.append(line['flux'])
-        plt.plot(w,obs/true)
+        self.waves.append(np.array(w))
+        self.obs.append(np.array(obs))
+        self.obscorr.append(np.array(obscorr))
+        self.true.append(np.array(true))
+        self.file.append(hd.header['FILE'])
+        self.nstars += 1
+        plt.figure(self.fig)
+        plt.plot(w,np.log10(np.array(obscorr)/np.array(true)),lw=1,marker='o',
+                   markersize=2, label='{:s} {:f}'.format(
+                   hd.header['FILE'],hd.header['AIRMASS']))
+        #plt.plot(w,np.log10(np.array(obs)/np.array(true)),lw=1,marker='o',
+        #           markersize=2)
+        plt.legend(fontsize='xx-small')
+
+    def mkflux(self) :
+        if self.nstars < 1 :
+            raise ValueError('you must add at least one star with addstar')
+        des=[]
+        rhs=[]
+        for istar,(wav,obs,true) in enumerate(
+               zip(self.waves,self.obscorr,self.true)) :
+            vander=np.vander(wav,self.degree+1)    
+            design=np.zeros([len(wav),self.degree+self.nstars-1])
+            design[:,0:self.degree]=vander[:,0:self.degree]
+            if istar>0 : design[:,self.degree+istar-1] = 1.
+            des.append(design)
+            rhs.append(np.log10(np.array(obs)/np.array(true)))
+        design=np.vstack(des)
+        rhs=np.vstack(rhs).flatten()
+        out=np.linalg.solve(np.dot(design.T,design),np.dot(design.T,rhs))
+        for istar,wav in enumerate(self.waves) :
+            if istar>0 : 
+                vec = np.append(out[0:self.degree],out[self.degree+istar-1])
+            else :
+                vec = np.append(out[0:self.degree],0.)
+            plt.plot(wav,np.polyval(vec,wav))
+
+
+
+
+    def refraction(self,h=2000,temp=10,rh=0.25) :
+        p0=101325
+        M = 0.02896968 
+        g = 9.80665
+        T0 = 288.16
+        R0 = 8.314462618
+        pressure = p0 *np.exp(-g*h*M/T0/R0)*10
+        ref=erfa.refco(pressure,temp,rh,wav)[0]*206265
            
 
 def gfit(data,x0,rad=10,sig=3,back=None) :
