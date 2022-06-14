@@ -1,4 +1,5 @@
 import matplotlib
+import glob
 from importlib_resources import files
 import matplotlib.pyplot as plt
 import multiprocessing as mp
@@ -127,6 +128,13 @@ class WaveCal() :
     def __init__ (self,file=None, type='chebyshev',degree=2,ydegree=2,
                   pix0=0,index=0) :
         if file is not None :
+            if file == '?' :
+                out=glob.glob(
+                    str(files(pyvista.data).joinpath('*/*wave*.fits')))
+                print('available predefined WaveCals: ')
+                for o in out :
+                   print(o.split('/')[-2]+'/'+o.split('/')[-1])
+                return
             if isinstance(file,astropy.io.fits.fitsrec.FITS_rec) :
                 tab=Table(file)
             elif str(file)[0] == '.' or str(file)[0] == '/' :
@@ -747,6 +755,13 @@ class Trace() :
         if file is not None :
             """ Initialize object from FITS file
             """
+            if file == '?' :
+                out=glob.glob(
+                    str(files(pyvista.data).joinpath('*/*trace*.fits')))
+                print('available predefined traces: ')
+                for o in out :
+                   print(o.split('/')[-2]+'/'+o.split('/')[-1])
+                return
             try:
                 if str(file)[0] == '.' or str(file)[0] == '/' :
                     tab=Table.read(file)
@@ -899,8 +914,8 @@ class Trace() :
 
                 # use this position as starting center for next 
                 #if above threshold S/N
-                if (not ymask[col]) & np.isfinite(ysum[col]) & 
-                   (ysum[col]/np.sqrt(yvar[col]) > thresh)  : 
+                if ((not ymask[col]) & np.isfinite(ysum[col]) & 
+                    (ysum[col]/np.sqrt(yvar[col]) > thresh) )  : 
                         sr=int(round(ypos[col]))
             sr=copy.copy(srow)
             sr=int(round(sr))
@@ -1202,11 +1217,20 @@ class FluxCal() :
         self.obscorr = []
         self.true = []
         self.weights = []
-        self.file = []
+        self.name = []
         self.degree = degree
 
     def extinct(self,hd,wav,file='flux/apo_extinct.dat') :
         """ Correct input image for atmospheric extinction
+
+            Parameters 
+            ----------
+            hd : CCDData object with 
+                 Input image
+            wav : array-like
+                 Wavelength array for hd
+            file : str, default='flux/apo_extinct.dat'
+                 Two column file (['wave','mag']) with extinction curve
         """
         if str(file)[0] == '.' or str(file)[0] == '/' :
             tab=Table.read(file,format='ascii')
@@ -1223,11 +1247,22 @@ class FluxCal() :
         corr = 10**(-0.4*ext*x)
         return hd.divide(corr)
 
-    def addstar(self,hd,wav,file=None ) :
+    def addstar(self,hd,wav,file=None) :
         """ Derive flux calibration vector from standard star
+
+            Parameters 
+            ----------
+            hd : CCDData object with standard star spectrum
+                 Input image
+            wav : array-like
+                 Wavelength array for hd
+            file : str
+                 File with calibrated fluxes, with columns 
+                 ['wave','flux','bin'], must be readable by astropy.io.ascii
+                 with format='ascii'
         """
         if str(file)[0] == '.' or str(file)[0] == '/' :
-            tab=Table.read(file,names=['wave','flux','mjy','bin'],format='ascii')
+            tab=Table.read(file,format='ascii')
         else :
             tab=Table.read(files(pyvista.data).joinpath(file),
                    names=['wave','flux','mjy','bin'],format='ascii')
@@ -1259,15 +1294,20 @@ class FluxCal() :
             weights[bd] = 0.
         self.weights.append(np.array(weights))
         self.true.append(np.array(true))
-        self.file.append(hd.header['FILE'])
+        self.name.append('{:s} {:f}'.format(
+            hd.header['FILE'],hd.header['AIRMASS']))
         self.nstars += 1
-        plt.figure(self.fig)
-        plt.plot(w,np.log10(np.array(obscorr)/np.array(true)),lw=1,marker='o',
-                   markersize=2, label='{:s} {:f}'.format(
-                   hd.header['FILE'],hd.header['AIRMASS']))
-        plt.legend(fontsize='xx-small')
 
     def response(self,degree=None,inter=False,plot=True) :
+        """ Create response curve from loaded standard star spectra and fluxes
+
+            Parameters 
+            ----------
+            degree : integer, default=self.degree
+                 polynomial degree
+            plot : bool, default=False
+                 set to True to see plot 
+        """
 
         if self.nstars < 1 :
             raise ValueError('you must add at least one star with addstar')
@@ -1277,8 +1317,8 @@ class FluxCal() :
         des=[]
         rhs=[]
         if plot : plt.figure()
-        for istar,(wav,obs,true,weight,file) in enumerate(
-               zip(self.waves,self.obscorr,self.true,self.weights,self.file)) :
+        for istar,(wav,obs,true,weight,name) in enumerate(
+               zip(self.waves,self.obscorr,self.true,self.weights,self.name)) :
             gd=np.where(weight > 0.)[0]
             vander=np.vander(wav[gd],self.degree+1)    
             design=np.zeros([len(gd),self.degree+self.nstars-1])
@@ -1290,7 +1330,10 @@ class FluxCal() :
                 line,=plt.plot(wav,np.log10(np.array(obs)/np.array(true)),lw=1)
                 plt.plot(wav[gd],np.log10(np.array(obs[gd])/np.array(true[gd])),
                         lw=0,marker='o',color=line.get_color(),
-                        markersize=2, label='{:s}'.format(file))
+                        markersize=2, label='{:s}'.format(name))
+                plt.xlabel('Wavelength')
+                plt.ylabel('log(obs flux/true flux)')
+        plt.legend(fontsize='xx-small')
         design=np.vstack(des)
         rhs=np.vstack(rhs).flatten()
         out=np.linalg.solve(np.dot(design.T,design),np.dot(design.T,rhs))
@@ -1304,11 +1347,18 @@ class FluxCal() :
                     vec = np.append(out[0:self.degree],0.)
                     self.coeffs = vec
                 plt.plot(wav,np.polyval(vec,wav))
-            plt.set_xlabel('Wavelength')
-            plt.set_ylabel('log(obs flux/true flux)')
+            plt.xlabel('Wavelength')
+            plt.ylabel('log(obs flux/true flux)')
 
     def correct(self,hd,wav) :
         """ Apply flux correction to input spectrum
+
+            Parameters 
+            ----------
+            hd : CCDData object with spectrum to be corrected
+                 Input image
+            wav : array-like
+                 Wavelength array for hd
         """
         extcorr = self.extinct(hd,wav)
         return hd.divide(10.**np.polyval(self.coeffs,wav))
