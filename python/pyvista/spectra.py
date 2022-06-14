@@ -833,7 +833,7 @@ class Trace() :
 
 
     def trace(self,im,srows,sc0=None,plot=None,display=None,
-              thresh=20,index=None,skip=1) :
+              rad=None, thresh=20,index=None,skip=1) :
         """ Trace a spectrum from starting position
         """
 
@@ -873,7 +873,7 @@ class Trace() :
             plot.clear()
             plot.tv(hd)
 
-        rad = self.rad-1
+        if rad is None : rad = self.rad-1
         for irow,srow in enumerate(srows) :
             try:
                 print('  Tracing row: {:d}'.format(int(srow)),end='\r')
@@ -888,13 +888,20 @@ class Trace() :
                 # centroid
                 cr=sr-rad+hd.data[sr-rad:sr+rad+1,col].argmax()
                 ysum[col] = np.sum(hd.data[cr-rad:cr+rad+1,col]) 
-                ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*hd.data[cr-rad:cr+rad+1,col]) / ysum[col]
+                ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*
+                                   hd.data[cr-rad:cr+rad+1,col]) / ysum[col]
                 yvar[col] = np.sum(hd.uncertainty.array[cr-rad:cr+rad+1,col]**2) 
                 ymask[col] = np.any(hd.mask[cr-rad:cr+rad+1,col]) 
+
                 # if centroid is too far from starting guess, mask as bad
-                if np.abs(ypos[col]-sr) > np.max([rad/2.,0.75]) : ymask[col] = True
-                # use this position as starting center for next if above threshold S/N
-                if (not ymask[col]) & np.isfinite(ysum[col]) & (ysum[col]/np.sqrt(yvar[col]) > thresh)  : sr=int(round(ypos[col]))
+                if np.abs(ypos[col]-sr) > np.max([rad/2.,0.75]) : 
+                    ymask[col] = True
+
+                # use this position as starting center for next 
+                #if above threshold S/N
+                if (not ymask[col]) & np.isfinite(ysum[col]) & 
+                   (ysum[col]/np.sqrt(yvar[col]) > thresh)  : 
+                        sr=int(round(ypos[col]))
             sr=copy.copy(srow)
             sr=int(round(sr))
             sr=hd.data[sr-rad:sr+rad+1,self.sc0].argmax()+sr-rad
@@ -1018,13 +1025,15 @@ class Trace() :
             plot.clear()
             plot.tv(im)
             plot.plotax1.cla()
-            plot.plotax1.text(0.05,0.95,'obj and ref cross-section',transform=plot.plotax1.transAxes)
+            plot.plotax1.text(0.05,0.95,'obj and ref cross-section',
+                              transform=plot.plotax1.transAxes)
             plot.plotax1.plot(self.spectrum/self.spectrum.max())
             plot.plotax1.plot(im.data[:,self.sc0]/im.data[:,self.sc0].max())
             plot.plotax1.set_xlabel('row')
             plot.histclick=False
             plot.plotax2.cla()
-            plot.plotax2.text(0.05,0.95,'cross correlation {:8.3f}'.format(pixshift),
+            plot.plotax2.text(0.05,0.95,
+                              'cross correlation {:8.3f}'.format(pixshift),
                               transform=plot.plotax2.transAxes)
             plot.plotax2.plot(lags,shift)
             plot.plotax2.set_xlabel('lag')
@@ -1137,7 +1146,8 @@ class Trace() :
     def extract2d(self,im,rows=None,plot=None) :
         """  Extract 2D spectrum given trace(s)
 
-             Assumes all requests row uses same trace, just offset, not a 2D model for traces. Linear interpolation is used.
+             Assumes all requests row uses same trace, just offset, 
+             not a 2D model for traces. Linear interpolation is used.
         """
         if self.transpose :
             hd = image.transpose(im)
@@ -1257,7 +1267,7 @@ class FluxCal() :
                    hd.header['FILE'],hd.header['AIRMASS']))
         plt.legend(fontsize='xx-small')
 
-    def mkflux(self,degree=None,inter=False,plot=True) :
+    def response(self,degree=None,inter=False,plot=True) :
 
         if self.nstars < 1 :
             raise ValueError('you must add at least one star with addstar')
