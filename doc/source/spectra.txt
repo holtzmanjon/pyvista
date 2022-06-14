@@ -30,6 +30,9 @@ rows= (to specify window, i.e. length of slit),
 lags= (to specify how far search can extend for translation of trace),
 degree= (to specify degree of polynomial for fit to trace), and
 rad= (to specify a radius in pixels to use for centroiding a trace).
+Alternatively, you can load a saved Trace object from disk by
+instantiating using the file= keyword (use file='?' to see a listing
+of files distributed with the package).
 
 To make the trace, the code will generally start at the center of the
 image in the wavelength direction (unless the sc0 attribute is set to
@@ -97,16 +100,16 @@ If there is a previous WaveCal object with wavelength calibration for this
 instrument, that can be used to facilitate wavelength calibration. A previous
 WaveCal object can be saved with the write() method. What is saved is the
 type and degree of the wavelength model, a list of pixel and wavelengths of
-identified lines, and the spectrum from which these were identified.
-
-A new WaveCal object can be instantiated using the file= keyword to read in 
-the previous WaveCal.
+identified lines, and the spectrum from which these were identified.  
+A WaveCal object can be instantiated using the file= keyword to read in 
+a previous WaveCal (use file='?' to see a listing
+of files distributed with the package).
 
 Given this WaveCal instantiation, identify() is called to identify and fit
 a wavelength solution. This is achieved as follows:
 
    1. if input wav array/image is specified, use this to identify lines
-   2. if WaveCal object as associated spectrum, use cross correlation
+   2. if WaveCal object has an associated spectrum, use cross correlation
       to identify shift of input spectrum, then use previous solution
       to create a wavelength array. Cross correlation lags to try
       are specified by lags=range(dx1,dx2), default range(-300,300)
