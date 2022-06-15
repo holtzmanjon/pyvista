@@ -19,7 +19,7 @@ from astropy.convolution import convolve, Box1DKernel, Box2DKernel
 from astropy.table import Table
 import pyvista
 import pyvista.data
-from pyvista import image, tv
+from pyvista import image, tv, skycalc
 from tools import plots
 
 class SpecData(CCDData) :
@@ -568,10 +568,10 @@ class WaveCal() :
                 self.fig = fig
                 self.ax = ax
 
-        if plot is not None : ax[0].cla()
+        if self.ax is not None : ax[0].cla()
         for row in range(0,nrow,nskip) :
             if verbose :print('  identifying lines in row: ', row,end='\r')
-            if plot is not None :
+            if self.ax is not None :
                 # next line for pixel plot
                 if pixplot : ax[0].plot(spectrum.data[row,:])
                 else : ax[0].plot(wav[row,:],spectrum.data[row,:])
@@ -1272,12 +1272,7 @@ class FluxCal() :
             tab=Table.read(file,format='ascii')
         else :
             tab=Table.read(files(pyvista.data).joinpath(file),format='ascii')
-        if 'AIRMASS' in hd.header :
-          x = hd.header['AIRMASS']
-        elif 'SECZ' in hd.header :
-          x = hd.header['SECZ']
-        else :
-          raise ValueError('no AIRMASS or SECZ in header')
+        x = skycalc.airmass(hd.header)
 
         ext = np.interp(wav,tab['wave'],tab['mag'])
         corr = 10**(-0.4*ext*x)
