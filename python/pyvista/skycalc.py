@@ -12,7 +12,7 @@ from astropy.time import Time
 from astropy.coordinates import get_moon, get_sun
 from astropy import units
 
-def airmass(ra=0., dec=0., obs='apo', date='2019-10-01',name='object',plot=False,tz='US/Mountain') :
+def table(ra=0., dec=0., obs='apo', date='2019-10-01',name='object',plot=False,tz='US/Mountain') :
 
     """  Get airmass table for specified object position, observatory, date
     """
@@ -84,6 +84,35 @@ def airmass(ra=0., dec=0., obs='apo', date='2019-10-01',name='object',plot=False
 
         plot_airmass(obj,site,time,ax=ax[0])
         plot_parallactic(obj,site,time,ax=ax[1])
+
+def airmass(header,obs=None) :
+    """ Get airmass from header cards
+
+        Tries AIRMASS, AIRMAS, and SECZ first
+        otherwise computes from DATE-OBS, RA, DEC if obs= is given
+    """
+
+    if 'AIRMASS' in header :
+        return header['AIRMASS']
+    elif 'AIRMAS' in header :
+        return header['AIRMAS']
+    elif 'SECZ' in header :
+        return header['SECZ']
+    elif 'DATE-OBS' in header and obs is not None:
+        site=Observer.at_site(obs)
+        time=Time(header['DATE-OBS'])
+        ra=header['RA']
+        dec=header['DEC']
+        if type(ra) is float :
+            obj=FixedTarget(name=name,coord=SkyCoord(str(ra)+'d',str(dec)+'d'))
+        else :
+            obj=FixedTarget(name=name,coord=SkyCoord(ra+'h',dec+'d'))
+        val=site.altaz(time,obj).secz
+        print('airmass computed from DATE-OBS')
+        return val
+    else :
+        raise ValueError('no AIRMASS/AIRMAS/SECZ card in header and no obs specified')
+
 
 def parang(hd,obs='apo',tz='US/Mountain') :
     site=Observer.at_site(obs,timezone=tz)
