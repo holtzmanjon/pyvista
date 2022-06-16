@@ -235,7 +235,7 @@ class Reducer() :
 
         """
         im=self.rd(num,dark=dark,channel=channel)
-        self.overscan(im,display=display)
+        self.overscan(im,display=display,channel=channel)
         im=self.bias(im,superbias=bias)
         im=self.dark(im,superdark=dark)
         self.scatter(im,scat=scat,display=display)
@@ -311,7 +311,10 @@ class Reducer() :
             # Add uncertainty (will be in error if there is an overscan, but redo with overscan subraction later)
             data=copy.copy(im.data)
             data[data<0] = 0.
-            im.uncertainty = StdDevUncertainty(np.sqrt( data/gain + (rn/gain)**2 ))
+            if isinstance(gain,list) :
+              im.uncertainty = StdDevUncertainty(np.sqrt( data/gain[0] + (rn/gain[0])**2 ))
+            else :
+              im.uncertainty = StdDevUncertainty(np.sqrt( data/gain + (rn/gain)**2 ))
 
             # Add mask
             if self.mask is not None : im.mask = self.mask
@@ -327,14 +330,24 @@ class Reducer() :
         if len(out) == 1 : return out[0]
         else : return out
             
-    def overscan(self,im,display=None) :
+    def overscan(self,im,display=None,channel=None) :
         """ Overscan subtraction
         """
         if self.biastype < 0 : return
 
         if type(im) is not list : ims=[im]
         else : ims = im
-        for ichan,(im,gain,rn,biasbox,biasregion) in enumerate(zip(ims,self.gain,self.rn,self.biasbox,self.biasregion)) :
+        if channel is not None :
+            gains = [self.gain[channel]]
+            rns = [self.rn[channel]]
+            biasboxes = [self.biasbox[channel]]
+            biasregions = [self.biasregion[channel]]
+        else :
+            gains = self.gain
+            rns = self.rn
+            biasboxes = self.biasbox
+            biasregions = self.biasregion
+        for ichan,(im,gain,rn,biasbox,biasregion) in enumerate(zip(ims,gains,rns,biasboxes,biasregions)) :
             if display is not None : 
                 display.tv(im)
                 ax=display.plotax2
@@ -388,6 +401,17 @@ class Reducer() :
                         databox.xmin:databox.xmax+1] = \
                     im.data[databox.ymin:databox.ymax+1,
                             databox.xmin:databox.xmax+1].astype(np.float32) - over
+              # if we have separate gains, multiply by them here
+              if isinstance(gain,list) :
+                print('multiplying by gain: ', gain[ibias])
+                if type(databox) == image.BOX :
+                    im.data[databox.ymin:databox.ymax+1,
+                            databox.xmin:databox.xmax+1] = \
+                            im.data[databox.ymin:databox.ymax+1,
+                               databox.xmin:databox.xmax+1].astype(np.float32)*gain[ibias]
+                else : 
+                    im.data = im.data.astype(np.float32)*gain[ibias]
+
             if display is not None :
                 display.tv(im)
                 getinput("  See bias box and cross section. ",display)
@@ -395,7 +419,10 @@ class Reducer() :
             # Add uncertainty (redo from scratch after overscan)
             data=copy.copy(im.data)
             data[data<0] = 0.
-            im.uncertainty = StdDevUncertainty(np.sqrt( data/gain + (rn/gain)**2 ))
+            if isinstance(gain,list) :
+              im.uncertainty = StdDevUncertainty(np.sqrt( data + rn**2 ))
+            else :
+              im.uncertainty = StdDevUncertainty(np.sqrt( data/gain + (rn/gain)**2 ))
 
     def trim(self,im,trimimage=False) :
         """ Trim image by masking non-trimmed pixels
