@@ -15,18 +15,19 @@ for constructing calibration frames
 
 Reducer
 =======
+
 Given information about instrument detector, a reducer object reads and reduces
 images. A class is instantiated for a given instrument. Necessary information
 can be specified on instantiation, but generally is loaded given an input
 instrument name, e.g., ARCTIC, ARCES, DIS, TSPEC. In this case, configuration
 is read from a configuration file called {inst}_config.yml; pyvista contains
-several of these in the PYVISTA_DIR/python/pyvista/data directory tree. For a new instrument,
-they should be straightforward to construct, see below
+several of these in the PYVISTA_DIR/python/pyvista/data directory tree. 
+For a new instrument, they should be straightforward to construct, see below.
 
-For a given instrument, there can be multiple files created per exposure,
+For a given instrument, there can be multiple files associated with each exposure,
 e.g. DIS blue/red, and the configuration file then specifies the multiple
-configurations. During reduction operations, all files are processed, with
-data returned as a list of NDData/CCDData objects.
+configurations. During reduction operations, all files for an exposure 
+are processed, with data returned as a list of NDData/CCDData objects.
 
 The reading function of the Reducer allows for file names to be
 read by specifying a sequence number (rather than typing the full

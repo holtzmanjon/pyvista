@@ -2,37 +2,78 @@ SPECTRA module
 **************
 
 spectra is a module that implements some classes/tools for handling
-basic spectral data reduction: extraction of spectra and wavelength calibration.
+basic spectral data reduction: tracing and extraction of spectra, 
+wavelength calibration, and flux calibration.
 The routines allow for both longslit data, multiobject data, echelle data, and a
 combination (multiple orders with longslit, or multiple slitlets).
 
 Data are read and processed using NDData structures, which carry along both 
 the image data and an associated uncertainty array.
 
-The routines are implemented with two basic classes, the Trace object and
-the WaveCal object.  In more detail:
+The routines are implemented with three basic classes, the Trace object,
+the WaveCal object, and the FluxCal.  In more detail:
 
 Trace 
 =====
 
 The Trace object is used to store functional forms and locations of spectral
-traces. It supports multiple traces per image, e.g., for a multiobject spectrograph.
+traces. It supports multiple traces per image, e.g., in a long-slit 
+spectrograph, a multiobject spectrograph (fiber or slitlets), a multiorder 
+spectrograph.
 
-Create a trace from scratch: instantiate a trace object with an initial model, rows= (to specify window), lags= (to specify how far search can extend for 
-translation of trace).
+Trace objects can be defined from one images and used on other images, 
+allowing for small global shifts of the traces in the spatial direction. 
+They can be saved and read from disk as FITS files.
 
-To retrace, use trace.retrace(spectrum). This will do a cross-correlation 
-of saved cross-section with input spectrum to determine a shift, then will
-use that as a starting location to retrace.
+To create a trace from scratch, instantiate a trace object with 
+rows= (to specify window, i.e. length of slit), 
+lags= (to specify how far search can extend for translation of trace),
+degree= (to specify degree of polynomial for fit to trace), and
+rad= (to specify a radius in pixels to use for centroiding a trace).
+Alternatively, you can load a saved Trace object from disk by
+instantiating using the file= keyword (use file='?' to see a listing
+of files distributed with the package).
 
-To trace using fixed trace, use trace.trace(spectrum)
+To make the trace, the code will generally start at the center of the
+image in the wavelength direction (unless the sc0 attribute is set to
+another value), centroid the spectrum there, then work in both directions
+to get a centroid each pixel (or every skip pixels if the skip= keyword
+is given); the centroid for each wavelength is used as a starting guess
+for the subsequent wavelength if the peak is above a S/N threshold), 
+Finally, a function will be fit to the derived centroids and
+the model (currently astropy Polynomial1D) wll be stored
+in the trace structure.
 
-To extract, use trace.extract(spectrum,rad=,[back=[[b1,b2],[b3,b4]])
+To make a trace manually use the trace(spectrum,row) method, 
+where row is the starting
+guess for the spatial postion at the center of the spectrum (or sc0). 
+You can use the findpeak() method to find object(s) automatically and
+pass the returned value(s) to trace(). If row is a list (i.e. for 
+multiple objects or orders), then multiple traces will be made. 
+
+For spectrographs where the traces are relatively stable in location (e.g.
+multiple orders), a saved model can be convenient to use to remake traces.
+To retrace, use the retrace(spectrum) method. This will do a cross-correlation 
+of a saved cross-section with the input spectrum to determine a shift, 
+then will use that as a starting location to retrace.
+
+Extraction is done using the extract(spectrum,rad=,[back=[[b1,b2],[b3,b4]]) 
+method, which uses boxcar extraction with the specified radius. 
+
+Optionally, a background value as determined from one or more background
+windows can be subtracted, where the window locations are specified in 
+pixels relative to the object trace position. Note that if there is
+non-negligible line curvature that this can lead to poor subtraction of
+sky emission lines. In this case, you might want to determine a 2D
+wavelength solution (see below), and resample the sky spectra to the
+wavelength scale of the object (or to some other wavelength scale) 
+before subtraction.
 
 Attributes
-   - type : type of astropy model to use for trace shape (currently, just Polynomial1D)
+   - type : type of astropy model to use for trace shape (currently, just 
+Polynomial1D)
    - model : array of astropy models for each trace
-   - degree : polynomial degree
+   - degree : polynomial degree for model fit
    - rad : radius in pixels to use for calculating centroid
    - sc0 : starting column for trace, will work both directions from here
    - spectrum : reference spatial slice at sc0
@@ -42,14 +83,13 @@ Attributes
    - rows : range of slit length
    - index : identification for each trace
 
-
 Methods:
-  - find
-  - findpeak
-  - retrace
-  - trace
-  - extract
-  - extract2d
+  - find()
+  - findpeak()
+  - retrace()
+  - trace()
+  - extract()
+  - extract2d()
 
 WaveCal
 =======
@@ -60,16 +100,16 @@ If there is a previous WaveCal object with wavelength calibration for this
 instrument, that can be used to facilitate wavelength calibration. A previous
 WaveCal object can be saved with the write() method. What is saved is the
 type and degree of the wavelength model, a list of pixel and wavelengths of
-identified lines, and the spectrum from which these were identified.
-
-A new WaveCal object can be instantiated using the file= keyword to read in 
-the previous WaveCal.
+identified lines, and the spectrum from which these were identified.  
+A WaveCal object can be instantiated using the file= keyword to read in 
+a previous WaveCal (use file='?' to see a listing
+of files distributed with the package).
 
 Given this WaveCal instantiation, identify() is called to identify and fit
 a wavelength solution. This is achieved as follows:
 
    1. if input wav array/image is specified, use this to identify lines
-   2. if WaveCal object as associated spectrum, use cross correlation
+   2. if WaveCal object has an associated spectrum, use cross correlation
       to identify shift of input spectrum, then use previous solution
       to create a wavelength array. Cross correlation lags to try
       are specified by lags=range(dx1,dx2), default range(-300,300)
@@ -112,6 +152,34 @@ or from a [wave,pix] pair plus a dispersion (wref= and disp=) keyword, as
 described above. This solution will be used to try to find lines: a centroid 
 around the input position of width given by the rad= keyword is computed. 
 
+FluxCal
+=======
+
+The FluxCal object allows for the creation of a spectral response
+curve given observations of one or more flux standard stars. It also
+includes a spectral extinction correction using a set of mean extinction
+coefficients as a function of wavelength. The derived response curve
+can be applied to an input spectrum to provide a flux-calibrated
+spectrum. The accuracy of the flux calibration may be limited by
+differential refraction effects in either the calibration stars or
+the object itself. The accuracy of the absolute calibration is further
+limited by light losses outside the slit.
+
+A FluxCal object is instantiated, specifying the polynomial degree (degree=)
+to be used for the response curve fit. Observed 1d (i.e., extracted) 
+spectra of spectrophotometric stars are added using the 
+addstar(spectrum, waves, file=) method, where the input file gives
+the true fluxes as a function of wavelength; libraries of standard
+star spectra from ESO are included. The observed spectrum is corrected
+for extinction and saved, along with the true spectrum. 
+Once or or more stars have been
+loaded, a response curve is derived using the response() method
+by fitting a polynomial to the
+logarithm of the ratio of the extinction-corrected observed to true 
+fluxes, allowing for an independent scale factor for each star. 
+
+Given the response curve, input spectra can be corrected for extinction
+and instrumental response using the correct() method.
 
 spectra functions
 =================

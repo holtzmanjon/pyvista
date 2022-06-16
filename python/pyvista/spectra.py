@@ -1,4 +1,5 @@
 import matplotlib
+import glob
 from importlib_resources import files
 import matplotlib.pyplot as plt
 import multiprocessing as mp
@@ -18,7 +19,7 @@ from astropy.convolution import convolve, Box1DKernel, Box2DKernel
 from astropy.table import Table
 import pyvista
 import pyvista.data
-from pyvista import image, tv
+from pyvista import image, tv, skycalc
 from tools import plots
 
 class SpecData(CCDData) :
@@ -127,6 +128,13 @@ class WaveCal() :
     def __init__ (self,file=None, type='chebyshev',degree=2,ydegree=2,
                   pix0=0,index=0) :
         if file is not None :
+            if file == '?' :
+                out=glob.glob(
+                    str(files(pyvista.data).joinpath('*/*wave*.fits')))
+                print('available predefined WaveCals: ')
+                for o in out :
+                   print(o.split('/')[-2]+'/'+o.split('/')[-1])
+                return
             if isinstance(file,astropy.io.fits.fitsrec.FITS_rec) :
                 tab=Table(file)
             elif str(file)[0] == '.' or str(file)[0] == '/' :
@@ -560,10 +568,10 @@ class WaveCal() :
                 self.fig = fig
                 self.ax = ax
 
-        if plot is not None : ax[0].cla()
+        if self.ax is not None : ax[0].cla()
         for row in range(0,nrow,nskip) :
             if verbose :print('  identifying lines in row: ', row,end='\r')
-            if plot is not None :
+            if self.ax is not None :
                 # next line for pixel plot
                 if pixplot : ax[0].plot(spectrum.data[row,:])
                 else : ax[0].plot(wav[row,:],spectrum.data[row,:])
@@ -700,6 +708,7 @@ class WaveCal() :
 
         out=np.zeros([hd.data.shape[0],len(wav)])
         sig=np.zeros_like(out)
+        mask=np.zeros_like(out,dtype=bool)
         w=self.wave(image=hd.data.shape)
         for i in range(len(out)) :
             sort=np.argsort(w[i,:])
@@ -711,7 +720,7 @@ class WaveCal() :
             sig[i,w2:w1] += np.sqrt(
                             np.interp(wav[w2:w1],w[i,sort],hd.uncertainty.array[i,sort]**2))
 
-        return CCDData(out,StdDevUncertainty(sig),unit='adu')
+        return CCDData(out,StdDevUncertainty(sig),mask,unit='adu')
 
 class Trace() :
     """ Class for spectral traces
@@ -747,6 +756,13 @@ class Trace() :
         if file is not None :
             """ Initialize object from FITS file
             """
+            if file == '?' :
+                out=glob.glob(
+                    str(files(pyvista.data).joinpath('*/*trace*.fits')))
+                print('available predefined traces: ')
+                for o in out :
+                   print(o.split('/')[-2]+'/'+o.split('/')[-1])
+                return
             try:
                 if str(file)[0] == '.' or str(file)[0] == '/' :
                     tab=Table.read(file)
@@ -833,7 +849,7 @@ class Trace() :
 
 
     def trace(self,im,srows,sc0=None,plot=None,display=None,
-              thresh=20,index=None,skip=1) :
+              rad=None, thresh=20,index=None,skip=1) :
         """ Trace a spectrum from starting position
         """
 
@@ -873,7 +889,7 @@ class Trace() :
             plot.clear()
             plot.tv(hd)
 
-        rad = self.rad-1
+        if rad is None : rad = self.rad-1
         for irow,srow in enumerate(srows) :
             try:
                 print('  Tracing row: {:d}'.format(int(srow)),end='\r')
@@ -888,13 +904,20 @@ class Trace() :
                 # centroid
                 cr=sr-rad+hd.data[sr-rad:sr+rad+1,col].argmax()
                 ysum[col] = np.sum(hd.data[cr-rad:cr+rad+1,col]) 
-                ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*hd.data[cr-rad:cr+rad+1,col]) / ysum[col]
+                ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*
+                                   hd.data[cr-rad:cr+rad+1,col]) / ysum[col]
                 yvar[col] = np.sum(hd.uncertainty.array[cr-rad:cr+rad+1,col]**2) 
                 ymask[col] = np.any(hd.mask[cr-rad:cr+rad+1,col]) 
+
                 # if centroid is too far from starting guess, mask as bad
-                if np.abs(ypos[col]-sr) > np.max([rad/2.,0.75]) : ymask[col] = True
-                # use this position as starting center for next if above threshold S/N
-                if (not ymask[col]) & np.isfinite(ysum[col]) & (ysum[col]/np.sqrt(yvar[col]) > thresh)  : sr=int(round(ypos[col]))
+                if np.abs(ypos[col]-sr) > np.max([rad/2.,0.75]) : 
+                    ymask[col] = True
+
+                # use this position as starting center for next 
+                #if above threshold S/N
+                if ((not ymask[col]) & np.isfinite(ysum[col]) & 
+                    (ysum[col]/np.sqrt(yvar[col]) > thresh) )  : 
+                        sr=int(round(ypos[col]))
             sr=copy.copy(srow)
             sr=int(round(sr))
             sr=hd.data[sr-rad:sr+rad+1,self.sc0].argmax()+sr-rad
@@ -960,9 +983,11 @@ class Trace() :
             hd : CCDData object
                  Input image
             width : int, default=100
-                 width of window around central wavelength to median to give spatial profile
+                 width of window around central wavelength to median 
+                 to give spatial profile
             thresh : float, default = 5
-                 threshold for finding objects, as a factor to be multiplied by the median uncertainty
+                 threshold for finding objects, as a factor to be 
+                 multiplied by the median uncertainty
 
             Returns
             -------
@@ -986,17 +1011,29 @@ class Trace() :
             plt.figure()
             plt.plot(np.arange(self.rows[0],self.rows[1]),
                      np.median(im.data[self.rows[0]:self.rows[1],
-                                       self.sc0-width:self.sc0+width],axis=1)-back)
+                               self.sc0-width:self.sc0+width],axis=1)-back)
             plt.xlabel('Spatial pixel')
             plt.ylabel('Median flux')
         peaks,fiber = findpeak(np.median(im.data[self.rows[0]:self.rows[1],
-                                         self.sc0-width:self.sc0+width],axis=1)-back,
+                               self.sc0-width:self.sc0+width],axis=1)-back,
                          thresh=thresh*sig)
-        return peaks+self.rows[0], fiber
+        return np.array(peaks)+self.rows[0], fiber
 
  
-    def find(self,hd,lags=None,plot=None,display=None) :
+    def find(self,hd,width=100,lags=None,plot=None,display=None) :
         """ Determine shift from existing trace to input frame
+
+            Parameters
+            ----------
+            hd : CCDData object
+                 Input image
+            width : int, default=100
+                 width of window around central wavelength to median 
+                 to give spatial profile
+            lags : array-like, default=self.lags
+                 range of cross-correlation lags to allow
+            display : pyvista.tv object, default=None
+                 if not None, tv object to display in
         """
         if lags is None : lags = self.lags
         if plot == None and display != None : plot = display
@@ -1006,25 +1043,31 @@ class Trace() :
         else :
             im = copy.deepcopy(hd)
       
+        # get median around central column
+        spec=np.median(im.data[:,self.sc0-width:self.sc0+width],axis=1)
+
         # if we have a window, zero array outside of window
-        spec=im.data[:,self.sc0-50:self.sc0+50].sum(axis=1)
         try:
             spec[:self.rows[0]] = 0.  
             spec[self.rows[1]:] = 0.  
         except: pass
+
+        # cross-correlate with saved spectrum to get shift
         fitpeak,shift = image.xcorr(self.spectrum,spec,lags)
         pixshift=(fitpeak+lags[0])[0]
         if plot is not None :
             plot.clear()
             plot.tv(im)
             plot.plotax1.cla()
-            plot.plotax1.text(0.05,0.95,'obj and ref cross-section',transform=plot.plotax1.transAxes)
+            plot.plotax1.text(0.05,0.95,'obj and ref cross-section',
+                              transform=plot.plotax1.transAxes)
             plot.plotax1.plot(self.spectrum/self.spectrum.max())
             plot.plotax1.plot(im.data[:,self.sc0]/im.data[:,self.sc0].max())
             plot.plotax1.set_xlabel('row')
             plot.histclick=False
             plot.plotax2.cla()
-            plot.plotax2.text(0.05,0.95,'cross correlation {:8.3f}'.format(pixshift),
+            plot.plotax2.text(0.05,0.95,
+                              'cross correlation {:8.3f}'.format(pixshift),
                               transform=plot.plotax2.transAxes)
             plot.plotax2.plot(lags,shift)
             plot.plotax2.set_xlabel('lag')
@@ -1034,9 +1077,25 @@ class Trace() :
         self.pix0=pixshift
         return fitpeak+lags[0]
  
-    def extract(self,im,rad=None,back=[],scat=False,
+    def extract(self,im,rad=None,back=[],
                 display=None,plot=None,medfilt=None,nout=None,threads=0) :
         """ Extract spectrum given trace(s)
+
+            Parameters
+            ----------
+            hd : CCDData object
+                 Input image
+            rad : float, default=self.rad
+                 radius for extraction window
+            back : array-like of array-like
+                 list of two-element lists giving start and end of
+                 background window(s), in units of pixels relative to
+                 trace location
+            nout : integer, default=None
+                 used for multi-object spectra.
+                 If not None, specifies number of rows of output image;
+                 each extracted spectrum will be loaded into indices
+                 loaded into index attribute, with an index for each trace
         """
         if plot == None and display != None : plot = display
         if self.transpose :
@@ -1048,7 +1107,8 @@ class Trace() :
         if len(back) > 0 :
             for bk in back:
                 try :
-                    if len(bk) != 2 or not isinstance(bk[0],int) or not isinstance(bk[1],int) :
+                    if (len(bk) != 2 or not isinstance(bk[0],int) 
+                       or not isinstance(bk[1],int) ) :
                         raise ValueError('back must be list of [backlo,backhi] integer pairs')
                 except :
                     raise ValueError('back must be list of [backlo,backhi] integer pairs')
@@ -1137,7 +1197,8 @@ class Trace() :
     def extract2d(self,im,rows=None,plot=None) :
         """  Extract 2D spectrum given trace(s)
 
-             Assumes all requests row uses same trace, just offset, not a 2D model for traces. Linear interpolation is used.
+             Assumes all requests row uses same trace, just offset, 
+             not a 2D model for traces. Linear interpolation is used.
         """
         if self.transpose :
             hd = image.transpose(im)
@@ -1173,6 +1234,174 @@ class Trace() :
 
         if len(out) == 1 : return out[0]
         else : return out
+
+class FluxCal() :
+    """ Class for flux calibration
+
+    Parameters
+    ----------
+
+    Attributes
+    ----------
+    """
+
+    def __init__(self,degree=3) :
+        self.nstars = 0
+        self.waves = []
+        self.weights = []
+        self.obs = []
+        self.obscorr = []
+        self.true = []
+        self.weights = []
+        self.name = []
+        self.degree = degree
+
+    def extinct(self,hd,wav,file='flux/apo_extinct.dat') :
+        """ Correct input image for atmospheric extinction
+
+            Parameters 
+            ----------
+            hd : CCDData object with 
+                 Input image
+            wav : array-like
+                 Wavelength array for hd
+            file : str, default='flux/apo_extinct.dat'
+                 Two column file (['wave','mag']) with extinction curve
+        """
+        if str(file)[0] == '.' or str(file)[0] == '/' :
+            tab=Table.read(file,format='ascii')
+        else :
+            tab=Table.read(files(pyvista.data).joinpath(file),format='ascii')
+        x = skycalc.airmass(hd.header)
+
+        ext = np.interp(wav,tab['wave'],tab['mag'])
+        corr = 10**(-0.4*ext*x)
+        return hd.divide(corr)
+
+    def addstar(self,hd,wav,file=None) :
+        """ Derive flux calibration vector from standard star
+
+            Parameters 
+            ----------
+            hd : CCDData object with standard star spectrum
+                 Input image
+            wav : array-like
+                 Wavelength array for hd
+            file : str
+                 File with calibrated fluxes, with columns 
+                 ['wave','flux','bin'], must be readable by astropy.io.ascii
+                 with format='ascii'
+        """
+        if str(file)[0] == '.' or str(file)[0] == '/' :
+            tab=Table.read(file,format='ascii')
+        else :
+            tab=Table.read(files(pyvista.data).joinpath(file),
+                   names=['wave','flux','mjy','bin'],format='ascii')
+
+        extcorr = self.extinct(hd,wav)
+        obs=[]
+        obscorr=[]
+        w=[]
+        true=[]
+        weights=[]
+        for line in tab :
+            w1=line['wave']-line['bin']/2.
+            w2=line['wave']+line['bin']/2.
+            if w1 > wav.min() and w2 < wav.max() :
+                j=np.where((wav >= w1) & (wav <= w2) )[0]
+                obs.append(np.mean(hd.data[j]))
+                obscorr.append(np.mean(extcorr.data[j]))
+                w.append(line['wave'])
+                true.append(line['flux'])
+                weights.append(1.)
+        w=np.array(w)
+        self.waves.append(w)
+        self.obs.append(np.array(obs))
+        self.obscorr.append(np.array(obscorr))
+        weights=np.array(weights)
+        bdlines = [[7570,7730], [6850,7000], [6520, 6600], [4820,4900], [4300,4380]]
+        for line in bdlines :
+            bd=np.where((w>=line[0]) & (w<=line[1]) )[0]
+            weights[bd] = 0.
+        self.weights.append(np.array(weights))
+        self.true.append(np.array(true))
+        self.name.append('{:s} {:f}'.format(
+            hd.header['FILE'],hd.header['AIRMASS']))
+        self.nstars += 1
+
+    def response(self,degree=None,inter=False,plot=True) :
+        """ Create response curve from loaded standard star spectra and fluxes
+
+            Parameters 
+            ----------
+            degree : integer, default=self.degree
+                 polynomial degree
+            plot : bool, default=False
+                 set to True to see plot 
+        """
+
+        if self.nstars < 1 :
+            raise ValueError('you must add at least one star with addstar')
+        if degree is not None :
+            self.degree = degree
+
+        des=[]
+        rhs=[]
+        if plot : plt.figure()
+        for istar,(wav,obs,true,weight,name) in enumerate(
+               zip(self.waves,self.obscorr,self.true,self.weights,self.name)) :
+            gd=np.where(weight > 0.)[0]
+            vander=np.vander(wav[gd],self.degree+1)    
+            design=np.zeros([len(gd),self.degree+self.nstars-1])
+            design[:,0:self.degree]=vander[:,0:self.degree]
+            if istar>0 : design[:,self.degree+istar-1] = 1.
+            des.append(design)
+            rhs.append(np.log10(np.array(obs[gd])/np.array(true[gd])))
+            if plot :
+                line,=plt.plot(wav,np.log10(np.array(obs)/np.array(true)),lw=1)
+                plt.plot(wav[gd],np.log10(np.array(obs[gd])/np.array(true[gd])),
+                        lw=0,marker='o',color=line.get_color(),
+                        markersize=2, label='{:s}'.format(name))
+                plt.xlabel('Wavelength')
+                plt.ylabel('log(obs flux/true flux)')
+        plt.legend(fontsize='xx-small')
+        design=np.vstack(des)
+        rhs=np.vstack(rhs).flatten()
+        out=np.linalg.solve(np.dot(design.T,design),np.dot(design.T,rhs))
+        self.coeffs = np.append(out[0:self.degree],0.)
+        if plot :
+            plt.gca().set_prop_cycle(None)
+            for istar,wav in enumerate(self.waves) :
+                if istar>0 : 
+                    vec = np.append(out[0:self.degree],out[self.degree+istar-1])
+                else :
+                    vec = np.append(out[0:self.degree],0.)
+                    self.coeffs = vec
+                plt.plot(wav,np.polyval(vec,wav))
+            plt.xlabel('Wavelength')
+            plt.ylabel('log(obs flux/true flux)')
+
+    def correct(self,hd,wav) :
+        """ Apply flux correction to input spectrum
+
+            Parameters 
+            ----------
+            hd : CCDData object with spectrum to be corrected
+                 Input image
+            wav : array-like
+                 Wavelength array for hd
+        """
+        extcorr = self.extinct(hd,wav)
+        return hd.divide(10.**np.polyval(self.coeffs,wav))
+
+    def refraction(self,h=2000,temp=10,rh=0.25) :
+        p0=101325
+        M = 0.02896968 
+        g = 9.80665
+        T0 = 288.16
+        R0 = 8.314462618
+        pressure = p0 *np.exp(-g*h*M/T0/R0)*10
+        ref=erfa.refco(pressure,temp,rh,wav)[0]*206265
 
 def gfit(data,x0,rad=10,sig=3,back=None) :
     """ Fit 1D gaussian
