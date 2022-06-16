@@ -2,6 +2,7 @@ import numpy as np
 import copy
 import os
 import pdb
+import matplotlib
 import matplotlib.pyplot as plt
 from pydl.pydlutils import yanny
 from pyvista import imred, spectra, sdss
@@ -46,7 +47,7 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=500,threads=12,d
             name=plan['SPEXP']['name'][obj][2].astype(str)
         print(dir+name.replace('sdR','sp1D'))
         if not os.path.exists(dir+name.replace('sdR','sp1D')) or clobber :  done = False
-    if done :  return
+    if done : return
 
     # set up Reducer
     red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_N']+'/'+plan['MJD'])
@@ -60,7 +61,7 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=500,threads=12,d
         trace=spectra.Trace(dir+name.replace('sdR','spTrace')) 
         f=np.loadtxt(dir+name.replace('sdR','spFlat1d').replace('.fit','.txt'))
     else :
-        flat=red.reduce(name,channel=0)
+        flat=red.reduce(name,channel=channel)
         trace=spectra.Trace(transpose=red.transpose,rad=3,lags=np.arange(-3,4))
         ff=np.sum(flat.data[2000:2100],axis=0)
         if channel==0 : thresh=0.4e6
@@ -135,19 +136,30 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=500,threads=12,d
                 plug,header,sky,stan = sdss.getconfig(plugid=plan['SPEXP']['mapname'][objs[0]].astype(str),specid=1)
 
             # sky subtraction
+            raw=copy.deepcopy(out)
+            if display is not None : plt.figure()
             for fiber in range(1,501) :
                 skyclose=np.where(np.abs(plug['fiberId'][sky]-fiber) < 50) [0]
                 skyfibers=plug['fiberId'][sky[skyclose]]
                 wave_index = np.where(rows == fiber-1)[0]
+                if display is not None :
+                    print(fiber,wave_index,skyfibers)
+                    plt.plot(out.data[fiber-1])
                 if len(wave_index) > 0 :
                     wave_object = wavs[wave_index[0]].wave(image=out.data[fiber-1].shape)
                     sky_specs = []
                     for skyfiber in skyfibers :
                         sky_index = np.where(rows == skyfiber-1)[0]
                         if len(sky_index) > 0 :
-                            sky_spec=wavs[sky_index[0]].scomb(out[skyfiber-1],wave_object)
+                            sky_spec=wavs[sky_index[0]].scomb(raw[skyfiber-1],wave_object)
                             sky_specs.append(sky_spec.data)
                     out.data[fiber-1] -= np.median(np.array(sky_specs),axis=0)
+                if display is not None :
+                    plt.plot(np.median(np.array(sky_specs),axis=0))
+                    plt.plot(out.data[fiber-1])
+                    plt.draw()
+                    pdb.set_trace()
+                    plt.clf()
 
             out.write(dir+name.replace('sdR','sp1D'),overwrite=True)
 
@@ -159,3 +171,67 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=500,threads=12,d
             wave[j] = wavs[irow[0]].wave(image=row.shape)
 
     return out
+
+def html(planfile,maxobj=None,channel=0) :
+    """ Create HTML file for plate
+    """
+    plan=yanny.yanny(planfile)
+    dir=os.path.dirname(planfile)+'/'
+    mjd = int(plan['MJD'])
+
+    objs=np.where(plan['SPEXP']['flavor'] == b'science')[0]
+    if int(plan['MJD']) > 59600 :
+        plug,header,sky,stan = sdss.getconfig(config_id=plan['SPEXP']['mapname'][objs[0]].astype(int),specid=1)
+    else :
+        plug,header,sky,stan = sdss.getconfig(plugid=plan['SPEXP']['mapname'][objs[0]].astype(str),specid=1)
+
+    iarc=np.where(plan['SPEXP']['flavor'] == b'arc')[0]
+    waves=[]
+    for channel in [0,1] :
+        name=plan['SPEXP']['name'][objs[0]][channel].astype(str)
+        out=CCDData.read(dir+name.replace('sdR','sp1D'))
+
+        name=plan['SPEXP']['name'][iarc][0][channel].astype(str)
+        if len(plan['SPEXP']['name'][iarc][0]) > 2  and channel == 1 :
+            name=plan['SPEXP']['name'][iarc][0][2].astype(str)
+        wfits=fits.open(dir+name.replace('sdR','spWave'))
+
+        # populate wavelength image
+        wave = np.full_like(out.data,np.nan)
+        for w in wfits[1:] :
+            wav=spectra.WaveCal(w.data)
+            wave[wav.index] = wav.wave(image=out.data.shape[1])
+        waves.append(wave)
+
+    matplotlib.use('Agg')
+    for obj in objs[0:maxobj] :
+        fhtml=open(dir+name.replace('sdR','spPlate').replace('-r1','').replace('.fit','.html'),'w')
+        fhtml.write('<HTML><BODY><TABLE BORDER=2>\n')
+        fhtml.write('<TR><TD>Fiber<TD>CatalogID<TD>Category<TD>g<br>r<br>i<TD>Extracted spectra\n')
+
+        # read the reduced sp1D images
+        out=[]
+        for channel in [0,1] :
+            name=plan['SPEXP']['name'][obj][channel].astype(str)
+            if len(plan['SPEXP']['name'][obj]) > 2  and channel == 1 :
+                name=plan['SPEXP']['name'][obj][2].astype(str)
+            out.append(CCDData.read(dir+name.replace('sdR','sp1D')))
+
+        colors=['b','r']
+        for fiber in range(1,501) :
+            j = np.where(plug['fiberId'] == fiber)[0][0]
+            print(plug['fiberId'][j],plug['category'][j])
+            fhtml.write('<TR>\n')
+            fhtml.write('<TD>{:d}\n'.format(fiber))
+            fhtml.write('<TD>{:d}\n'.format(plug['catalogid'][j]))
+            fhtml.write('<TD>{:s}\n'.format(plug['category'][j].decode()))
+            fhtml.write('<TD>{:7.2f}<br>{:7.2f}<br>{:7.2f}\n'.format(*plug['mag'][j,1:4]))
+            fig,ax=plots.multi(1,1,figsize=(8,2))
+            for channel in [0,1] :
+                plots.plotl(ax,waves[channel][fiber-1],out[channel].data[fiber-1],color=colors[channel])
+            png = name.replace('sdR','spPlate').replace('-r1','').replace('.fit','-{:03d}.png'.format(fiber))
+            fig.savefig(dir+png)
+            plt.close()
+            fhtml.write('<TD><A HREF={:s}><IMG SRC={:s}></A>\n'.format(png,png))
+
+        fhtml.close()
