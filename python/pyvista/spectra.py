@@ -70,17 +70,19 @@ class SpecData(CCDData) :
             #matplotlib.use(backend)
             plt.close()
 
-    def plot(self,ax,**kwargs) :
+    def plot(self,ax,rows=None,**kwargs) :
+        pdb.set_trace()
         if self.data.ndim == 1 :
             gd = np.where(self.mask == False)[0]
             plots.plotl(ax,self.wave[gd],self.data[gd],**kwargs)
         else :
-            for row in range(self.wave.shape[0]) :
+            if rows is None : rows=range(self.wave.shape[0])
+            for row in rows :
                 gd = np.where(self.mask[row,:] == False)[0]
                 plots.plotl(ax,self.wave[row,gd],self.data[row,gd],**kwargs)
-        gd = np.where(self.mask == False)[0]
-        med=np.nanmedian(self.data[gd])
-        ax.set_ylim(0,2*med)
+        #gd = np.where(self.mask == False)[0]
+        #med=np.nanmedian(self.data[gd])
+        #ax.set_ylim(0,2*med)
         
 class WaveCal() :
     """ Class for wavelength solutions
@@ -270,7 +272,7 @@ class WaveCal() :
             nold=-1
             nbd=0
             while nbd != nold :
-                # iterate as long as new points have been removbed
+                # iterate as long as new points have been removed
                 nold=nbd
                 self.model=fitter(mod,self.pix-self.pix0,self.y,
                            self.waves*self.waves_order,weights=self.weights)
@@ -313,8 +315,9 @@ class WaveCal() :
             self.model=fitter(mod,self.pix[irow]-self.pix0,
                              self.waves[irow]*self.waves_order[irow],
                              weights=self.weights[irow])
+            gd=np.where(self.weights[irow]>0.)[0]
             diff=self.waves-self.wave(pixels=[self.pix,self.y])
-            print('  rms: {:8.3f} Angstroms ({:d} lines)'.format(diff[irow].std(),len(irow)))
+            print('  rms: {:8.3f} Angstroms ({:d} lines)'.format(diff[irow[gd]].std(),len(irow)))
             if self.ax is not None :
                 # iterate allowing for interactive removal of points
                 done = False
@@ -405,7 +408,7 @@ class WaveCal() :
         return self.spectrum 
 
     def identify(self,spectrum,file=None,wav=None,wref=None,inter=False,
-                 orders=None,verbose=False,rad=5,thresh=100, fit=True,
+                 orders=None,verbose=False,rad=5,thresh=100, fit=True, maxshift=1.e10,
                  disp=None,display=None,plot=None,pixplot=False,
                  xmin=None,xmax=None,lags=range(-300,300), nskip=1) :
         """ Given some estimate of wavelength solution and file with lines,
@@ -582,6 +585,7 @@ class WaveCal() :
                 ax[0].set_ylabel('Intensity')
             for line in lines :
                 # initial guess from input wavelengths
+                peak0=np.nanargmin(abs(line-wav[row,:]))
                 peak=np.nanargmin(abs(line-wav[row,:]))
                 if ( (peak > xmin+rad) and (peak < xmax-rad)) :
                   # set peak to highest nearby pixel
@@ -622,7 +626,11 @@ class WaveCal() :
                     try: order = self.orders[row]
                     except: order=self.orders[0]
                     waves_order.append(order)
-                    weight.append(1.)
+                    if np.abs(cent-peak0) < maxshift : wt=1.
+                    else : 
+                        print('bad: ',cent,peak0)
+                        wt=0.
+                    weight.append(wt)
         if plot is not None : 
             self.fig.tight_layout()
             print('  See identified lines.')
@@ -1255,6 +1263,7 @@ class FluxCal() :
         self.weights = []
         self.name = []
         self.degree = degree
+        self.median = None
 
     def extinct(self,hd,wav,file='flux/apo_extinct.dat') :
         """ Correct input image for atmospheric extinction
@@ -1278,7 +1287,7 @@ class FluxCal() :
         corr = 10**(-0.4*ext*x)
         return hd.divide(corr)
 
-    def addstar(self,hd,wav,file=None) :
+    def addstar(self,hd,wav,file=None,cal=None,extinct=True) :
         """ Derive flux calibration vector from standard star
 
             Parameters 
@@ -1292,13 +1301,19 @@ class FluxCal() :
                  ['wave','flux','bin'], must be readable by astropy.io.ascii
                  with format='ascii'
         """
-        if str(file)[0] == '.' or str(file)[0] == '/' :
+        if cal is not None :
+            tab=Table()
+            tab['wave'] = cal[0]
+            tab['flux'] = cal[1]
+            tab['bin'] = cal[2]
+        elif str(file)[0] == '.' or str(file)[0] == '/' :
             tab=Table.read(file,format='ascii')
         else :
             tab=Table.read(files(pyvista.data).joinpath(file),
                    names=['wave','flux','mjy','bin'],format='ascii')
 
-        extcorr = self.extinct(hd,wav)
+        if extinct : extcorr = self.extinct(hd,wav)
+        else : extcorr=copy.deepcopy(hd)
         obs=[]
         obscorr=[]
         w=[]
@@ -1315,21 +1330,28 @@ class FluxCal() :
                 true.append(line['flux'])
                 weights.append(1.)
         w=np.array(w)
-        self.waves.append(w)
-        self.obs.append(np.array(obs))
-        self.obscorr.append(np.array(obscorr))
+        obs=np.array(obs)
+        obscorr=np.array(obscorr)
+        true=np.array(true)
         weights=np.array(weights)
+
+        self.waves.append(w)
+        self.obs.append(obs)
+        self.obscorr.append(obscorr)
+        # mask areas around significant lines
         bdlines = [[7570,7730], [6850,7000], [6520, 6600], [4820,4900], [4300,4380]]
         for line in bdlines :
             bd=np.where((w>=line[0]) & (w<=line[1]) )[0]
             weights[bd] = 0.
-        self.weights.append(np.array(weights))
-        self.true.append(np.array(true))
+        bd=np.where(~np.isfinite(obscorr)|(obscorr<=0.))[0]
+        weights[bd] = 0.
+        self.weights.append(weights)
+        self.true.append(true)
         self.name.append('{:s} {:f}'.format(
-            hd.header['FILE'],hd.header['AIRMASS']))
+            hd.header['FILE'],skycalc.airmass(hd.header)))
         self.nstars += 1
 
-    def response(self,degree=None,inter=False,plot=True) :
+    def response(self,degree=None,inter=False,plot=True,legend=True,hard=None) :
         """ Create response curve from loaded standard star spectra and fluxes
 
             Parameters 
@@ -1347,39 +1369,70 @@ class FluxCal() :
 
         des=[]
         rhs=[]
-        if plot : plt.figure()
+        if plot : 
+            fig,ax=plots.multi(1,3,hspace=0.001)
         for istar,(wav,obs,true,weight,name) in enumerate(
                zip(self.waves,self.obscorr,self.true,self.weights,self.name)) :
             gd=np.where(weight > 0.)[0]
-            vander=np.vander(wav[gd],self.degree+1)    
-            design=np.zeros([len(gd),self.degree+self.nstars-1])
-            design[:,0:self.degree]=vander[:,0:self.degree]
-            if istar>0 : design[:,self.degree+istar-1] = 1.
-            des.append(design)
-            rhs.append(np.log10(np.array(obs[gd])/np.array(true[gd])))
+            if self.degree >= 0 :
+                vander=np.vander(wav,self.degree+1)    
+                design=np.zeros([len(wav),self.degree+self.nstars-1])
+                design[:,0:self.degree]=(vander[:,0:self.degree]*
+                                       np.repeat(weight,self.degree).reshape(len(wav),self.degree))
+                if istar>0 : design[:,self.degree+istar-1] = 1.
+                des.append(design)
+
+            tmp=-2.5*np.log10(obs/true)*weight
+            bd=np.where(~np.isfinite(tmp))[0]
+            tmp[bd] = 0.
+            rhs.append(tmp)
+
             if plot :
-                line,=plt.plot(wav,np.log10(np.array(obs)/np.array(true)),lw=1)
-                plt.plot(wav[gd],np.log10(np.array(obs[gd])/np.array(true[gd])),
+                line,=ax[0].plot(wav,-2.5*np.log10(obs/true),lw=1)
+                ax[0].plot(wav[gd],-2.5*np.log10(obs[gd]/true[gd]),
                         lw=0,marker='o',color=line.get_color(),
                         markersize=2, label='{:s}'.format(name))
-                plt.xlabel('Wavelength')
-                plt.ylabel('log(obs flux/true flux)')
-        plt.legend(fontsize='xx-small')
-        design=np.vstack(des)
-        rhs=np.vstack(rhs).flatten()
-        out=np.linalg.solve(np.dot(design.T,design),np.dot(design.T,rhs))
-        self.coeffs = np.append(out[0:self.degree],0.)
-        if plot :
-            plt.gca().set_prop_cycle(None)
-            for istar,wav in enumerate(self.waves) :
-                if istar>0 : 
-                    vec = np.append(out[0:self.degree],out[self.degree+istar-1])
-                else :
-                    vec = np.append(out[0:self.degree],0.)
-                    self.coeffs = vec
-                plt.plot(wav,np.polyval(vec,wav))
-            plt.xlabel('Wavelength')
-            plt.ylabel('log(obs flux/true flux)')
+                ax[1].plot(wav,-2.5*np.log10(obs),
+                        lw=1,color=line.get_color(),
+                        label='{:s}'.format(name))
+                ax[2].plot(wav,-2.5*np.log10(true),
+                        lw=1,color=line.get_color(),
+                        label='{:s}'.format(name))
+                ax[2].set_xlabel('Wavelength')
+                ax[0].set_ylabel('-2.5 log(obs/true )')
+                ax[1].set_ylabel('-2.5 log(obs)')
+                ax[2].set_ylabel('-2.5 log(true)')
+        for i in range(3) : 
+            yr=ax[i].get_ylim()
+            ax[i].set_ylim(yr[0]+5, yr[0])
+        if legend : ax[0].legend(fontsize='xx-small')
+        if self.degree >= 0 :
+            design=np.vstack(des)
+            rhs=np.hstack(rhs)
+            out=np.linalg.solve(np.dot(design.T,design),np.dot(design.T,rhs))
+            self.coeffs = np.append(out[0:self.degree],0.)
+            if plot :
+                plt.gca().set_prop_cycle(None)
+                for istar,wav in enumerate(self.waves) :
+                    if istar>0 : 
+                        vec = np.append(out[0:self.degree],out[self.degree+istar-1])
+                    else :
+                        vec = np.append(out[0:self.degree],0.)
+                        self.coeffs = vec
+                    ax[0].plot(wav,np.polyval(vec,wav))
+        else :
+            for wav in self.waves :
+                if wav != self.waves[0] : 
+                    raise ValueError('cannot median response curves if not all on same wavelengths')
+            allobs = np.array(self.obscorr)
+            alltrue = np.array(self.true)
+            allwav = np.array(self.waves)
+            allweights = np.array(self.weights)
+            self.median = np.median(-2.5*np.log10(alltrue/allobs),axis=0)
+
+        if hard is not None : 
+            print('saving: ', hard)
+            fig.savefig(hard)
 
     def correct(self,hd,wav) :
         """ Apply flux correction to input spectrum
@@ -1392,7 +1445,7 @@ class FluxCal() :
                  Wavelength array for hd
         """
         extcorr = self.extinct(hd,wav)
-        return hd.divide(10.**np.polyval(self.coeffs,wav))
+        return hd.divide(10.**(-0.4*np.polyval(self.coeffs,wav)))
 
     def refraction(self,h=2000,temp=10,rh=0.25) :
         p0=101325
