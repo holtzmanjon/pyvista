@@ -608,7 +608,7 @@ class Reducer() :
 
         im.data -= grid_z
 
-    def crrej(self,im,crbox=None,nsig=5,display=None,mask=False) :
+    def crrej(self,im,crbox=None,nsig=5,display=None,mask=False,objlim=None,fsmode=None) :
         """ Cosmic ray rejection using spatial median filter or lacosmic. 
 
             If crbox is given as a 2-element list, then a box of this shape is
@@ -639,8 +639,10 @@ class Reducer() :
                 display.tv(im)
             if crbox == 'lacosmic':
                 if self.verbose : print('  zapping CRs with ccdproc.cosmicray_lacosmic')
-                outim= ccdproc.cosmicray_lacosmic(im,gain_apply=False,
-                       gain=gain*u.dimensionless_unscaled,readnoise=rn*u.dimensionless_unscaled)
+                if isinstance(gain,list) : g=1.
+                else : g=gain
+                outim= ccdproc.cosmicray_lacosmic(im,gain_apply=False,objlim=objlim,fsmode=fsmode,
+                       gain=g*u.dimensionless_unscaled,readnoise=rn*u.dimensionless_unscaled)
             else :
                 if self.verbose : print('  zapping CRs with filter [{:d},{:d}]...'.format(*crbox))
                 if crbox[0]%2 == 0 or crbox[1]%2 == 0 :
