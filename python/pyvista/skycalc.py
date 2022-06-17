@@ -98,6 +98,8 @@ def airmass(header,obs=None) :
         return header['AIRMAS']
     elif 'SECZ' in header :
         return header['SECZ']
+    elif 'ALT' in header :
+        return 1./np.cos(header['ALT']*np.pi/180.)
     elif 'DATE-OBS' in header and obs is not None:
         site=Observer.at_site(obs)
         time=Time(header['DATE-OBS'])
