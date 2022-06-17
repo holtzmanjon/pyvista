@@ -5,7 +5,7 @@ import pdb
 import matplotlib
 import matplotlib.pyplot as plt
 from pydl.pydlutils import yanny
-from pyvista import imred, spectra, sdss
+from pyvista import imred, spectra, sdss, gaia
 from tools import match,plots
 from ccdproc import CCDData
 import multiprocessing as mp
@@ -98,14 +98,13 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=500,threads=12,d
         rows=[]
         for irow in range(250,500) :
             if irow in trace.index :
-                wav.identify(arcec[irow],plot=None,thresh=5,rad=5)
+                wav.identify(arcec[irow],plot=None,thresh=20,rad=5)
                 wavs.append(copy.deepcopy(wav))
                 rows.append(irow)
-
         wav=spectra.WaveCal('BOSS/BOSS_{:s}_waves.fits'.format(chan[channel]))
         for irow in range(249,-1,-1) :
             if irow in trace.index :
-                wav.identify(arcec[irow],plot=None,thresh=5)
+                wav.identify(arcec[irow],plot=None,thresh=20,rad=5,maxshift=2)
                 wavs.append(copy.deepcopy(wav))
                 rows.append(irow)
         wavs[0].index = rows[0]
@@ -172,8 +171,120 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=500,threads=12,d
 
     return out
 
+def flux(planfile,maxobj=None,channel=0) :
+    """ Do flux calibration from GAIA spectra
+    """
+    plan=yanny.yanny(planfile)
+    dir=os.path.dirname(planfile)+'/'
+    mjd = int(plan['MJD'])
+
+    # get target information
+    objs=np.where(plan['SPEXP']['flavor'] == b'science')[0]
+    if int(plan['MJD']) > 59600 :
+        plug,header,sky,stan = sdss.getconfig(config_id=plan['SPEXP']['mapname'][objs[0]].astype(int),specid=1)
+    else :
+        plug,header,sky,stan = sdss.getconfig(plugid=plan['SPEXP']['mapname'][objs[0]].astype(str),specid=1)
+
+    # get GAIA data
+    print('getting gaia')
+    gaiafile=dir+planfile.replace('spPlan2d','spGaia').replace('.par','.fits')
+    if os.path.exists(gaiafile) :
+        a=fits.open(gaiafile)
+        g=a[1].data
+        x=a[2].data
+    else :
+        g,x=gaia.get(plug['ra'],plug['dec'],vers='dr3_tap',posn_match=5,cols=[[plug['fiberId'],'fiberId']])
+        hdu=fits.HDUList()
+        hdu.append(fits.BinTableHDU(g))
+        hdu.append(fits.BinTableHDU(x))
+        hdu.writeto(gaiafile)
+    i1,i2=match.match(g['source_id'],x['source_id'])
+    j1,j2=match.match(plug['fiberId'],g['fiberId'][i1])
+    w = np.linspace(3360,10200,343)
+
+    # add the stars for which we have GAIA spectra
+    print('getting waves')
+    waves=getwaves(planfile)
+    bflx=spectra.FluxCal(degree=-1)
+    rflx=spectra.FluxCal(degree=-1)
+    # set wavelength ranges for blue and red channels
+    bwav=np.where((w>3400)&(w<7000))[0]
+    rwav=np.where((w>5500)&(w<10200))[0]
+    for obj in objs[0:maxobj] :
+        # read the reduced sp1D images
+        out=[]
+        for channel in [0,1] :
+            name=plan['SPEXP']['name'][obj][channel].astype(str)
+            if len(plan['SPEXP']['name'][obj]) > 2  and channel == 1 :
+                name=plan['SPEXP']['name'][obj][2].astype(str)
+            out.append(CCDData.read(dir+name.replace('sdR','sp1D')))
+        name=name.replace('sdR','spFlux').replace('.fit','')
+
+        # loop over objects, loading spectra
+        for ind,j in enumerate(j1) :
+            if plug['delta_ra'][j] > 0 or plug['delta_dec'][j] > 0 : continue
+            row = plug['fiberId'][j]-1
+            flux = x['flux'][i2[j2[ind]]]
+            bflx.addstar(out[0][row],waves[0][row],cal=[w[bwav],flux[bwav],20],extinct=False)
+            rflx.addstar(out[1][row],waves[1][row],cal=[w[rwav],flux[rwav],20],extinct=False)
+
+        # make the response curve
+        bflx.response(legend=False,hard=dir+name.replace('-r1','-b1')+'.png')
+        rflx.response(legend=False,hard=dir+name+'.png')
+
+        # plot cross-sections
+        fig,ax=plots.multi(1,2)
+        for ww in [4000,5000,6000] :
+          j=np.where(w[bwav]==ww)[0]
+          rat=-2.5*np.log10(np.array(bflx.obscorr)[:,j]/np.array(bflx.true)[:,j])
+          bins=np.arange(np.median(rat)-0.5,np.median(rat)+0.5,0.05)
+          ax[0].hist(-2.5*np.log10(np.array(bflx.obscorr)[:,j]/np.array(bflx.true)[:,j]),
+                   histtype='step', label='{:d}'.format(ww),bins=bins)
+        ax[0].legend(fontsize='x-small')
+        ax[0].set_xlabel('zeropoint (mag)')
+        for ww in [6500,7500,8500] :
+          j=np.where(w[rwav]==ww)[0]
+          rat=-2.5*np.log10(np.array(rflx.obscorr)[:,j]/np.array(rflx.true)[:,j])
+          bins=np.arange(np.median(rat)-0.5,np.median(rat)+0.5,0.05)
+          ax[1].hist(-2.5*np.log10(np.array(rflx.obscorr)[:,j]/np.array(rflx.true)[:,j]),
+                   histtype='step', label='{:d}'.format(ww),bins=bins)
+        ax[1].legend(fontsize='x-small')
+        ax[0].set_xlabel('zeropoint (mag)')
+        fig.tight_layout()
+        fig.savefig(dir+name.replace('-r1','').replace('Flux','FluxHist')+'.png')
+        pdb.set_trace()
+    return bflx,rflx
+
+def getwaves(planfile) :
+    """ Load up 2D wavelength array from spWave file
+    """
+
+    plan=yanny.yanny(planfile)
+    dir=os.path.dirname(planfile)+'/'
+
+    iarc=np.where(plan['SPEXP']['flavor'] == b'arc')[0]
+    objs=np.where(plan['SPEXP']['flavor'] == b'science')[0]
+    waves=[]
+    for channel in [0,1] :
+        name=plan['SPEXP']['name'][objs[0]][channel].astype(str)
+        out=CCDData.read(dir+name.replace('sdR','sp1D'))
+
+        name=plan['SPEXP']['name'][iarc][0][channel].astype(str)
+        if len(plan['SPEXP']['name'][iarc][0]) > 2  and channel == 1 :
+            name=plan['SPEXP']['name'][iarc][0][2].astype(str)
+        wfits=fits.open(dir+name.replace('sdR','spWave'))
+
+        # populate wavelength image
+        wave = np.full_like(out.data,np.nan)
+        for w in wfits[1:] :
+            wav=spectra.WaveCal(w.data)
+            wave[wav.index] = wav.wave(image=out.data.shape[1])
+        waves.append(wave)
+
+    return waves
+
 def html(planfile,maxobj=None,channel=0) :
-    """ Create HTML file for plate
+    """ Create HTML file for visit
     """
     plan=yanny.yanny(planfile)
     dir=os.path.dirname(planfile)+'/'
