@@ -1229,15 +1229,13 @@ class FluxCal() :
         self.degree = degree
         self.median = None
 
-    def extinct(self,hd,wav,file='flux/apo_extinct.dat') :
+    def extinct(self,hd,wave,file='flux/apo_extinct.dat') :
         """ Correct input image for atmospheric extinction
 
             Parameters 
             ----------
             hd : Data object with 
                  Input image
-            wav : array-like
-                 Wavelength array for hd
             file : str, default='flux/apo_extinct.dat'
                  Two column file (['wave','mag']) with extinction curve
         """
@@ -1247,19 +1245,20 @@ class FluxCal() :
             tab=Table.read(files(pyvista.data).joinpath(file),format='ascii')
         x = skycalc.airmass(hd.header)
 
-        ext = np.interp(wav,tab['wave'],tab['mag'])
+        ext = np.interp(wave,tab['wave'],tab['mag'])
         corr = 10**(-0.4*ext*x)
-        return hd.divide(corr)
+        out=copy.deepcopy(hd)
+        out.data /=corr
+        out.uncertainty.array /=corr
+        return out
 
-    def addstar(self,hd,wav,file=None,cal=None,extinct=True) :
+    def addstar(self,hd,wave,file=None,cal=None,extinct=True) :
         """ Derive flux calibration vector from standard star
 
             Parameters 
             ----------
             hd : Data object with standard star spectrum
                  Input image
-            wav : array-like
-                 Wavelength array for hd
             file : str
                  File with calibrated fluxes, with columns 
                  ['wave','flux','bin'], must be readable by astropy.io.ascii
@@ -1276,7 +1275,7 @@ class FluxCal() :
             tab=Table.read(files(pyvista.data).joinpath(file),
                    names=['wave','flux','mjy','bin'],format='ascii')
 
-        if extinct : extcorr = self.extinct(hd,wav)
+        if extinct : extcorr = self.extinct(hd,wave)
         else : extcorr=copy.deepcopy(hd)
         obs=[]
         obscorr=[]
@@ -1286,8 +1285,8 @@ class FluxCal() :
         for line in tab :
             w1=line['wave']-line['bin']/2.
             w2=line['wave']+line['bin']/2.
-            if w1 > wav.min() and w2 < wav.max() :
-                j=np.where((wav >= w1) & (wav <= w2) )[0]
+            if w1 > wave.min() and w2 < wave.max() :
+                j=np.where((wave >= w1) & (wave <= w2) )[0]
                 obs.append(np.mean(hd.data[j]))
                 obscorr.append(np.mean(extcorr.data[j]))
                 w.append(line['wave'])
@@ -1403,26 +1402,28 @@ class FluxCal() :
             print('saving: ', hard)
             fig.savefig(hard)
 
-    def correct(self,hd,waves) :
+    def correct(self,hd,waves,extinct=False) :
         """ Apply flux correction to input spectrum
 
             Parameters 
             ----------
             hd : Data object with spectrum to be corrected
                  Input image
-            wav : array-like
+            waves : array-like
                  Wavelength array for hd
         """
-        corr = np.zeros_like(hd.data)
+        if extinct : extcorr = self.extinct(hd,waves)
         if self.degree >= 0 :
-            extcorr = self.extinct(hd,wav)
-            return hd.divide(10.**(-0.4*np.polyval(self.coeffs,wav)))
+            for irow,row in enumerate(hd.data) :
+                corr = 10.**(-0.4*np.polyval(self.coeffs,waves))
+                hd.data[irow] /= corr
+                hd.uncertainty.array[irow] /= corr
         else :
             spline = scipy.interpolate.CubicSpline(self.waves[0],self.median)
             for irow,row in enumerate(hd.data) :
-                corr[irow] = 10.**(-0.4*spline(waves[irow]))
-            return hd.divide(corr)
-
+                corr = 10.**(-0.4*spline(waves[irow]))
+                hd.data[irow] /= corr
+                hd.uncertainty.array[irow] /= corr
 
     def refraction(self,h=2000,temp=10,rh=0.25) :
         p0=101325
