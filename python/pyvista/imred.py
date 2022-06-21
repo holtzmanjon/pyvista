@@ -404,7 +404,7 @@ class Reducer() :
                             databox.xmin:databox.xmax+1].astype(np.float32) - over
               # if we have separate gains, multiply by them here
               if isinstance(gain,list) :
-                print('multiplying by gain: ', gain[ibias])
+                print('  multiplying by gain: ', gain[ibias])
                 if type(databox) == image.BOX :
                     im.data[databox.ymin:databox.ymax+1,
                             databox.xmin:databox.xmax+1] = \
