@@ -9,6 +9,7 @@ import os
 import pdb
 from astroquery.gaia import Gaia
 import pyvo
+import requests
 
 def get(ra,dec,posn_match=30,vers='dr3',verbose=True,cols=None) :
     tab=Table()
@@ -43,39 +44,46 @@ def get(ra,dec,posn_match=30,vers='dr3',verbose=True,cols=None) :
         os.remove(xmlfilename)
         return  posn_gaia
     elif vers == 'dr3_tap' :
-            #service = pyvo.dal.TAPService("https://dc.zah.uni-heidelberg.de/tap")
-            service = pyvo.dal.TAPService("https://gaia.ari.uni-heidelberg.de/tap")
-            source_id =  'gaiadr3.gaia_source_lite'
-            xp = 'gaiadr3.xp_sampled_mean_spectrum'
-            #service = pyvo.dal.TAPService("http://TAPVizieR.u-strasbg.fr/TAPVizieR/tap/")
-            #source_id =  '"I/355/gaiadr3"'
-            #xp = '"I/355/xpsample"'
-            # this used to work but stopped
-            posn_gaia = service.search(
-                """SELECT * FROM {:s} as g
-                   JOIN TAP_UPLOAD.coords as coords 
-                   ON contains(POINT('ICRS', g.ra, g.dec),CIRCLE('ICRS',coords.my_ra, coords.my_dec,{:f})) = 1""".format(source_id,posn_match/3600.),
-                   uploads={'coords' : tab})
-            tab=Table()
-            tab['SOURCE_ID'] = posn_gaia['source_id'].data
-            xp_gaia = service.search(
-                """SELECT * FROM {:s} as xp
-                   JOIN TAP_UPLOAD.coords as coords 
-                   ON coords.source_id = xp.source_id""".format(xp),
-                   uploads={'coords' : tab})
-            return posn_gaia, xp_gaia
 
-            # Markus at GAVO recommended:
-            #posn_gaia = service.search(
-            #    """WITH withpar AS (
-            #         SELECT *
-            #             FROM gaia.dr3lite AS db
-            #             JOIN TAP_UPLOAD.coords AS coords
-            #             ON distance(db.ra, db.dec, coords.my_ra, coords.my_dec)< {:f}) 
-            #         SELECT * from withpar
-            #         LEFT OUTER JOIN gedr3dist.main as dist using (source_id)
-            #    """.format(posn_match/3600.), uploads={'coords' : tab},maxrec=1000000)
-            print('pyvo returned: ',len(posn_gaia))
+        # Heidelberg GAIA TAP
+        #service = pyvo.dal.TAPService("https://dc.zah.uni-heidelberg.de/tap")
+        service = pyvo.dal.TAPService("https://gaia.ari.uni-heidelberg.de/tap")
+
+        # VizieR
+        #service = pyvo.dal.TAPService("http://TAPVizieR.u-strasbg.fr/TAPVizieR/tap/")
+        #source_id =  '"I/355/gaiadr3"'
+        #xp = '"I/355/xpsample"'
+
+        # AIP GAIA TAP
+        #token='feb854aa631c089300cff1c1edfba95e18ff50ca'
+        #tap_session = requests.Session()
+        #tap_session.headers['Authorization'] = token
+        #lang = 'ADQL'
+        #query_name = "gaia_posn"
+        #service = pyvo.dal.TAPService("https://gaia.aip.de/tap",
+        #           session=tap_session)
+
+        source_id =  'gaiadr3.gaia_source_lite'
+        xp = 'gaiadr3.xp_sampled_mean_spectrum'
+        #posn_gaia = service.submit_job(
+        posn_gaia = service.search(
+            """SELECT * FROM {:s} as g
+               JOIN TAP_UPLOAD.coords as coords 
+               ON contains(POINT('ICRS', g.ra, g.dec),
+                           CIRCLE('ICRS',coords.my_ra, coords.my_dec,{:f})) = 1""".format(
+                      source_id,posn_match/3600.),
+               uploads={'coords' : tab})
+        #       language=lang,runid=query_name,queue="30s")
+        #posn_gaia.run()
+
+        tab=Table()
+        tab['SOURCE_ID'] = posn_gaia['source_id'].data
+        xp_gaia = service.search(
+            """SELECT * FROM {:s} as xp
+               JOIN TAP_UPLOAD.coords as coords 
+               ON coords.source_id = xp.source_id""".format(xp),
+               uploads={'coords' : tab})
+        return posn_gaia, xp_gaia
 
 def getdata(data,vers='dr2',posn_match=30,verbose=False) :
     """ Given input structure, get GAIA information from 2MASS matches
