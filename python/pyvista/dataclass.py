@@ -18,7 +18,6 @@ from astropy.nddata.nduncertainty import (StdDevUncertainty, NDUncertainty, Vari
 _known_uncertainties = (StdDevUncertainty, VarianceUncertainty, InverseVariance)
 _unc_name_to_cls = {cls.__name__: cls for cls in _known_uncertainties}
 _unc_cls_to_name = {cls: cls.__name__ for cls in _known_uncertainties}
-ccddata._config_ccd_requires_unit = False
 
 class Data(CCDData) :
     """ Class to include a wavelength array on top of CCDData
@@ -46,6 +45,7 @@ class Data(CCDData) :
         else :
             self.wave = None
 
+        ccddata._config_ccd_requires_unit = False
         super().__init__(*args, **kwd)
 
     def to_hdu(self, hdu_bitmask='BITMASK', hdu_uncertainty='UNCERT',
