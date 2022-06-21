@@ -7,7 +7,7 @@ from astropy.io import fits, ascii
 from astropy.modeling import models, fitting
 from astropy.convolution import convolve, Box1DKernel
 from astropy.nddata import StdDevUncertainty, support_nddata
-from ccdproc import CCDData
+from pyvista.dataclass import Data
 import scipy.signal
 import scipy.ndimage
 import matplotlib.pyplot as plt
@@ -104,7 +104,7 @@ class BOX() :
         """ Returns mean of data in box
 
             Args :
-                data : input data (CCDData or np.array)
+                data : input data (Data or np.array)
  
             Returns:
                 mean of data in box
@@ -116,7 +116,7 @@ class BOX() :
         """ Returns standard deviation of data in box
 
             Args :
-                data : input data (CCDData or np.array)
+                data : input data (Data or np.array)
 
             Returns:
                 standard deviation of data in box
@@ -128,7 +128,7 @@ class BOX() :
         """ Returns maximum of data in box
 
             Args :
-                data : input data (CCDData or np.array)
+                data : input data (Data or np.array)
 
             Returns:
                 maximum of data in box
@@ -140,7 +140,7 @@ class BOX() :
         """ Returns minimum of data in box
 
             Args :
-                data : input data (CCDData or np.array)
+                data : input data (Data or np.array)
 
             Returns:
                 minimum of data in box
@@ -152,7 +152,7 @@ class BOX() :
         """ Returns median of data in box
 
             Args :
-                data : input data (CCDData or np.array)
+                data : input data (Data or np.array)
 
             Returns:
                 median of data in box
@@ -170,7 +170,7 @@ class BOX() :
         """ Returns data in box
 
             Args :
-                data : input data (CCDData or np.array)
+                data : input data (Data or np.array)
  
             Returns:
                 data in box
@@ -185,7 +185,7 @@ def abx(data,box) :
     Returns dictionary with image statistics in box.
 
     Args :
-        data  : input data (CCDData or np.array)
+        data  : input data (Data or np.array)
         box   : pyvista BOX
 
     Returns :
@@ -604,7 +604,7 @@ def xcorr2d(a,b,lags) :
     """ Two-dimensional cross correlation
 
         Args:
-            a, b : input CCDData frames
+            a, b : input Data frames
             lags : array (1D) of x-corrlation lags
 
         Returns:
@@ -658,9 +658,9 @@ def smooth(hd,size) :
 
 
 def transpose(im) :
-    """ Transpose a CCDData object
+    """ Transpose a Data object
     """
-    return CCDData(im.data.T,header=im.header,
+    return Data(im.data.T,header=im.header,
                    uncertainty=StdDevUncertainty(im.uncertainty.array.T),
-                   mask=im.mask.T,unit=u.dimensionless_unscaled)
+                   bitmask=im.bitmask.T,unit=u.dimensionless_unscaled)
 

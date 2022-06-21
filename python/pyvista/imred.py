@@ -4,8 +4,8 @@ from photutils import DAOStarFinder
 import code
 import copy
 from astropy import units as u
-from astropy.nddata import CCDData, NDData, StdDevUncertainty
-from astropy.nddata import NDData
+from astropy.nddata import StdDevUncertainty
+from pyvista.dataclass import Data
 from astropy.io import fits, ascii
 from astropy.wcs import WCS
 from astropy.modeling import models, fitting
@@ -16,7 +16,7 @@ import yaml
 import subprocess
 import sys
 import tempfile
-from pyvista import stars, image, tv
+from pyvista import stars, image, tv, bitmask
 try: from pyvista import apogee
 except : pass
 import pyvista.data as DATA
@@ -78,7 +78,7 @@ class Reducer() :
         self.inst=inst
         self.badpix=None
         self.scat=None
-        self.mask=None
+        self.bitmask=None
         self.transpose=None
         self.scale=1
         self.biastype=-1
@@ -165,8 +165,8 @@ class Reducer() :
             except : pass
            
             # Add bad pixel mask if it exists
-            try: self.mask=fits.open(importlib_resources.files(DATA).joinpath(inst+'/'+
-                                inst+'_mask.fits'))[0].data.astype(bool)
+            try: self.bitmask=fits.open(importlib_resources.files(DATA).joinpath(inst+'/'+
+                                inst+'_mask.fits'))[0].data
             except: pass
 
         # save number of chips for convenience
@@ -218,11 +218,11 @@ class Reducer() :
             channel : int, default= None
                  if specified, channel to reduce if instrument is multi-channel (multi-file), otherwise
                  all channels will be read/reduced
-            bias : CCDData object, default= None
+            bias : Data object, default= None
                  if specified, superbias frame to subtract
-            dark : CCDData object, default= None
+            dark : Data object, default= None
                  if specified, superdark frame to subtract
-            flat : CCDData object, default= None
+            flat : Data object, default= None
                  if specified, superflat frame to divide by
             crbox : list or str, default=None
                  if specified, parameter to pass to CR rejection routine, either 2-element list giving
@@ -242,7 +242,7 @@ class Reducer() :
         im=self.flat(im,superflat=flat,display=display)
         self.badpix_fix(im,val=badpix)
         if trim and display is not None: display.tvclear()
-        if trim : im=self.trim(im,trimimage=trim)
+        im=self.trim(im,trimimage=trim)
         im=self.crrej(im,crbox=crbox,display=display)
         if solve : 
             im=self.platesolve(im,display=display,scale=self.scale,seeing=seeing)
@@ -258,7 +258,7 @@ class Reducer() :
 
         Returns 
         -------
-            image (CCDData ) : CCDData object, but noise will be incorrect without overscan subtraction
+            image (Data ) : Data object, but noise will be incorrect without overscan subtraction
         """
         out=[]
         # loop over different channels (if any)
@@ -289,12 +289,12 @@ class Reducer() :
                 if self.verbose : print('more than one match found, using first!',file)
             file=file[0]
 
-            # read the file into a CCDData object
+            # read the file into a Data object
             if self.verbose : print('  Reading file: {:s}'.format(file)) 
             if self.inst == 'APOGEE' :
                 im=apogee.cds(file,dark=dark)
             else :
-                try : im=CCDData.read(file,hdu=ext,unit=u.dimensionless_unscaled)
+                try : im=Data.read(file,hdu=ext,unit=u.dimensionless_unscaled)
                 except : raise RuntimeError('Error reading file: {:s}'.format(file))
                 im.data = im.data.astype(np.float32)
             im.header['FILE'] = os.path.basename(file)
@@ -317,11 +317,12 @@ class Reducer() :
               im.uncertainty = StdDevUncertainty(np.sqrt( data/gain + (rn/gain)**2 ))
 
             # Add mask
-            if self.mask is not None : im.mask = self.mask
-            else : im.mask = np.zeros(im.data.shape,dtype=bool)
+            if self.bitmask is not None : im.bitmask = self.bitmask
+            else : im.bitmask = np.zeros(im.data.shape,dtype=np.short)
             if self.badpix is not None :
+                pixmask = bitmask.PixelBitMask()
                 for badpix in self.badpix[idet] :
-                    badpix.setval(im.mask,True)
+                    badpix.setval(im.bitmask,pixmask.getval('BADPIX'))
 
             out.append(im)
             idet+=1
@@ -424,12 +425,12 @@ class Reducer() :
             else :
               im.uncertainty = StdDevUncertainty(np.sqrt( data/gain + (rn/gain)**2 ))
 
-    def trim(self,im,trimimage=False) :
+    def trim(self,inim,trimimage=False) :
         """ Trim image by masking non-trimmed pixels
             May need to preserve image size to match reference/calibration frames, etc.
         """
-        if type(im) is not list : ims=[im]
-        else : ims = im
+        if type(inim) is not list : ims=[inim]
+        else : ims = inim
 
         outim = []
         for  im,trimbox,outbox in zip(ims,self.trimbox,self.outbox) :
@@ -439,10 +440,11 @@ class Reducer() :
             else : 
                 boxes = trimbox
                 outboxes = outbox
-            tmp = np.ones(im.mask.shape,dtype=bool)
+            tmp = np.ones(im.bitmask.shape,dtype=bool)
             for box in boxes :
                 box.setval(tmp,False)
-            im.mask = np.logical_or(im.mask,tmp)
+            pixmask=bitmask.PixelBitMask()
+            im.bitmask |= pixmask.getval('INACTIVE_PIXEL')
             if trimimage :
                 xmax=0 
                 ymax=0 
@@ -450,19 +452,20 @@ class Reducer() :
                     xmax = np.max([xmax,outbox.xmax])
                     ymax = np.max([ymax,outbox.ymax])
                 z=np.zeros([ymax+1,xmax+1]) 
-                out = CCDData(z,z,z,unit=u.dimensionless_unscaled,header=im.header)
+                out = Data(data=z,uncertainty=z,bitmask=z.astype(np.uintc),
+                           unit=u.dimensionless_unscaled,header=im.header)
                 for box,outbox in zip(boxes,outboxes) :
                     out.data[outbox.ymin:outbox.ymax+1,outbox.xmin:outbox.xmax+1] =  \
                             im.data[box.ymin:box.ymax+1,box.xmin:box.xmax+1]
                     out.uncertainty.array[outbox.ymin:outbox.ymax+1,outbox.xmin:outbox.xmax+1] = \
                             im.uncertainty.array[box.ymin:box.ymax+1,box.xmin:box.xmax+1]
-                    out.mask[outbox.ymin:outbox.ymax+1,outbox.xmin:outbox.xmax+1] = \
-                            im.mask[box.ymin:box.ymax+1,box.xmin:box.xmax+1]
+                    out.bitmask[outbox.ymin:outbox.ymax+1,outbox.xmin:outbox.xmax+1] = \
+                            im.bitmask[box.ymin:box.ymax+1,box.xmin:box.xmax+1]
                 outim.append(out)
         if trimimage: 
             if len(outim) == 1 : return outim[0]
             else : return outim
-        else : return im
+        else : return inim
        
     def bias(self,im,superbias=None) :
          """ Superbias subtraction
@@ -849,7 +852,7 @@ class Reducer() :
         # create list of images, reading and overscan subtracting
         allcube = []
         for im in ims :
-            if type(im) is not astropy.nddata.CCDData :
+            if not isinstance(im,pyvista.dataclass.Data) :
                 data = self.reduce(im, **kwargs)
             else :
                 data = im
@@ -915,7 +918,7 @@ class Reducer() :
                 raise ValueError('no combination type: {:s}'.format(type))
             if self.verbose: print('  calculating uncertainty....')
             mask = np.any(maskcube,axis=0)
-            comb=CCDData(med.astype(np.float32),header=allcube[im][chip].header,
+            comb=Data(med.astype(np.float32),header=allcube[im][chip].header,
                          uncertainty=StdDevUncertainty(sig.astype(np.float32)),
                          mask=mask,unit=u.dimensionless_unscaled)
             if normalize: comb.meta['MEANNORM'] = np.array(allnorm).mean()
@@ -1201,39 +1204,3 @@ def getinput(text,display) :
     elif get == 'p' :
         pdb.set_trace()
     return get
-
-class Data(object) :
-    """ Experimental data class to include wavelength array
-    """
-    def __init__(self,data,wave=None) :
-        if type(data) is str :
-            hdulist=fits.open(data)
-            self.meta = hdulist[0].header
-            self.attr_list = []
-            for i in range(1,len(hdulist) ) :
-                try : 
-                    attr=hdulist[i].header['ATTRIBUT']
-                except KeyError :
-                    if i == 1 : attr='data'
-                    elif i == 2 : attr='uncertainty'
-                    elif i == 3 : attr='mask'
-                    elif i == 4 : attr='wave'
-                print('attr: {:s}'.format(attr))
-                self.attr_list.append(attr)
-                setattr(self,attr,hdulist[i].data) 
-        elif type(data) is CCDData :
-            self.unit = data.unit
-            self.meta = data.meta
-            self.data = data.data
-            self.uncertainty = data.uncertainty
-            self.mask = data.mask
-            self.wave = wave
-        else :
-            print('Input must be a filename or CCDData object')
-
-    def write(self,file,overwrite=True) :
-        hdulist=fits.HDUList()
-        hdulist.append(fits.PrimaryHDU(header=self.meta))
-        for attr in self.attr_list :
-            hdulist.append(fits.ImageHDU(getattr(self,attr)))
-        hdulist.writeto(file,overwrite=overwrite)
