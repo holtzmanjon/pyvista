@@ -9,6 +9,7 @@ from pyvista import imred, spectra, sdss, gaia
 from pyvista.dataclass import Data
 from tools import match,plots
 from ccdproc import CCDData
+from scipy.ndimage import median_filter
 import multiprocessing as mp
 from astropy.table import Table
 from astropy.io import fits
@@ -36,7 +37,9 @@ def visit(planfile,clobber=False,maxobj=None,threads=12) :
     for proc in procs : proc.start()
     for proc in procs : proc.join()
 
-def visit_channel(planfile=None,channel=0,clobber=False,threads=12,display=None,maxobj=None) :
+    print('back')
+
+def visit_channel(planfile=None,channel=0,clobber=False,threads=12,display=None,maxobj=None,skysub=True,flux=True) :
     """ Read raw image (eventually, 2D calibration and extract,
         using specified flat/trace
     """
@@ -58,11 +61,13 @@ def visit_channel(planfile=None,channel=0,clobber=False,threads=12,display=None,
     red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_N']+'/'+plan['MJD'])
    
     # get Trace/PSF/flat1D
+    print('trace')
     trace,flat1d=mktrace(planfile,channel=channel,clobber=clobber,display=display,threads=threads)
     # 1d flat to 2D
     fim=np.tile(flat1d,(4224,1)).T
 
     # get wavelength calibration
+    print('wave')
     wave= mkwave(planfile,channel=channel,clobber=clobber,threads=threads,display=display)
 
     # reduce and extract science frames
@@ -74,19 +79,25 @@ def visit_channel(planfile=None,channel=0,clobber=False,threads=12,display=None,
         if os.path.exists(dir+name.replace('sdR','sp1D')) and not clobber : 
             out=Data.read(dir+name.replace('sdR','sp1D'))
         else :
-            print('reducing',name)
             im=red.reduce(name,channel=channel)
             out=trace.extract(im,threads=threads,nout=500,plot=display)
+            # 1d fiber-to-fiber flat
             out.data /= fim
             out.uncertainty.array /= fim
+
+            #add wavelength
+            out.wave = wave
+
+            # need plugfile info for sky subtract and flux calibration
             if int(plan['MJD']) > 59600 :
                 plug,header,sky,stan = sdss.getconfig(config_id=out.header['CONFID'],specid=1)
             else :
                 plug,header,sky,stan = sdss.getconfig(plugid=plan['SPEXP']['mapname'][objs[0]].astype(str),specid=1)
 
-            out.wave = wave
-            skysubtract(out,plug['fiberId'][sky])
+            if skysub: skysubtract(out,plug['fiberId'][sky])
+            if flux : mkflux(out,plug,planfile,channel=channel)
 
+            pdb.set_trace()
             out.write(dir+name.replace('sdR','sp1D'),overwrite=True)
 
     return out
@@ -216,19 +227,22 @@ def mkwave(planfile,channel=0,threads=0,clobber=False,display=None) :
 
     return wave
 
-def mkflux(planfile,maxobj=None,channel=0,medfilt=15) :
+#def mkflux(planfile,maxobj=None,channel=0,medfilt=15) :
+def mkflux(out,plug,planfile,medfilt=15,plot=True,channel=0) :
+
     """ Do flux calibration from GAIA spectra
     """
     plan=yanny.yanny(planfile)
     dir=os.path.dirname(planfile)+'/'
-    mjd = int(plan['MJD'])
 
-    # get target information
-    objs=np.where(plan['SPEXP']['flavor'] == b'science')[0]
-    if int(plan['MJD']) > 59600 :
-        plug,header,sky,stan = sdss.getconfig(config_id=plan['SPEXP']['mapname'][objs[0]].astype(int),specid=1)
-    else :
-        plug,header,sky,stan = sdss.getconfig(plugid=plan['SPEXP']['mapname'][objs[0]].astype(str),specid=1)
+#    mjd = int(plan['MJD'])
+#
+#    # get target information
+#    objs=np.where(plan['SPEXP']['flavor'] == b'science')[0]
+#    if int(plan['MJD']) > 59600 :
+#        plug,header,sky,stan = sdss.getconfig(config_id=plan['SPEXP']['mapname'][objs[0]].astype(int),specid=1)
+#    else :
+#        plug,header,sky,stan = sdss.getconfig(plugid=plan['SPEXP']['mapname'][objs[0]].astype(str),specid=1)
 
     # get GAIA data
     print('getting gaia')
@@ -245,62 +259,75 @@ def mkflux(planfile,maxobj=None,channel=0,medfilt=15) :
     j1,j2=match.match(plug['fiberId'],g['fiberId'][i1])
     w = np.linspace(3360,10200,343)
 
-    # add the stars for which we have GAIA spectra
-    print('getting waves')
-    waves=getwaves(planfile)
-    bflx=spectra.FluxCal(degree=-1)
-    rflx=spectra.FluxCal(degree=-1)
     # set wavelength ranges for blue and red channels
-    bwav=np.where((w>3400)&(w<7000))[0]
-    rwav=np.where((w>5500)&(w<10200))[0]
-    for obj in objs[0:maxobj] :
-        # read the reduced sp1D images
-        out=[]
-        for channel in [0,1] :
-            name=plan['SPEXP']['name'][obj][channel].astype(str)
-            if len(plan['SPEXP']['name'][obj]) > 2  and channel == 1 :
-                name=plan['SPEXP']['name'][obj][2].astype(str)
-            out.append(Data.read(dir+name.replace('sdR','sp1D')))
-        name=name.replace('sdR','spFlux').replace('.fit','')
+    if channel == 0 :
+        wav=np.where((w>3400)&(w<7000))[0]
+        ww = [4000,5000,6000] 
+    else :
+        wav=np.where((w>5500)&(w<10200))[0]
+        ww = [6500,7500,8500]
 
-        # loop over objects, loading spectra
-        for ind,j in enumerate(j1) :
-            if plug['delta_ra'][j] > 0 or plug['delta_dec'][j] > 0 : continue
-            row = plug['fiberId'][j]-1
-            flux = x['flux'][i2[j2[ind]]]
-            bflx.addstar(out[0][row],waves[0][row],cal=[w[bwav],flux[bwav],20],extinct=False)
-            rflx.addstar(out[1][row],waves[1][row],cal=[w[rwav],flux[rwav],20],extinct=False)
+    # add the stars for which we have GAIA spectra
+    flx=spectra.FluxCal(degree=-1)
+    for ind,j in enumerate(j1) :
+        if plug['delta_ra'][j] > 0 or plug['delta_dec'][j] > 0 : continue
+        row = plug['fiberId'][j]-1
+        flux = x['flux'][i2[j2[ind]]]
+        flx.addstar(out[row],out.wave[row],cal=[w[wav],flux[wav],20],extinct=False)
 
-        # make the response curve
-        bflx.response(legend=False,hard=dir+name.replace('-r1','-b1')+'.png',medfilt=medfilt)
-        rflx.response(legend=False,hard=dir+name+'.png',medfilt=medfilt)
+    # make the response curve
+    flx.response(legend=False,medfilt=medfilt)
 
+    if plot :
         # plot cross-sections
-        fig,ax=plots.multi(1,2)
+        fig,ax=plots.multi(1,1)
         for ww in [4000,5000,6000] :
-          j=np.where(w[bwav]==ww)[0]
-          rat=-2.5*np.log10(np.array(bflx.obscorr)[:,j]/np.array(bflx.true)[:,j])
-          bins=np.arange(np.median(rat)-0.5,np.median(rat)+0.5,0.05)
-          ax[0].hist(-2.5*np.log10(np.array(bflx.obscorr)[:,j]/np.array(bflx.true)[:,j]),
-                   histtype='step', label='{:d}'.format(ww),bins=bins)
-        ax[0].legend(fontsize='x-small')
-        ax[0].set_xlabel('zeropoint (mag)')
-        for ww in [6500,7500,8500] :
-          j=np.where(w[rwav]==ww)[0]
-          rat=-2.5*np.log10(np.array(rflx.obscorr)[:,j]/np.array(rflx.true)[:,j])
-          bins=np.arange(np.median(rat)-0.5,np.median(rat)+0.5,0.05)
-          ax[1].hist(-2.5*np.log10(np.array(rflx.obscorr)[:,j]/np.array(rflx.true)[:,j]),
-                   histtype='step', label='{:d}'.format(ww),bins=bins)
-        ax[1].legend(fontsize='x-small')
-        ax[0].set_xlabel('zeropoint (mag)')
+            j=np.where(w[wav]==ww)[0]
+            rat=-2.5*np.log10(np.array(flx.obscorr)[:,j]/np.array(flx.true)[:,j])
+            bins=np.arange(np.median(rat)-0.5,np.median(rat)+0.5,0.05)
+            ax.hist(rat, histtype='step', label='{:d}'.format(ww),bins=bins)
+        ax.legend(fontsize='x-small')
+        ax.set_xlabel('zeropoint (mag)')
         fig.tight_layout()
-        fig.savefig(dir+name.replace('-r1','').replace('Flux','FluxHist')+'.png')
 
-        # apply flux curves
-        out[0] = bflx.correct(out[0],waves[0])
-        out[1] = rflx.correct(out[1],waves[1])
+    # apply flux curves
+    flx.correct(out,out.wave)
 
-    return out
+    return
+
+def combine(out) :
+    """ Combine two channels and resample to common wavelength scale
+    """
+    wnew = 10.**(np.arange(3.5589,4.0151,1.e-4))
+    comb = np.zeros([out[0].shape[0],len(wnew)])
+    comberr = np.zeros([out[0].shape[0],len(wnew)])
+    for irow in range(len(out[0].data)) :
+        gd = np.where((out[0].wave[irow] > wnew[0]) & (out[0].wave[irow]<6200.) )[0]
+        if len(gd) == 0 : continue
+        try :
+          dspline = scipy.interpolate.CubicSpline(out[0].wave[irow,gd],out[0].data[irow,gd])
+          vspline = scipy.interpolate.CubicSpline(out[0].wave[irow,gd],out[0].uncertainty.array[irow,gd]**2)
+        except : continue
+        bdata = dspline(wnew)
+        bvar = vspline(wnew)
+        bdata[np.where(wnew>6200)[0]] = 0.
+        bvar[np.where(wnew>6200)[0]] = 1.e10
+
+        gd = np.where((out[0].wave[irow] < wnew[-1]) & (out[1].wave[irow] > 6100.) )[0]
+        try :
+          dspline = scipy.interpolate.CubicSpline(out[1].wave[irow,gd],out[1].data[irow,gd])
+          vspline = scipy.interpolate.CubicSpline(out[1].wave[irow,gd],out[1].uncertainty.array[irow,gd]**2)
+        except : continue
+        rdata = dspline(wnew)
+        rvar = vspline(wnew)
+        rdata[np.where(wnew<6100)[0]] = 0.
+        rvar[np.where(wnew<6100)[0]] = 1.e10
+
+        comb[irow] = (bdata/bvar + rdata/rvar) / (1/bvar + 1/rvar)
+        comberr[irow] = np.sqrt(1. / (1/bvar + 1/rvar))
+
+    return Data(comb,uncertainty=comberr,wave=wnew)
+
 
 def getwaves(planfile) :
     """ Load up 2D wavelength array from spWave file
@@ -372,7 +399,11 @@ def html(planfile,maxobj=None,channel=0) :
             fhtml.write('<TD>{:7.2f}<br>{:7.2f}<br>{:7.2f}\n'.format(*plug['mag'][j,1:4]))
             fig,ax=plots.multi(1,1,figsize=(8,2))
             for channel in [0,1] :
-                plots.plotl(ax,out[channel].wave[fiber-1],out[channel].data[fiber-1],color=colors[channel])
+                gd=np.where(np.isfinite(out[channel].data[fiber-1]))[0]
+                if len(gd) > 100 :
+                    plots.plotl(ax,out[channel].wave[fiber-1],out[channel].data[fiber-1],color=colors[channel])
+                    ymax = median_filter(out[channel].data[fiber-1],100).max()
+                    ax.set_ylim(0,1.5*ymax)
             png = name.replace('sdR','spPlate').replace('-r1','').replace('.fit','-{:03d}.png'.format(fiber))
             try: os.mkdir(dir+'/plots')
             except: pass
