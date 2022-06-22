@@ -6,6 +6,7 @@ import copy
 from astropy import units as u
 from astropy.nddata import StdDevUncertainty
 from pyvista.dataclass import Data
+import pyvista.dataclass
 from astropy.io import fits, ascii
 from astropy.wcs import WCS
 from astropy.modeling import models, fitting
@@ -525,7 +526,10 @@ class Reducer() :
              if self.verbose : print('  flat fielding...')
              if display is not None : 
                  display.tv(im)
-             corr = ccdproc.flat_correct(im,flat)
+             #corr = ccdproc.flat_correct(im,flat)
+             corr = copy.deepcopy(im)
+             corr.data /= flat.data
+             corr.uncertainty.array /= flat.data
              out.append(corr)
              if display is not None : 
                  display.tv(corr)
@@ -899,7 +903,7 @@ class Reducer() :
                     allcube[im][chip].uncertainty.array /= norm
                 datacube.append(allcube[im][chip].data)
                 varcube.append(allcube[im][chip].uncertainty.array**2)
-                maskcube.append(allcube[im][chip].mask)
+                maskcube.append(allcube[im][chip].bitmask)
             if type == 'median' :
                 if self.verbose: print('  combining data with median....')
                 med = np.median(np.array(datacube),axis=0)
@@ -923,10 +927,11 @@ class Reducer() :
             else :
                 raise ValueError('no combination type: {:s}'.format(type))
             if self.verbose: print('  calculating uncertainty....')
-            mask = np.any(maskcube,axis=0)
+            #mask = np.any(maskcube,axis=0)
+            mask = np.bitwise_or.reduce(maskcube,axis=0)
             comb=Data(med.astype(np.float32),header=allcube[im][chip].header,
                          uncertainty=StdDevUncertainty(sig.astype(np.float32)),
-                         mask=mask,unit=u.dimensionless_unscaled)
+                         bitmask=mask,unit=u.dimensionless_unscaled)
             if normalize: comb.meta['MEANNORM'] = np.array(allnorm).mean()
             out.append(comb)
 
