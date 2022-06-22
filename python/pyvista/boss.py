@@ -271,11 +271,6 @@ def mkflux(out,plug,planfile,medfilt=15,plot=True,channel=0) :
         row = plug['fiberId'][j]-1
         flux = x['flux'][i2[j2[ind]]]
         flx.addstar(out[row],out.wave[row],cal=[w[wav],flux[wav],20],extinct=False,pixelmask=out.bitmask[row])
-        #tmp=spectra.FluxCal(degree=-1)
-        #tmp.addstar(out[row],out.wave[row],cal=[w[wav],flux[wav],20],extinct=False)
-        #tmp.response(legend=False,medfilt=medfilt,plot=plot)
-        #pdb.set_trace()
-        #plt.close()
 
     # make the response curve
     flx.response(legend=False,medfilt=medfilt,plot=plot)
@@ -347,37 +342,10 @@ def combine(planfile,wnew=10.**(np.arange(3.5589,4.0151,1.e-4)),maxobj=None) :
 
             comb[irow] = (bdata/bvar + rdata/rvar) / (1/bvar + 1/rvar)
             comberr[irow] = np.sqrt(1. / (1/bvar + 1/rvar))
+        comb = Data(comb,uncertainty=comberr,wave=wnew,header=out[0].header)
+        comb.write(dir+name.replace('sdR','spPlate').replace('-r1',''))
 
-    return Data(comb,uncertainty=comberr,wave=wnew)
-
-
-def getwaves(planfile) :
-    """ Load up 2D wavelength array from spWave file
-    """
-
-    plan=yanny.yanny(planfile)
-    dir=os.path.dirname(planfile)+'/'
-
-    iarc=np.where(plan['SPEXP']['flavor'] == b'arc')[0]
-    objs=np.where(plan['SPEXP']['flavor'] == b'science')[0]
-    waves=[]
-    for channel in [0,1] :
-        name=plan['SPEXP']['name'][objs[0]][channel].astype(str)
-        out=Data.read(dir+name.replace('sdR','sp1D'))
-
-        name=plan['SPEXP']['name'][iarc][0][channel].astype(str)
-        if len(plan['SPEXP']['name'][iarc][0]) > 2  and channel == 1 :
-            name=plan['SPEXP']['name'][iarc][0][2].astype(str)
-        wfits=fits.open(dir+name.replace('sdR','spWave'))
-
-        # populate wavelength image
-        wave = np.full_like(out.data,np.nan)
-        for w in wfits[1:] :
-            wav=spectra.WaveCal(w.data)
-            wave[wav.index] = wav.wave(image=out.data.shape[1])
-        waves.append(wave)
-
-    return waves
+    return comb
 
 def html(planfile,maxobj=None,channel=0) :
     """ Create HTML file for visit
@@ -410,6 +378,11 @@ def html(planfile,maxobj=None,channel=0) :
                 name=plan['SPEXP']['name'][obj][2].astype(str)
             out.append(Data.read(dir+name.replace('sdR','sp1D')))
 
+        # read the combined image
+        comb=Data.read(dir+name.replace('sdR','spPlate').replace('-r1',''))
+
+        try: os.mkdir(dir+'/plots')
+        except: pass
         colors=['b','r']
         for fiber in range(1,501) :
             j = np.where(plug['fiberId'] == fiber)[0][0]
@@ -420,6 +393,17 @@ def html(planfile,maxobj=None,channel=0) :
             fhtml.write('<TD>{:s}\n'.format(plug['category'][j].decode()))
             fhtml.write('<TD>{:7.2f}<br>{:7.2f}<br>{:7.2f}\n'.format(*plug['mag'][j,1:4]))
             fig,ax=plots.multi(1,1,figsize=(8,2))
+            gd=np.where(np.isfinite(comb.data[fiber-1]))[0]
+            if len(gd) > 100 :
+                plots.plotl(ax,comb.wave,comb.data[fiber-1])
+                ymax = median_filter(comb.data[fiber-1],100).max()
+                ax.set_ylim(0,1.5*ymax)
+            png = name.replace('sdR','spComb').replace('-r1','').replace('.fit','-{:03d}.png'.format(fiber))
+            fig.savefig(dir+'/plots/'+png)
+            plt.close()
+            fhtml.write('<TD><A HREF=plots/{:s}><IMG SRC=plots/{:s}></A>\n'.format(png,png))
+
+            fig,ax=plots.multi(1,1,figsize=(8,2))
             for channel in [0,1] :
                 gd=np.where(np.isfinite(out[channel].data[fiber-1]))[0]
                 if len(gd) > 100 :
@@ -427,8 +411,6 @@ def html(planfile,maxobj=None,channel=0) :
                     ymax = median_filter(out[channel].data[fiber-1],100).max()
                     ax.set_ylim(0,1.5*ymax)
             png = name.replace('sdR','spPlate').replace('-r1','').replace('.fit','-{:03d}.png'.format(fiber))
-            try: os.mkdir(dir+'/plots')
-            except: pass
             fig.savefig(dir+'/plots/'+png)
             plt.close()
             fhtml.write('<TD><A HREF=plots/{:s}><IMG SRC=plots/{:s}></A>\n'.format(png,png))
