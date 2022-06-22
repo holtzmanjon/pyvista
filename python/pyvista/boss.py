@@ -270,7 +270,7 @@ def mkflux(out,plug,planfile,medfilt=15,plot=True,channel=0) :
         if plug['delta_ra'][j] > 0 or plug['delta_dec'][j] > 0 : continue
         row = plug['fiberId'][j]-1
         flux = x['flux'][i2[j2[ind]]]
-        flx.addstar(out,out.wave[row],cal=[w[wav],flux[wav],20],extinct=False,pixelmask=out.bitmask[row])
+        flx.addstar(out[row],out.wave[row],cal=[w[wav],flux[wav],20],extinct=False,pixelmask=out.bitmask[row])
         #tmp=spectra.FluxCal(degree=-1)
         #tmp.addstar(out[row],out.wave[row],cal=[w[wav],flux[wav],20],extinct=False)
         #tmp.response(legend=False,medfilt=medfilt,plot=plot)
