@@ -112,7 +112,7 @@ class Data(CCDData) :
             for k, v in self.header.items():
                 dummy_ccd._insert_in_metadata_fits_safe(k, v)
             header = dummy_ccd.header
-        if self.unit is not u.dimensionless_unscaled:
+        if self.unit is not u.dimensionless_unscaled and self.unit is not None :
             header['bunit'] = self.unit.to_string()
         if self.wcs:
             # Simply extending the FITS header with the WCS can lead to
