@@ -82,6 +82,7 @@ class Reducer() :
         self.transpose=None
         self.scale=1
         self.biastype=-1
+        self.saturation=None
 
         # we will allow for instruments to have multiple channels, so everything goes in lists
         self.channels=['']
@@ -104,6 +105,8 @@ class Reducer() :
             self.formstr=config['formstr']
             self.gain=config['gain']
             self.rn=config['rn']/np.sqrt(nfowler)
+            try : self.saturation=config['saturation']
+            except KeyError: self.saturation = None
             try :self.scale=config['scale']
             except KeyError: self.scale = None
             try : self.namp=config['namp']
@@ -317,12 +320,15 @@ class Reducer() :
               im.uncertainty = StdDevUncertainty(np.sqrt( data/gain + (rn/gain)**2 ))
 
             # Add mask
+            pixmask = bitmask.PixelBitMask()
             if self.bitmask is not None : im.bitmask = self.bitmask
             else : im.bitmask = np.zeros(im.data.shape,dtype=np.short)
             if self.badpix is not None :
-                pixmask = bitmask.PixelBitMask()
                 for badpix in self.badpix[idet] :
                     badpix.setval(im.bitmask,pixmask.getval('BADPIX'))
+            if self.saturation is not None :
+                bd = np.where(im.data >= self.saturation[chan])
+                im.bitmask[bd] |= pixmask.getval('SATPIX')
 
             out.append(im)
             idet+=1
