@@ -1,9 +1,13 @@
 # Here we define a Data class which is very similar to astropy CCDData and uses
 # much of the astropy code, but defines a class that can also include a wavelength
-# extension. We also define the mask attribute to be a short integer rather than
+# extension. We also add a bitmask attribute that is an integer rather than
 # a boolean to allow it to be used as a bitmask. We also remove the requirement
 # of including units. Finally, the name CCDData is not used, since we may 
 # be using digital data that may not come from a CCD!
+
+# Unfortunately, without redoing nddata, the methods provided by nddata, such
+# as slicing and arithmetic, seem to drop the new attributes. So beware
+# using those
 
 from astropy.io import registry, fits
 from astropy.nddata import ccddata, CCDData
