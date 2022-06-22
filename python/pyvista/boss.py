@@ -32,14 +32,14 @@ def visit(planfile,clobber=False,maxobj=None,threads=12) :
     # reduce b1 and r1 in parallel
     procs=[]
     for channel in [0,1] :
-        kw={'planfile' : planfile, 'channel' : channel, 'clobber' : clobber, 'maxobj' : maxobj, 'threads' : threads}
+        kw={'planfile' : planfile, 'channel' : channel, 'clobber' : clobber, 
+                'maxobj' : maxobj, 'threads' : threads, 'plot' : False}
         procs.append(mp.Process(target=visit_channel,kwargs=kw))
     for proc in procs : proc.start()
     for proc in procs : proc.join()
 
-    print('back')
-
-def visit_channel(planfile=None,channel=0,clobber=False,threads=12,display=None,maxobj=None,skysub=True,flux=True) :
+def visit_channel(planfile=None,channel=0,clobber=False,threads=12,plot=True,
+                  display=None,maxobj=None,skysub=True,flux=True) :
     """ Read raw image (eventually, 2D calibration and extract,
         using specified flat/trace
     """
@@ -64,7 +64,7 @@ def visit_channel(planfile=None,channel=0,clobber=False,threads=12,display=None,
     print('trace')
     trace,flat1d=mktrace(planfile,channel=channel,clobber=clobber,display=display,threads=threads)
     # 1d flat to 2D
-    fim=np.tile(flat1d,(4224,1)).T
+    #fim=np.tile(flat1d,(4224,1)).T
 
     # get wavelength calibration
     print('wave')
@@ -82,8 +82,8 @@ def visit_channel(planfile=None,channel=0,clobber=False,threads=12,display=None,
             im=red.reduce(name,channel=channel)
             out=trace.extract(im,threads=threads,nout=500,plot=display)
             # 1d fiber-to-fiber flat
-            out.data /= fim
-            out.uncertainty.array /= fim
+            out.data /= flat1d
+            out.uncertainty.array /= flat1d
 
             #add wavelength
             out.wave = wave
@@ -95,9 +95,8 @@ def visit_channel(planfile=None,channel=0,clobber=False,threads=12,display=None,
                 plug,header,sky,stan = sdss.getconfig(plugid=plan['SPEXP']['mapname'][objs[0]].astype(str),specid=1)
 
             if skysub: skysubtract(out,plug['fiberId'][sky])
-            if flux : mkflux(out,plug,planfile,channel=channel)
+            if flux : mkflux(out,plug,planfile,channel=channel,plot=plot)
 
-            pdb.set_trace()
             out.write(dir+name.replace('sdR','sp1D'),overwrite=True)
 
     return out
@@ -127,7 +126,7 @@ def skysubtract(out,skyfibers,display=None) :
 
 
 def mktrace(planfile,channel=0,clobber=False,nfibers=500,threads=0,display=None,skip=40) :
-    """ Create spTrace and spFlat1d files or read if they already exist
+    """ Create spTrace and spFlat1D files or read if they already exist
     """
 
     plan=yanny.yanny(planfile)
@@ -143,7 +142,8 @@ def mktrace(planfile,channel=0,clobber=False,nfibers=500,threads=0,display=None,
 
     if os.path.exists(outname) and not clobber :
         trace=spectra.Trace(outname)
-        f=np.loadtxt(outname.replace('spTrace','spFlat1d').replace('.fit','.txt'))
+        #f=np.loadtxt(outname.replace('spTrace','spFlat1d').replace('.fit','.txt'))
+        flat1d=Data.read(outname.replace('spTrace','spFlat1D'))
     else :
         print('creating Trace')
         flat=red.reduce(name,channel=channel)
@@ -157,14 +157,19 @@ def mktrace(planfile,channel=0,clobber=False,nfibers=500,threads=0,display=None,
                     display=display)
         trace.write(outname) 
         flat1d=trace.extract(flat,threads=threads,nout=500,display=display)
-        f=np.median(flat1d.data[:,1500:2500],axis=1)
-        f/=np.median(f)
-        np.savetxt(outname.replace('spTrace','spFlat1d').replace('.fit','.txt'),f)
+        # median spectral shape
+        fmed=np.median(flat1d,axis=0)
+        flat1d=flat1d.divide(fmed)
+        flat1d.write(outname.replace('spTrace','spFlat1D'))
 
-    return trace,f
+        #f=np.median(flat1d.data[:,1500:2500],axis=1)
+        #f/=np.median(f)
+        #np.savetxt(outname.replace('spTrace','spFlat1d').replace('.fit','.txt'),f)
+
+    return trace,flat1d
 
 
-def mkwave(planfile,channel=0,threads=0,clobber=False,display=None) :
+def mkwave(planfile,channel=0,threads=0,clobber=False,display=None,plot=False) :
     """ Create spWave files or read if they already exist
 
         Return 2D wavelength image
@@ -202,13 +207,13 @@ def mkwave(planfile,channel=0,threads=0,clobber=False,display=None) :
         rows=[]
         for irow in range(250,500) :
             if irow in trace.index :
-                wav.identify(arcec[irow],plot=None,thresh=20,rad=5)
+                wav.identify(arcec[irow],plot=plot,thresh=20,rad=5)
                 wavs.append(copy.deepcopy(wav))
                 rows.append(irow)
         wav=spectra.WaveCal('BOSS/BOSS_{:s}_waves.fits'.format(chan[channel]))
         for irow in range(249,-1,-1) :
             if irow in trace.index :
-                wav.identify(arcec[irow],plot=None,thresh=20,rad=5,maxshift=2)
+                wav.identify(arcec[irow],plot=plot,thresh=20,rad=5,maxshift=2)
                 wavs.append(copy.deepcopy(wav))
                 rows.append(irow)
         wavs[0].index = rows[0]
@@ -235,15 +240,6 @@ def mkflux(out,plug,planfile,medfilt=15,plot=True,channel=0) :
     plan=yanny.yanny(planfile)
     dir=os.path.dirname(planfile)+'/'
 
-#    mjd = int(plan['MJD'])
-#
-#    # get target information
-#    objs=np.where(plan['SPEXP']['flavor'] == b'science')[0]
-#    if int(plan['MJD']) > 59600 :
-#        plug,header,sky,stan = sdss.getconfig(config_id=plan['SPEXP']['mapname'][objs[0]].astype(int),specid=1)
-#    else :
-#        plug,header,sky,stan = sdss.getconfig(plugid=plan['SPEXP']['mapname'][objs[0]].astype(str),specid=1)
-
     # get GAIA data
     print('getting gaia')
     gaia_posn=dir+planfile.replace('spPlan2d','spGaiaPosn').replace('.par','.xml')
@@ -252,6 +248,7 @@ def mkflux(out,plug,planfile,medfilt=15,plot=True,channel=0) :
         g=parse_single_table(gaia_posn).array
         x=parse_single_table(gaia_flux).array
     else :
+        print('gaia query')
         g,x=gaia.get(plug['ra'],plug['dec'],vers='dr3_tap',posn_match=5,cols=[[plug['fiberId'],'fiberId']])
         g._votable.to_xml(gaia_posn)
         x._votable.to_xml(gaia_flux)
@@ -262,10 +259,10 @@ def mkflux(out,plug,planfile,medfilt=15,plot=True,channel=0) :
     # set wavelength ranges for blue and red channels
     if channel == 0 :
         wav=np.where((w>3400)&(w<7000))[0]
-        ww = [4000,5000,6000] 
+        wws = [4000,5000,6000] 
     else :
         wav=np.where((w>5500)&(w<10200))[0]
-        ww = [6500,7500,8500]
+        wws = [6500,7500,8500]
 
     # add the stars for which we have GAIA spectra
     flx=spectra.FluxCal(degree=-1)
@@ -273,15 +270,20 @@ def mkflux(out,plug,planfile,medfilt=15,plot=True,channel=0) :
         if plug['delta_ra'][j] > 0 or plug['delta_dec'][j] > 0 : continue
         row = plug['fiberId'][j]-1
         flux = x['flux'][i2[j2[ind]]]
-        flx.addstar(out[row],out.wave[row],cal=[w[wav],flux[wav],20],extinct=False)
+        flx.addstar(out,out.wave[row],cal=[w[wav],flux[wav],20],extinct=False,pixelmask=out.bitmask[row])
+        #tmp=spectra.FluxCal(degree=-1)
+        #tmp.addstar(out[row],out.wave[row],cal=[w[wav],flux[wav],20],extinct=False)
+        #tmp.response(legend=False,medfilt=medfilt,plot=plot)
+        #pdb.set_trace()
+        #plt.close()
 
     # make the response curve
-    flx.response(legend=False,medfilt=medfilt)
+    flx.response(legend=False,medfilt=medfilt,plot=plot)
 
     if plot :
         # plot cross-sections
         fig,ax=plots.multi(1,1)
-        for ww in [4000,5000,6000] :
+        for ww in wws :
             j=np.where(w[wav]==ww)[0]
             rat=-2.5*np.log10(np.array(flx.obscorr)[:,j]/np.array(flx.true)[:,j])
             bins=np.arange(np.median(rat)-0.5,np.median(rat)+0.5,0.05)
@@ -291,40 +293,60 @@ def mkflux(out,plug,planfile,medfilt=15,plot=True,channel=0) :
         fig.tight_layout()
 
     # apply flux curves
-    flx.correct(out,out.wave)
+    flx.correct(out,out.wave,extinct=False)
 
     return
 
-def combine(out) :
+def combine(planfile,wnew=10.**(np.arange(3.5589,4.0151,1.e-4)),maxobj=None) :
     """ Combine two channels and resample to common wavelength scale
     """
-    wnew = 10.**(np.arange(3.5589,4.0151,1.e-4))
-    comb = np.zeros([out[0].shape[0],len(wnew)])
-    comberr = np.zeros([out[0].shape[0],len(wnew)])
-    for irow in range(len(out[0].data)) :
-        gd = np.where((out[0].wave[irow] > wnew[0]) & (out[0].wave[irow]<6200.) )[0]
-        if len(gd) == 0 : continue
-        try :
-          dspline = scipy.interpolate.CubicSpline(out[0].wave[irow,gd],out[0].data[irow,gd])
-          vspline = scipy.interpolate.CubicSpline(out[0].wave[irow,gd],out[0].uncertainty.array[irow,gd]**2)
-        except : continue
-        bdata = dspline(wnew)
-        bvar = vspline(wnew)
-        bdata[np.where(wnew>6200)[0]] = 0.
-        bvar[np.where(wnew>6200)[0]] = 1.e10
+    plan=yanny.yanny(planfile)
+    dir=os.path.dirname(planfile)+'/'
+    mjd = int(plan['MJD'])
 
-        gd = np.where((out[0].wave[irow] < wnew[-1]) & (out[1].wave[irow] > 6100.) )[0]
-        try :
-          dspline = scipy.interpolate.CubicSpline(out[1].wave[irow,gd],out[1].data[irow,gd])
-          vspline = scipy.interpolate.CubicSpline(out[1].wave[irow,gd],out[1].uncertainty.array[irow,gd]**2)
-        except : continue
-        rdata = dspline(wnew)
-        rvar = vspline(wnew)
-        rdata[np.where(wnew<6100)[0]] = 0.
-        rvar[np.where(wnew<6100)[0]] = 1.e10
+    # get target information
+    objs=np.where(plan['SPEXP']['flavor'] == b'science')[0]
+    if int(plan['MJD']) > 59600 :
+        plug,header,sky,stan = sdss.getconfig(config_id=plan['SPEXP']['mapname'][objs[0]].astype(int),specid=1)
+    else :
+        plug,header,sky,stan = sdss.getconfig(plugid=plan['SPEXP']['mapname'][objs[0]].astype(str),specid=1)
 
-        comb[irow] = (bdata/bvar + rdata/rvar) / (1/bvar + 1/rvar)
-        comberr[irow] = np.sqrt(1. / (1/bvar + 1/rvar))
+    objs=np.where(plan['SPEXP']['flavor'] == b'science')[0]
+    done = True
+    for obj in objs[0:maxobj] :
+        out=[]
+        for channel in [0,1] :
+            name=plan['SPEXP']['name'][obj][channel].astype(str)
+            if len(plan['SPEXP']['name'][obj]) > 2  and channel == 1 :
+                name=plan['SPEXP']['name'][obj][2].astype(str)
+            out.append(Data.read(dir+name.replace('sdR','sp1D')))
+
+        comb = np.zeros([out[0].shape[0],len(wnew)])
+        comberr = np.zeros([out[0].shape[0],len(wnew)])
+        for irow in range(len(out[0].data)) :
+            gd = np.where((out[0].wave[irow] > wnew[0]) & (out[0].wave[irow]<6200.) )[0]
+            if len(gd) == 0 : continue
+            try :
+              dspline = scipy.interpolate.CubicSpline(out[0].wave[irow,gd],out[0].data[irow,gd])
+              vspline = scipy.interpolate.CubicSpline(out[0].wave[irow,gd],out[0].uncertainty.array[irow,gd]**2)
+            except : continue
+            bdata = dspline(wnew)
+            bvar = vspline(wnew)
+            bdata[np.where(wnew>6200)[0]] = 0.
+            bvar[np.where(wnew>6200)[0]] = 1.e10
+
+            gd = np.where((out[0].wave[irow] < wnew[-1]) & (out[1].wave[irow] > 6100.) )[0]
+            try :
+              dspline = scipy.interpolate.CubicSpline(out[1].wave[irow,gd],out[1].data[irow,gd])
+              vspline = scipy.interpolate.CubicSpline(out[1].wave[irow,gd],out[1].uncertainty.array[irow,gd]**2)
+            except : continue
+            rdata = dspline(wnew)
+            rvar = vspline(wnew)
+            rdata[np.where(wnew<6100)[0]] = 0.
+            rvar[np.where(wnew<6100)[0]] = 1.e10
+
+            comb[irow] = (bdata/bvar + rdata/rvar) / (1/bvar + 1/rvar)
+            comberr[irow] = np.sqrt(1. / (1/bvar + 1/rvar))
 
     return Data(comb,uncertainty=comberr,wave=wnew)
 
