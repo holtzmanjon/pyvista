@@ -1252,7 +1252,7 @@ class FluxCal() :
         out.uncertainty.array /=corr
         return out
 
-    def addstar(self,hd,wave,file=None,cal=None,extinct=True) :
+    def addstar(self,hd,wave,pixelmask=None,file=None,cal=None,extinct=True) :
         """ Derive flux calibration vector from standard star
 
             Parameters 
@@ -1264,6 +1264,14 @@ class FluxCal() :
                  ['wave','flux','bin'], must be readable by astropy.io.ascii
                  with format='ascii'
         """
+        # any bad pixels?
+        if bitmask is not None :
+            bd = np.bitwise_or.reduce(pixelmask.flatten())
+            pixelmask=bitmask.PixelBitMask()
+            if bd & pixelmask.badval() :
+                print('Bad pixels found in spectrum, not adding')
+                return
+
         if cal is not None :
             tab=Table()
             tab['wave'] = cal[0]
@@ -1365,10 +1373,11 @@ class FluxCal() :
                 ax[0].set_ylabel('-2.5 log(obs/true )')
                 ax[1].set_ylabel('-2.5 log(obs)')
                 ax[2].set_ylabel('-2.5 log(true)')
-        for i in range(3) : 
-            yr=ax[i].get_ylim()
-            ax[i].set_ylim(yr[0]+5, yr[0])
-        if legend : ax[0].legend(fontsize='xx-small')
+        if plot :
+            for i in range(3) : 
+                yr=ax[i].get_ylim()
+                ax[i].set_ylim(yr[0]+5, yr[0])
+            if legend : ax[0].legend(fontsize='xx-small')
         if self.degree >= 0 :
             design=np.vstack(des)
             rhs=np.hstack(rhs)
@@ -1395,6 +1404,8 @@ class FluxCal() :
             if medfilt is not None :
                 self.median = median_filter(self.median,size=medfilt)
             if plot :
+                for istar,wav in enumerate(self.waves) :
+                    ax[2].plot(wav,-2.5*np.log10(obs/10.**(-0.4*self.median)))
                 ax[0].plot(wav,self.median,lw=5,color='k')
                 plt.draw()
 
@@ -1402,7 +1413,7 @@ class FluxCal() :
             print('saving: ', hard)
             fig.savefig(hard)
 
-    def correct(self,hd,waves,extinct=False) :
+    def correct(self,hd,waves,extinct=True) :
         """ Apply flux correction to input spectrum
 
             Parameters 
