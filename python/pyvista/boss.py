@@ -271,7 +271,12 @@ def mkflux(out,plug,planfile,medfilt=15,plot=True,channel=0) :
         if plug['delta_ra'][j] > 0 or plug['delta_dec'][j] > 0 : continue
         row = plug['fiberId'][j]-1
         flux = x['flux'][i2[j2[ind]]]
-        flx.addstar(out[row],out.wave[row],cal=[w[wav],flux[wav],20],extinct=False,pixelmask=out.bitmask[row])
+        stdflux=Table()
+        stdflux['wave'] = w[wav]
+        stdflux['flux'] = flux[wav]
+        stdflux['bin'] = 20
+        flx.addstar(out[row],out.wave[row],stdflux=stdflux,
+                    extinct=False,pixelmask=out.bitmask[row])
 
     # make the response curve
     flx.response(legend=False,medfilt=medfilt,plot=plot)
