@@ -11,6 +11,7 @@ import scipy.signal
 import scipy.interpolate
 from scipy.optimize import curve_fit
 from scipy.ndimage import median_filter
+from scipy.linalg import solve_banded
 import numpy as np
 import astropy
 from astropy.modeling import models, fitting
@@ -555,7 +556,7 @@ class WaveCal() :
                     if verbose : print(line,peak,*coeff)
                     if display is not None and  isinstance(display,pyvista.tv.TV) :
                         display.ax.scatter(cent,row,marker='o',color='g',s=2)
-                    if plot is not None :
+                    if plot is not None and plot != False :
                         if pixplot :ax[0].plot([cent,cent],ax[0].get_ylim(),color='r')
                         else : ax[0].text(line,1.,'{:7.1f}'.format(line),rotation='vertical',va='top',ha='center')
                     x.append(cent)
@@ -571,7 +572,7 @@ class WaveCal() :
                         print('bad: ',cent,peak0)
                         wt=0.
                     weight.append(wt)
-        if plot is not None : 
+        if self.ax is not None : 
             self.fig.tight_layout()
             print('  See identified lines.')
         self.pix=np.array(x)
@@ -727,8 +728,8 @@ class Trace() :
                 except KeyError : 
                     print('no attribute: ', tag)
                     setattr(self,tag,None)
-            coeffs = tab['coeffs'][0]
             # use saved coefficients to instantiate model
+            coeffs = tab['coeffs'][0]
             self.model = []
             for row in coeffs :
                 if self.type == 'Polynomial1D' :
@@ -737,6 +738,18 @@ class Trace() :
                         name='c{:d}'.format(i)
                         kwargs[name] = c
                     self.model.append(
+                        models.Polynomial1D(degree=self.degree,**kwargs))
+                else :
+                    raise ValueError('Only Polynomial1D currently implemented')
+            sigcoeffs = tab['sigcoeffs'][0]
+            self.sigmodel = []
+            for row in sigcoeffs :
+                if self.type == 'Polynomial1D' :
+                    kwargs={}
+                    for i,c in enumerate(row) :
+                        name='c{:d}'.format(i)
+                        kwargs[name] = c
+                    self.sigmodel.append(
                         models.Polynomial1D(degree=self.degree,**kwargs))
                 else :
                     raise ValueError('Only Polynomial1D currently implemented')
@@ -789,6 +802,16 @@ class Trace() :
                     row.append(getattr(m,name).value)
                 coeffs.append(row)
         tab['coeffs'] = [np.array(coeffs)]
+        coeffs = []
+        if self.type == 'Polynomial1D' :
+            # load model coefficients
+            for m in self.sigmodel :
+                row=[]
+                for i in range(self.degree+1) :
+                    name='c{:d}'.format(i)
+                    row.append(getattr(m,name).value)
+                coeffs.append(row)
+        tab['sigcoeffs'] = [np.array(coeffs)]
         if append :
             tab.write(file,append=True)
         else :
@@ -797,7 +820,7 @@ class Trace() :
 
 
     def trace(self,im,srows,sc0=None,plot=None,display=None,
-              rad=None, thresh=20,index=None,skip=1) :
+              rad=None, thresh=20,index=None,skip=1,gaussian=False) :
         """ Trace a spectrum from starting position
         """
 
@@ -905,12 +928,19 @@ class Trace() :
 
             cols=np.arange(ncol)
             gd = np.where((~ymask) & (ysum/np.sqrt(yvar)>thresh) )[0]
-            model=(fitter(mod,cols[gd],ypos[gd]))
+            if gaussian :
+                model=(fitter(mod,cols[gd],ygpos[gd]))
+                res = model(cols)-ygpos
+            else :
+                model=(fitter(mod,cols[gd],ypos[gd]))
+                res = model(cols)-ypos
 
             # reject outlier points (>1 pixel) and refit
-            res = model(cols)-ypos
             gd = np.where((~ymask) & (ysum/np.sqrt(yvar)>thresh) & (np.abs(res)<1))[0]
-            model=(fitter(mod,cols[gd],ypos[gd]))
+            if gaussian: 
+                model=(fitter(mod,cols[gd],ygpos[gd]))
+            else :
+                model=(fitter(mod,cols[gd],ypos[gd]))
             sigmodel=(fitter(mod,cols[gd],ygsig[gd]))
             if len(gd) < 10 : 
                 print('  failed trace for row: {:d}'.format(irow))
@@ -1048,8 +1078,49 @@ class Trace() :
         self.pix0=fitpeak+lags[0]
         self.pix0=pixshift
         return fitpeak+lags[0]
- 
-    def extract(self,im,rad=None,back=[],
+
+    def immodel(self,im,ext,threads=0) :
+        if self.transpose :
+            new = (im.data*0.).T
+        else : 
+            new = im.data*0.
+        ncols = im.data.shape[1]
+
+        pars=[]
+        if threads == 0 : 
+            skip=1
+            npars=ncols
+        else : 
+            skip=ncols//threads
+            npars=threads
+        for col in range(npars) :
+            if col == threads-1 : ec=ncols
+            else : ec=col*skip+skip
+            pars.append((ext.data[:,col*skip:ec],new.shape[0],
+                         np.arange(col*skip,ec),self.model,self.sigmodel,self.index))
+
+        if threads > 0 :
+            pool = mp.Pool(threads)
+            output = pool.map_async(model_col, pars).get()
+            pool.close()
+            pool.join()
+            col=0
+            for out in output :
+                nc=out.shape[1]
+                new[:,col:col+nc] = out
+                col+=skip
+        else :
+            col=0
+            for par in pars :
+                out=model_col(par)
+                new[:,col:col+skip] = out
+                col+=skip
+
+        if self.transpose : return new.T
+        else : return new
+
+
+    def extract(self,im,rad=None,back=[],fit=False,
                 display=None,plot=None,medfilt=None,nout=None,threads=0) :
         """ Extract spectrum given trace(s)
 
@@ -1108,10 +1179,11 @@ class Trace() :
             pars.append((hd.data[:,col*skip:ec],
                          hd.uncertainty.array[:,col*skip:ec],
                          hd.bitmask[:,col*skip:ec],
-                         np.arange(col*skip,ec),self.model,rad,self.pix0,back))
+                         np.arange(col*skip,ec),self.model,rad,self.pix0,back,self.sigmodel))
         if threads > 0 :
             pool = mp.Pool(threads)
-            output = pool.map_async(extract_col, pars).get()
+            if fit : output = pool.map_async(extract_col_fit, pars).get()
+            else : output = pool.map_async(extract_col, pars).get()
             pool.close()
             pool.join()
             col=0
@@ -1124,7 +1196,8 @@ class Trace() :
         else :
             col=0
             for par in pars :
-                out=extract_col(par)
+                if fit : out=extract_col_fit(par)
+                else : out=extract_col(par)
                 spec[self.index,col:col+skip] = out[0]
                 sig[self.index,col:col+skip] = out[1]
                 bitmask[self.index,col:col+skip] = out[2]
@@ -1460,6 +1533,10 @@ def gfit(data,x0,rad=10,sig=3,back=None) :
     fit = gauss(xx,*coeff)
     return coeff
 
+def qgauss(x, *p):
+    A, mu, sigma = p
+    return A*np.exp(-(x-mu)**2/(2.*sigma**2))/np.sqrt(2*np.pi)/sigma
+
 def gauss(x, *p):
     """ Gaussian function
     """
@@ -1501,10 +1578,69 @@ def getinput(prompt,fig=None,index=False) :
     get = plots.mark(fig,index=index)
     return get
 
+def model_col(pars) :
+    """ Extract a single column, using boxcar extraction for multiple traces
+    """
+
+    ext,nrow,cols,models,sigmodels,index = pars
+    new = np.zeros([nrow,len(cols)])
+    for jcol,col in enumerate(cols) :
+
+        row = np.arange(0,nrow)
+        coldata= np.zeros([nrow])
+        for i,(model,sigmodel) in enumerate(zip(models,sigmodels)) :
+            cr=model(col)
+            sig=sigmodel(col)
+            rows=np.arange(int(cr-5*sig),int(cr+5*sig))
+            coldata[rows] += qgauss(rows,ext[index[i],jcol],cr,sig)
+        new[:,jcol] = coldata
+    return new
+
+def extract_col_fit(pars) :
+    """ Extract a single column, using boxcar extraction for multiple traces
+    """
+    data,err,bitmask,cols,models,rad,pix0,back,sigmodels = pars
+    spec = np.zeros([len(models),len(cols)])
+    sig = np.zeros([len(models),len(cols)])
+    mask = np.zeros([len(models),len(cols)],dtype=np.uintc)
+    for jcol,col in enumerate(cols) :
+        center=[]
+        sigma=[]
+        for i,(model,sigmodel) in enumerate(zip(models,sigmodels)) :
+          center.append(model(col))
+          sigma.append(sigmodel(col))
+        center=np.array(center)
+        sigma=np.array(sigma)
+        n=len(models)
+
+        ab=np.zeros([3,n])
+        b=np.zeros([n])
+        for row in range(data.shape[0]) :
+          nearest=np.argmin(np.abs(row-center))
+          if nearest == 0 :
+              for j in [0,1] :
+                ab[j+1,nearest] += ( qgauss(row, 1.,center[nearest],sigma[nearest]) *
+                                     qgauss(row, 1.,center[nearest+j],sigma[nearest+j]) )
+          elif nearest == n-1 :
+              for j in [-1,0] :
+                ab[j+1,nearest] += ( qgauss(row, 1.,center[nearest],sigma[nearest]) *
+                                     qgauss(row, 1.,center[nearest+j],sigma[nearest+j]) )
+          else :
+              for j in [-1,0,1] :
+                ab[j+1,nearest] += ( qgauss(row, 1.,center[nearest],sigma[nearest]) *
+                                     qgauss(row, 1.,center[nearest+j],sigma[nearest+j]) )
+          b[nearest] += data[row,jcol] * qgauss(row,1.,center[nearest],sigma[nearest])
+
+        x=solve_banded((1,1),ab,b)
+        spec[:,jcol] = x
+        print('done col: ', col)
+    return spec,sig, mask
+
+
 def extract_col(pars) :
     """ Extract a single column, using boxcar extraction for multiple traces
     """
-    data,err,bitmask,cols,models,rad,pix0,back = pars
+    data,err,bitmask,cols,models,rad,pix0,back,sigmodels = pars
     spec = np.zeros([len(models),len(cols)])
     sig = np.zeros([len(models),len(cols)])
     mask = np.zeros([len(models),len(cols)],dtype=np.uintc)
@@ -1540,4 +1676,5 @@ def extract_col(pars) :
             print('      extraction failed',i,j,col)
             pixmask=bitmask.PixelBitMask()
             mask[i,j] = pixmask.badval('BAD_EXTRACTION')
+
     return spec,sig, mask
