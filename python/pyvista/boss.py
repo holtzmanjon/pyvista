@@ -79,8 +79,9 @@ def visit_channel(planfile=None,channel=0,clobber=False,threads=12,plot=True,
         if os.path.exists(dir+name.replace('sdR','sp1D')) and not clobber : 
             out=Data.read(dir+name.replace('sdR','sp1D'))
         else :
-            im=red.reduce(name,channel=channel)
-            out=trace.extract(im,threads=threads,nout=500,plot=display)
+            im=red.reduce(name,channel=channel,trim=True)
+            out=trace.extract(im,threads=threads,nout=500,plot=display,fit=False)
+            #out_fit=trace.extract(im,threads=threads,nout=500,plot=display,fit=True)
             # 1d fiber-to-fiber flat
             out.data /= flat1d
             out.uncertainty.array /= flat1d
@@ -146,7 +147,7 @@ def mktrace(planfile,channel=0,clobber=False,nfibers=500,threads=0,display=None,
         flat1d=Data.read(outname.replace('spTrace','spFlat1D'))
     else :
         print('creating Trace')
-        flat=red.reduce(name,channel=channel)
+        flat=red.reduce(name,channel=channel,trim=True)
         trace=spectra.Trace(transpose=red.transpose,rad=3,lags=np.arange(-3,4))
         ff=np.sum(flat.data[2000:2100],axis=0)
         if channel==0 : thresh=0.4e6
@@ -154,7 +155,7 @@ def mktrace(planfile,channel=0,clobber=False,nfibers=500,threads=0,display=None,
         peaks,fiber=spectra.findpeak(ff,thresh=thresh,diff=10,bundle=20)
         print('found {:d} peaks'.format(len(peaks)))
         trace.trace(flat,peaks[0:nfibers],index=fiber[0:nfibers],skip=skip,
-                    display=display)
+                    display=display,gaussian=True)
         trace.write(outname) 
         flat1d=trace.extract(flat,threads=threads,nout=500,display=display)
         # median spectral shape
@@ -197,10 +198,10 @@ def mkwave(planfile,channel=0,threads=0,clobber=False,display=None,plot=False) :
             wav= spectra.WaveCal(w.data)
             wavs.append(wav)
             rows.append(wav.index)
-        im=red.reduce(name,channel=channel)
+        im=red.reduce(name,channel=channel,trim=True)
     else :
         print('creating WaveCal')
-        im=red.reduce(name,channel=channel)
+        im=red.reduce(name,channel=channel,trim=True)
         arcec=trace.extract(im,threads=threads,nout=500,display=display)
         wav=spectra.WaveCal('BOSS/BOSS_{:s}_waves.fits'.format(chan[channel]))
         wavs=[]
