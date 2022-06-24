@@ -52,6 +52,12 @@ class Data(CCDData) :
         ccddata._config_ccd_requires_unit = False
         super().__init__(*args, **kwd)
 
+    def add_wave(self,wave) :
+        self.wave = wave
+
+    def add_bitmask(self,bitmask) :
+        self.bitmask = bitmask
+
     def to_hdu(self, hdu_bitmask='BITMASK', hdu_uncertainty='UNCERT',
                hdu_wave='WAVE', wcs_relax=True,
                key_uncertainty_type='UTYPE', as_image_hdu=True):
