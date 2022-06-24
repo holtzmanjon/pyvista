@@ -171,6 +171,17 @@ class WaveCal() :
                 out= self.model(cols-self.pix0)/self.orders[0]
             return out
 
+    def add_wave(self, hd) :
+        """ Add wavelength attribute to input image using current wavelength solution
+
+            Parameters 
+            ----------
+            hd : Data object
+                 Image to add wavelength array to
+        """
+
+        hd.add_wave(self.wave(image=np.array(np.atleast_2d(hd.data).shape)))
+
     def getmod(self) :
         """ Return model for current attributes
         """
@@ -370,6 +381,7 @@ class WaveCal() :
             Lines are identified by looking for peaks within rad pixels of
                initial guess
 
+                         
             After line identification, fit() is called, unless fit=False
 
             With plot=True, plot of spectrum is shown, with initial wavelength
@@ -608,13 +620,14 @@ class WaveCal() :
         #output grid
         out=np.zeros(len(wav))
         sig=np.zeros(len(wav))
-        mask=np.zeros(len(wav),dtype=bool)
+        mask=np.zeros(len(wav),dtype=np.uintc)
+        pixmask=bitmask.PixelBitMask()
         # raw wavelengths
         w=self.wave(image=np.array(np.atleast_2d(hd.data).shape))
         for i in range(np.atleast_2d(hd).shape[0]) :
             sort=np.argsort(w[i,:])
             if usemask : 
-                gd = np.where(~np.atleast_2d(hd.mask)[i,sort])
+                gd = np.where(~(np.atleast_2d(hd.bitmask&pixmask.badval()))[i,sort])
                 sort= sort[gd]
             if len(gd[0]) == 0 : continue
             wmin=w[i,sort].min()
@@ -639,7 +652,7 @@ class WaveCal() :
         else :
             sig = np.sqrt(sig)
         return Data(out,uncertainty=StdDevUncertainty(sig),
-                       mask=mask,header=hd.header,unit='adu')
+                       bitmask=mask,header=hd.header)
 
 
     def correct(self,hd,wav) :
@@ -657,7 +670,7 @@ class WaveCal() :
 
         out=np.zeros([hd.data.shape[0],len(wav)])
         sig=np.zeros_like(out)
-        mask=np.zeros_like(out,dtype=bool)
+        mask=np.zeros_like(out,dtype=np.uintc)
         w=self.wave(image=hd.data.shape)
         for i in range(len(out)) :
             sort=np.argsort(w[i,:])
@@ -669,7 +682,7 @@ class WaveCal() :
             sig[i,w2:w1] += np.sqrt(
                             np.interp(wav[w2:w1],w[i,sort],hd.uncertainty.array[i,sort]**2))
 
-        return Data(out,StdDevUncertainty(sig),mask,unit='adu')
+        return Data(out,uncertainty=StdDevUncertainty(sig),bitmask=mask)
 
 class Trace() :
     """ Class for spectral traces
@@ -741,18 +754,22 @@ class Trace() :
                         models.Polynomial1D(degree=self.degree,**kwargs))
                 else :
                     raise ValueError('Only Polynomial1D currently implemented')
-            sigcoeffs = tab['sigcoeffs'][0]
-            self.sigmodel = []
-            for row in sigcoeffs :
-                if self.type == 'Polynomial1D' :
-                    kwargs={}
-                    for i,c in enumerate(row) :
-                        name='c{:d}'.format(i)
-                        kwargs[name] = c
-                    self.sigmodel.append(
-                        models.Polynomial1D(degree=self.degree,**kwargs))
-                else :
-                    raise ValueError('Only Polynomial1D currently implemented')
+            try :
+                sigcoeffs = tab['sigcoeffs'][0]
+                self.sigmodel = []
+                for row in sigcoeffs :
+                    if self.type == 'Polynomial1D' :
+                        kwargs={}
+                        for i,c in enumerate(row) :
+                            name='c{:d}'.format(i)
+                            kwargs[name] = c
+                        self.sigmodel.append(
+                            models.Polynomial1D(degree=self.degree,**kwargs))
+                    else :
+                        raise ValueError('Only Polynomial1D currently implemented')
+            except KeyError :
+                sigcoeffs = None
+                self.sigmodel = None
             return
 
         self.type = type
@@ -802,16 +819,17 @@ class Trace() :
                     row.append(getattr(m,name).value)
                 coeffs.append(row)
         tab['coeffs'] = [np.array(coeffs)]
-        coeffs = []
-        if self.type == 'Polynomial1D' :
-            # load model coefficients
-            for m in self.sigmodel :
-                row=[]
-                for i in range(self.degree+1) :
-                    name='c{:d}'.format(i)
-                    row.append(getattr(m,name).value)
-                coeffs.append(row)
-        tab['sigcoeffs'] = [np.array(coeffs)]
+        if self.sigmodel is not None :
+            coeffs = []
+            if self.type == 'Polynomial1D' :
+                # load model coefficients
+                for m in self.sigmodel :
+                    row=[]
+                    for i in range(self.degree+1) :
+                        name='c{:d}'.format(i)
+                        row.append(getattr(m,name).value)
+                    coeffs.append(row)
+            tab['sigcoeffs'] = [np.array(coeffs)]
         if append :
             tab.write(file,append=True)
         else :
@@ -820,8 +838,28 @@ class Trace() :
 
 
     def trace(self,im,srows,sc0=None,plot=None,display=None,
-              rad=None, thresh=20,index=None,skip=1,gaussian=False) :
+              rad=None, thresh=20,index=None,skip=10,gaussian=False) :
         """ Trace a spectrum from starting position
+
+            Parameters
+            ----------
+            im : Data
+                 input image
+            srows : array-like
+                 location(s) at sc0 for initial trace location(s) guess(es)
+            rad : float, optional, default=self.rad
+                 radius of window to use to find trace locations
+            index : integer, optional, default=None
+                 index to label trace(s) with
+            skip : integer, optional, default=10
+                 measure trace center every skip pixels, using median of 
+                 data from -skip/2 to sip/2
+            gaussian : bool, optional, default=False
+                 if True, use gaussian fit for trace location instead of centroid. 
+                 with gaussian=True, will also store trace widths (from fit)
+            sc0 : integer, optional, default=ncol/2
+            plot : bool, optional, default=None
+            display : TV object, optional, default=None
         """
 
         if plot == None and display != None : plot = display
@@ -851,14 +889,15 @@ class Trace() :
         ypos = np.zeros(ncol)
         ysum = np.zeros(ncol)
         yvar = np.zeros(ncol)
-        ymask = np.zeros(ncol,dtype=bool)
+        ymask = np.ones(ncol,dtype=bool)
         ygpos = np.zeros(ncol)
         ygsig = np.zeros(ncol)
+        pixmask = bitmask.PixelBitMask()
 
         # we want to handle multiple traces, so make sure srows is iterable
         if type(srows ) is int or type(srows) is float : srows=[srows]
         self.model=[]
-        self.sigmodel=[]
+        if gaussian : self.sigmodel=[]
         if plot : 
             plot.clear()
             plot.tv(hd)
@@ -877,18 +916,26 @@ class Trace() :
             for col in range(self.sc0,skip//2,-skip) :
                 # centroid
                 cr=sr-rad+hd.data[sr-rad:sr+rad+1,col].argmax()
-                ysum[col] = np.sum( np.median(hd.data[cr-rad:cr+rad+1,col-skip//2:col+skip//2+1],axis=1) ) 
-                ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*
-                             np.median(hd.data[cr-rad:cr+rad+1,col-skip//2:col+skip//2+1],axis=1) ) / ysum[col]
-                yvar[col] = np.sum(np.median(hd.uncertainty.array[cr-rad:cr+rad+1,col-skip//2:col+skip//2+1],axis=1)**2) 
-                #ymask[col] = np.any(hd.bitmask[cr-rad:cr+rad+1,col]&pixmask.badval()) 
+                ysum[col] = np.sum( np.median(
+                            hd.data[cr-rad:cr+rad+1,col-skip//2:col+skip//2+1],axis=1) ) 
+                ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*np.median(
+                            hd.data[cr-rad:cr+rad+1,
+                                    col-skip//2:col+skip//2+1],axis=1) ) / ysum[col]
+                yvar[col] = np.sum(np.median(
+                            hd.uncertainty.array[cr-rad:cr+rad+1,
+                                                 col-skip//2:col+skip//2+1],axis=1)**2) 
+                if hd.bitmask is not None :
+                    ymask[col] = np.any(hd.bitmask[cr-rad:cr+rad+1,col]&pixmask.badval()) 
+                else:
+                    ymask[col] = False
 
                 # gaussian fit
-                try : 
-                    gcoeff=gfit(hd.data[:,col],cr,rad=self.rad,sig=2,back=0.)
-                    ygpos[col] = gcoeff[1]
-                    ygsig[col] = gcoeff[2]
-                except : pass
+                if gaussian :
+                    try : 
+                        gcoeff=gfit(hd.data[:,col],cr,rad=self.rad,sig=2,back=0.)
+                        ygpos[col] = gcoeff[1]
+                        ygsig[col] = gcoeff[2]
+                    except : pass
 
                 # if centroid is too far from starting guess, mask as bad
                 if np.abs(ypos[col]-sr) > np.max([rad/2.,0.75]) : 
@@ -899,25 +946,34 @@ class Trace() :
                 if ((not ymask[col]) & np.isfinite(ysum[col]) & 
                     (ysum[col]/np.sqrt(yvar[col]) > thresh) )  : 
                         sr=int(round(ypos[col]))
+
+            # march right from center
             sr=copy.copy(srow)
             sr=int(round(sr))
             sr=hd.data[sr-rad:sr+rad+1,self.sc0].argmax()+sr-rad
-            # march right from center
             for col in range(self.sc0+1,ncol,skip) :
                 # centroid
                 cr=sr-rad+hd.data[sr-rad:sr+rad+1,col].argmax()
-                ysum[col] = np.sum(np.median(hd.data[cr-rad:cr+rad+1,col-skip//2:col+skip//2+1],axis=1)) 
-                ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*
-                             np.median(hd.data[cr-rad:cr+rad+1,col-skip//2:col+skip//2+1],axis=1)) / ysum[col]
-                yvar[col] = np.sum(np.median(hd.uncertainty.array[cr-rad:cr+rad+1,col-skip//2:col+skip//2+1],axis=1)**2) 
-                #ymask[col] = np.any(hd.bitmask[cr-rad:cr+rad+1,col]&pixmask.badval()) 
+                ysum[col] = np.sum(np.median(
+                            hd.data[cr-rad:cr+rad+1, col-skip//2:col+skip//2+1],axis=1)) 
+                ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*np.median(
+                            hd.data[cr-rad:cr+rad+1,
+                                    col-skip//2:col+skip//2+1],axis=1)) / ysum[col]
+                yvar[col] = np.sum(np.median(
+                            hd.uncertainty.array[cr-rad:cr+rad+1,
+                                                 col-skip//2:col+skip//2+1],axis=1)**2) 
+                if hd.bitmask is not None :
+                    ymask[col] = np.any(hd.bitmask[cr-rad:cr+rad+1,col]&pixmask.badval()) 
+                else:
+                    ymask[col] = False
 
                 # gaussian fit
-                try : 
-                    gcoeff=gfit(hd.data[:,col],cr,rad=self.rad,sig=2,back=0.)
-                    ygpos[col] = gcoeff[1]
-                    ygsig[col] = gcoeff[2]
-                except : pass
+                if gaussian :
+                    try : 
+                        gcoeff=gfit(hd.data[:,col],cr,rad=self.rad,sig=2,back=0.)
+                        ygpos[col] = gcoeff[1]
+                        ygsig[col] = gcoeff[2]
+                    except : pass
 
                 # use this position as starting center for next if above threshold S/N
                 if np.abs(ypos[col]-sr) > np.max([rad/2.,0.75]) : 
@@ -926,12 +982,15 @@ class Trace() :
                     (ysum[col]/np.sqrt(yvar[col]) > thresh) ) : 
                         sr=int(round(ypos[col]))
 
+            # do a fit to the measured locations
             cols=np.arange(ncol)
             gd = np.where((~ymask) & (ysum/np.sqrt(yvar)>thresh) )[0]
             if gaussian :
+                # use gaussian fit centers
                 model=(fitter(mod,cols[gd],ygpos[gd]))
                 res = model(cols)-ygpos
             else :
+                # use centroid
                 model=(fitter(mod,cols[gd],ypos[gd]))
                 res = model(cols)-ypos
 
@@ -939,18 +998,21 @@ class Trace() :
             gd = np.where((~ymask) & (ysum/np.sqrt(yvar)>thresh) & (np.abs(res)<1))[0]
             if gaussian: 
                 model=(fitter(mod,cols[gd],ygpos[gd]))
+                sigmodel=(fitter(mod,cols[gd],ygsig[gd]))
+                self.sigmodel.append(sigmodel)
             else :
                 model=(fitter(mod,cols[gd],ypos[gd]))
-            sigmodel=(fitter(mod,cols[gd],ygsig[gd]))
             if len(gd) < 10 : 
                 print('  failed trace for row: {:d}'.format(irow))
-                #model=copy.copy(oldmodel[irow])
             self.model.append(model)
-            self.sigmodel.append(sigmodel)
 
             if plot : 
-                plot.ax.scatter(cols,ypos,marker='o',color='r',s=4) 
-                plot.ax.scatter(cols[gd],ypos[gd],marker='o',color='g',s=10) 
+                valid = np.where(ypos>0.)[0]
+                plot.ax.scatter(cols[valid],ypos[valid],marker='o',color='r',s=4) 
+                if gaussian : 
+                    plot.ax.scatter(cols[gd],ygpos[gd],marker='o',color='g',s=10) 
+                else :
+                    plot.ax.scatter(cols[gd],ypos[gd],marker='o',color='g',s=10) 
                 plot.ax.plot(cols,model(cols),color='m')
                 plot.plotax2.cla()
                 plot.plotax2.plot(cols,model(cols),color='m')
@@ -1080,6 +1142,8 @@ class Trace() :
         return fitpeak+lags[0]
 
     def immodel(self,im,ext,threads=0) :
+        """ Create model 2D image from input fluxes
+        """
         if self.transpose :
             new = (im.data*0.).T
         else : 
@@ -1144,7 +1208,10 @@ class Trace() :
         if self.transpose :
             hd = image.transpose(im)
         else :
-            hd = im
+            hd = copy.deepcopy(im)
+
+        if hd.bitmask is None :
+            hd.add_bitmask(np.zeros_like(hd.data,dtype=np.uintc))
 
         if rad is None : rad=self.rad
         if len(back) > 0 :
@@ -1179,7 +1246,8 @@ class Trace() :
             pars.append((hd.data[:,col*skip:ec],
                          hd.uncertainty.array[:,col*skip:ec],
                          hd.bitmask[:,col*skip:ec],
-                         np.arange(col*skip,ec),self.model,rad,self.pix0,back,self.sigmodel))
+                         np.arange(col*skip,ec),
+                         self.model,rad,self.pix0,back,self.sigmodel))
         if threads > 0 :
             pool = mp.Pool(threads)
             if fit : output = pool.map_async(extract_col_fit, pars).get()
@@ -1236,7 +1304,8 @@ class Trace() :
             while getinput('  See extraction window(s). Hit space bar to continue....',plot.fig)[2] != ' ' :
                 pass
         print("")
-        return Data(spec,uncertainty=StdDevUncertainty(sig),bitmask=bitmask,header=hd.header,unit='adu')
+        return Data(spec,uncertainty=StdDevUncertainty(sig),
+                    bitmask=bitmask,header=hd.header)
 
   
     def extract2d(self,im,rows=None,plot=None) :
@@ -1300,15 +1369,19 @@ class FluxCal() :
         self.weights = []
         self.name = []
         self.degree = degree
-        self.median = None
+        self.median = False
+        self.mean = True
+        self.response_curve = None
 
     def extinct(self,hd,wave,file='flux/apo_extinct.dat') :
         """ Correct input image for atmospheric extinction
 
             Parameters 
             ----------
-            hd : Data object with 
+            hd : Data object with data
                  Input image
+            wave : float, array-like
+                 Wavelengths for input image (separate from attribute to allow slicing in hd)
             file : str, default='flux/apo_extinct.dat'
                  Two column file (['wave','mag']) with extinction curve
         """
@@ -1325,7 +1398,7 @@ class FluxCal() :
         out.uncertainty.array /=corr
         return out
 
-    def addstar(self,hd,wave,pixelmask=None,file=None,cal=None,extinct=True) :
+    def addstar(self,hd,wave,pixelmask=None,file=None,stdflux=None,extinct=True) :
         """ Derive flux calibration vector from standard star
 
             Parameters 
@@ -1336,25 +1409,26 @@ class FluxCal() :
                  File with calibrated fluxes, with columns 
                  ['wave','flux','bin'], must be readable by astropy.io.ascii
                  with format='ascii'
+            stdflux : astropy Table, optional
+                 Table with calibrated fluxes
         """
         # any bad pixels?
-        if bitmask is not None :
+        if pixelmask is not None :
             bd = np.bitwise_or.reduce(pixelmask.flatten())
             pixelmask=bitmask.PixelBitMask()
             if bd & pixelmask.badval() :
                 print('Bad pixels found in spectrum, not adding')
                 return
 
-        if cal is not None :
-            tab=Table()
-            tab['wave'] = cal[0]
-            tab['flux'] = cal[1]
-            tab['bin'] = cal[2]
+        if stdflux is not None :
+            tab=stdflux
         elif str(file)[0] == '.' or str(file)[0] == '/' :
             tab=Table.read(file,format='ascii')
-        else :
+        elif file is not None :
             tab=Table.read(files(pyvista.data).joinpath(file),
                    names=['wave','flux','mjy','bin'],format='ascii')
+        else :
+            raise ValueError('must specify either file= or stdflux=')
 
         if extinct : extcorr = self.extinct(hd,wave)
         else : extcorr=copy.deepcopy(hd)
@@ -1402,8 +1476,14 @@ class FluxCal() :
             ----------
             degree : integer, default=self.degree
                  polynomial degree
+            medfilt : integer, default=None
+                 width of median filter to apply to mean/median response curve
             plot : bool, default=False
                  set to True to see plot 
+            legend : bool, default=True
+                 label stars on plot with a legend
+            hard : str, default=None
+                 file name for hardcopy plot 
         """
 
         if self.nstars < 1 :
@@ -1422,7 +1502,7 @@ class FluxCal() :
                 vander=np.vander(wav,self.degree+1)    
                 design=np.zeros([len(wav),self.degree+self.nstars-1])
                 design[:,0:self.degree]=(vander[:,0:self.degree]*
-                                       np.repeat(weight,self.degree).reshape(len(wav),self.degree))
+                      np.repeat(weight,self.degree).reshape(len(wav),self.degree))
                 if istar>0 : design[:,self.degree+istar-1] = 1.
                 des.append(design)
 
@@ -1473,13 +1553,16 @@ class FluxCal() :
             alltrue = np.array(self.true)
             allwav = np.array(self.waves)
             allweights = np.array(self.weights)
-            self.median = np.nanmedian(-2.5*np.log10(allobs/alltrue),axis=0)
+            if self.mean :
+                self.response_curve = np.mean(-2.5*np.log10(allobs/alltrue),axis=0)
+            else :
+                self.response_curve = np.nanmedian(-2.5*np.log10(allobs/alltrue),axis=0)
             if medfilt is not None :
-                self.median = median_filter(self.median,size=medfilt)
+                self.response_curve = median_filter(self.response_curve,size=medfilt)
             if plot :
                 for istar,wav in enumerate(self.waves) :
-                    ax[2].plot(wav,-2.5*np.log10(obs/10.**(-0.4*self.median)))
-                ax[0].plot(wav,self.median,lw=5,color='k')
+                    ax[2].plot(wav,-2.5*np.log10(obs/10.**(-0.4*self.response_curve)))
+                ax[0].plot(wav,self.response_curve,lw=5,color='k')
                 plt.draw()
 
         if plot and hard is not None : 
@@ -1494,7 +1577,7 @@ class FluxCal() :
             hd : Data object with spectrum to be corrected
                  Input image
             waves : array-like
-                 Wavelength array for hd
+                 Wavelength array for hd (separate from hd to allow slicing of hd)
         """
         if extinct : extcorr = self.extinct(hd,waves)
         if self.degree >= 0 :
@@ -1503,7 +1586,7 @@ class FluxCal() :
                 hd.data[irow] /= corr
                 hd.uncertainty.array[irow] /= corr
         else :
-            spline = scipy.interpolate.CubicSpline(self.waves[0],self.median)
+            spline = scipy.interpolate.CubicSpline(self.waves[0],self.response_curve)
             for irow,row in enumerate(hd.data) :
                 corr = 10.**(-0.4*spline(waves[irow]))
                 hd.data[irow] /= corr
