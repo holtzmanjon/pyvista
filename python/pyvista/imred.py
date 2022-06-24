@@ -558,10 +558,14 @@ class Reducer() :
          else : return out
 
 
-    def scatter(self,im,scat=None,display=None,smooth=3,smooth2d=31) :
+    def scatter(self,inim,scat=None,display=None,smooth=3,smooth2d=31,transpose=False) :
         """ Removal of scattered light (for multi-order/object spectrograph)
         """
         if scat is None : return
+        if transpose :
+            im = Data(data=inim.data.T)
+        else :
+            im = copy.deepcopy(inim)
 
         print('  estimating scattered light ...')
         boxcar = Box1DKernel(smooth)
@@ -621,7 +625,7 @@ class Reducer() :
 
         im.data -= grid_z
 
-    def crrej(self,im,crbox=None,nsig=5,display=None,mask=False,objlim=None,fsmode=None) :
+    def crrej(self,im,crbox=None,nsig=5,display=None,mask=False,objlim=5.,fsmode='median',inbkg=None) :
         """ Cosmic ray rejection using spatial median filter or lacosmic. 
 
             If crbox is given as a 2-element list, then a box of this shape is
@@ -654,7 +658,7 @@ class Reducer() :
                 if self.verbose : print('  zapping CRs with ccdproc.cosmicray_lacosmic')
                 if isinstance(gain,list) : g=1.
                 else : g=gain
-                outim= ccdproc.cosmicray_lacosmic(im,gain_apply=False,objlim=objlim,fsmode=fsmode,
+                outim= ccdproc.cosmicray_lacosmic(im,gain_apply=False,objlim=objlim,fsmode=fsmode,inbkg=inbkg,
                        gain=g*u.dimensionless_unscaled,readnoise=rn*u.dimensionless_unscaled)
             else :
                 if self.verbose : print('  zapping CRs with filter [{:d},{:d}]...'.format(*crbox))
