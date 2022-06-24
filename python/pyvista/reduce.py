@@ -398,7 +398,8 @@ def mkcal(cals,caltype,reducer,reddir,sbias=None,sdark=None,clobber=False,
                         except FileNotFoundError : make=True
             if make :
                 try :
-                    # see if we are requested to make product from previous products by seeing if dictionary entries exist for frames
+                    # see if we are requested to make product from previous 
+                    # products by seeing if dictionary entries exist for frames
                     scal=[]
                     tot=[]
                     for frame in cal['frames'] :
