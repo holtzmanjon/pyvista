@@ -488,7 +488,12 @@ class Reducer() :
          out=[]
          for im,bias in zip(ims,superbiases) :
              if self.verbose : print('  subtracting bias...')
-             out.append(ccdproc.subtract_bias(im,bias))
+             #out.append(ccdproc.subtract_bias(im,bias))
+             corr = copy.deepcopy(im)
+             corr.data -= bias.data
+             corr.uncertainty.array = np.sqrt(corr.uncertainty.array**2+
+                                              bias.uncertainty.array**2)
+             out.append(corr)
          if len(out) == 1 : return out[0]
          else : return out
 
@@ -507,7 +512,13 @@ class Reducer() :
          out=[]
          for im,dark in zip(ims,superdarks) :
              if self.verbose : print('  subtracting dark...')
-             out.append(ccdproc.subtract_dark(im,dark,exposure_time='EXPTIME',exposure_unit=u.s))
+             #out.append(ccdproc.subtract_dark(im,dark,exposure_time='EXPTIME',exposure_unit=u.s))
+             corr = copy.deepcopy(im)
+             exptime = corr.header['EXPTIME']
+             corr.data -= dark.data*exptime
+             corr.uncertainty.array = np.sqrt(corr.uncertainty.array**2+
+                                              exptime**2*dark.uncertainty.array**2)
+             out.append(corr)
          if len(out) == 1 : return out[0]
          else : return out
 
@@ -560,12 +571,34 @@ class Reducer() :
 
     def scatter(self,inim,scat=None,display=None,smooth=3,smooth2d=31,transpose=False) :
         """ Removal of scattered light (for multi-order/object spectrograph)
+
+            Remove scattered light by looking for valleys in cross-sections across traces
+            and fitting a 2D surface to the low points. Cross-sections are smoothed before
+            finding the valleys, and interpolated surface is also smoothed. Some attempt
+            is made to reject outliers before fitting the final surface, which is subtracted
+            from the image.
+ 
+            Parameters
+            ----------
+            im : Data object
+                 input image to correct
+            transpose : bool, default=False
+                 set to true if spectra run along columns
+            scat : integer, default=None
+                 get scattered light measurements every scat pixels. If None, no correction
+            display : TV object, default=None
+                 if set, show the scattered light measurements
+            smooth : integer, default=3
+                 boxcar width for smoothing profile perpendicular to traces before looking
+                 for valleys
+            smooth2d : integer, default=31
+                 boxcar width for smoothing interpolated scattered light surface
         """
         if scat is None : return
         if transpose :
             im = Data(data=inim.data.T)
         else :
-            im = copy.deepcopy(inim)
+            im = inim
 
         print('  estimating scattered light ...')
         boxcar = Box1DKernel(smooth)
@@ -623,7 +656,10 @@ class Reducer() :
             plt.draw()
             getinput("  See scattered light image",display)
 
-        im.data -= grid_z
+        if transpose :
+            im.data -= grid_z.T
+        else :
+            im.data -= grid_z
 
     def crrej(self,im,crbox=None,nsig=5,display=None,mask=False,objlim=5.,fsmode='median',inbkg=None) :
         """ Cosmic ray rejection using spatial median filter or lacosmic. 
@@ -653,7 +689,9 @@ class Reducer() :
         for i,(im,gain,rn) in enumerate(zip(ims,self.gain,self.rn)) :
             if display is not None : 
                 display.clear()
-                display.tv(im)
+                min,max=tv.minmax(im,low=5,high=30)
+                display.tv(im.uncertainty.array,min=min,max=max)
+                display.tv(im,min=min,max=max)
             if crbox == 'lacosmic':
                 if self.verbose : print('  zapping CRs with ccdproc.cosmicray_lacosmic')
                 if isinstance(gain,list) : g=1.
@@ -671,8 +709,8 @@ class Reducer() :
                 outim=copy.deepcopy(im)
                 image.zap(outim,crbox,nsig=nsig)
             if display is not None : 
-                display.tv(outim)
-                display.tv(im.subtract(outim))
+                display.tv(outim,min=min,max=max)
+                display.tv(im.subtract(outim),min=min,max=max)
                 getinput("  See CRs and CR-zapped image and original using - key",display)
             out.append(outim)
         if len(out) == 1 : return out[0]
@@ -944,7 +982,14 @@ class Reducer() :
                 display.clear()
                 display.tv(comb,sn=True)
                 display.tv(comb)
-                gd=np.where(comb.mask == False)
+                if comb.mask is not None :
+                    gd=np.where(comb.mask == False)
+                elif comb.bitmask is not None :
+                    pixmask=bitmask.PixelBitMask()
+                    gd=np.where((comb.bitmask&pixmask.badval())==0)
+                else :
+                    gd=np.where(med>0)
+ 
                 min,max=tv.minmax(med[gd[0],gd[1]],low=10,high=10)
                 display.plotax2.hist(med[gd[0],gd[1]],bins=np.linspace(min,max,100),histtype='step')
                 display.fig.canvas.draw_idle()
