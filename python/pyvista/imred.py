@@ -207,21 +207,27 @@ class Reducer() :
                 box.show()
 
     def reduce(self,num,channel=None,crbox=None,bias=None,dark=None,flat=None,
-               scat=None,badpix=None,solve=False,return_list=False,display=None,trim=False,seeing=2) :
-        """ Reads data from disk, and performs reduction steps as determined from command line parameters
+               scat=None,badpix=None,solve=False,return_list=False,display=None,
+               trim=True,seeing=2) :
+        """ Reads data from disk, and performs reduction steps as determined from command 
+            line parameters
 
             Parameters
             ----------
             id : int or str
-                 Number or string specifying file to read. If a number, the filename will be constructed
-                 based on dir and formstr attributed of Reducer object. Without any additional command-line
-                 arguments, data will be read, overscan subtracted, and uncertainty array populated based
+                 Number or string specifying file to read. If a number, 
+                 the filename will be constructed based on dir and formstr 
+                 attributed of Reducer object. Without any additional 
+                 command-line arguments, data will be read, overscan 
+                 subtracted, and uncertainty array populated based
                  on gain and readout noise in Reducer attributes
             display : TV object, default=None
-                 if specified, pyvista TV object to display data in as various reduction steps are taken
+                 if specified, pyvista TV object to display data in as 
+                 arious reduction steps are taken
             channel : int, default= None
-                 if specified, channel to reduce if instrument is multi-channel (multi-file), otherwise
-                 all channels will be read/reduced
+                 if specified, channel to reduce if instrument is 
+                 multi-channel (multi-file), otherwise all channels 
+                 will be read/reduced
             bias : Data object, default= None
                  if specified, superbias frame to subtract
             dark : Data object, default= None
@@ -229,8 +235,9 @@ class Reducer() :
             flat : Data object, default= None
                  if specified, superflat frame to divide by
             crbox : list or str, default=None
-                 if specified, parameter to pass to CR rejection routine, either 2-element list giving
-                 shape of box for median filter, or 'lacosmic'
+                 if specified, parameter to pass to CR rejection routine, 
+                 either 2-element list giving shape of box for median 
+                 filter, or 'lacosmic'
             scat :
             badpix :
             trim :
@@ -661,7 +668,8 @@ class Reducer() :
         else :
             im.data -= grid_z
 
-    def crrej(self,im,crbox=None,nsig=5,display=None,mask=False,objlim=5.,fsmode='median',inbkg=None) :
+    def crrej(self,im,crbox=None,nsig=5,display=None,mask=True,
+              objlim=5.,fsmode='median',inbkg=None) :
         """ Cosmic ray rejection using spatial median filter or lacosmic. 
 
             If crbox is given as a 2-element list, then a box of this shape is
@@ -669,16 +677,18 @@ class Reducer() :
             For each pixel in the box, if the value is larger than nsig*uncertainty
             (where uncertainty is taken from the input.uncertainty.array), the pixel
             is replaced by the median. If the mask keyword is set to True, then
-            the pixel is also flagged in input.mask
+            the pixel is also flagged in input.bitmask
 
             If crbox='lacosmic', the LA Cosmic routine, as implemented in ccdproc
-            (using astroscrappy) is run on the image, with default options. Other keywords are ignored.
+            (using astroscrappy) is run on the image, with default options. 
+            Other keywords are ignored.
 
             Parameters
             ----------
             crbox : list, int shape of box to use for median filters, or 'lacosmic'
-            nsig  : float, default 5, threshold for CR rejection if using spatial median filter
-            mask : bool, default False, set to True to set CR-identified pixels mask to True
+            nsig  : float, default 5, threshold for CR rejection if using spatial 
+                    median filter
+            mask : bool, default True, CR-identified pixels bitmask CRPIX bit
             display : None for no display, pyvista TV object to display
         """
 
@@ -696,8 +706,10 @@ class Reducer() :
                 if self.verbose : print('  zapping CRs with ccdproc.cosmicray_lacosmic')
                 if isinstance(gain,list) : g=1.
                 else : g=gain
-                outim= ccdproc.cosmicray_lacosmic(im,gain_apply=False,objlim=objlim,fsmode=fsmode,inbkg=inbkg,
-                       gain=g*u.dimensionless_unscaled,readnoise=rn*u.dimensionless_unscaled)
+                outim= ccdproc.cosmicray_lacosmic(im,gain_apply=False,
+                         objlim=objlim,fsmode=fsmode,inbkg=inbkg,
+                         gain=g*u.dimensionless_unscaled,
+                         readnoise=rn*u.dimensionless_unscaled)
             else :
                 if self.verbose : print('  zapping CRs with filter [{:d},{:d}]...'.format(*crbox))
                 if crbox[0]%2 == 0 or crbox[1]%2 == 0 :
@@ -712,6 +724,9 @@ class Reducer() :
                 display.tv(outim,min=min,max=max)
                 display.tv(im.subtract(outim),min=min,max=max)
                 getinput("  See CRs and CR-zapped image and original using - key",display)
+            crpix = np.where(~np.isclose(im.subtract(outim),0.))
+            pixmask = bitmask.PixelBitMask()
+            outim.bitmask[crpix] |= pixmask.getval('CRPIX')
             out.append(outim)
         if len(out) == 1 : return out[0]
         else : return out
@@ -1015,17 +1030,17 @@ class Reducer() :
            else : return out[0]
         else : return out
 
-    def mkbias(self,ims,display=None,scat=None,type='median',sigreject=5) :
+    def mkbias(self,ims,display=None,scat=None,type='median',sigreject=5,trim=False) :
         """ Driver for superbias combination (no superbias subtraction no normalization)
         """
-        return self.combine(ims,display=display,div=False,scat=scat,
+        return self.combine(ims,display=display,div=False,scat=scat,trim=trim,
                             type=type,sigreject=sigreject)
 
-    def mkdark(self,ims,bias=None,display=None,scat=None,
+    def mkdark(self,ims,bias=None,display=None,scat=None,trim=False,
                type='median',sigreject=5,clip=None) :
         """ Driver for superdark combination (no normalization)
         """
-        dark= self.combine(ims,bias=bias,display=display,
+        dark= self.combine(ims,bias=bias,display=display,trim=trim,
                             div=False,scat=scat,type=type,sigreject=sigreject)
         if clip != None:
             low = np.where(dark.data < clip*dark.uncertainty.array)
@@ -1033,7 +1048,7 @@ class Reducer() :
             dark.data[low] = 0.
         return dark
 
-    def mkflat(self,ims,bias=None,dark=None,scat=None,display=None,
+    def mkflat(self,ims,bias=None,dark=None,scat=None,display=None,trim=False,
                type='median',sigreject=5,spec=False,width=101) :
         """ Driver for superflat combination 
              (with superbias if specified, normalize to normbox
@@ -1062,7 +1077,7 @@ class Reducer() :
         -------
             CCDData object with combined flat
         """
-        flat= self.combine(ims,bias=bias,dark=dark,normalize=True,
+        flat= self.combine(ims,bias=bias,dark=dark,normalize=True,trim=trim,
                  scat=scat,display=display,type=type,sigreject=sigreject)
         if spec :
             return self.mkspecflat(flat,width=width,display=display)
