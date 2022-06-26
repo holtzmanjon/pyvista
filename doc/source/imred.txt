@@ -6,7 +6,7 @@ overscan subraction, bias subtraction, dark subtraction, and flat fielding.
 Routines are included for basic combination of images that
 can be used to make basic calibration products.  Data are read and
 processed using pyvista Data structures (a superset of astropy CCDData/NDData, 
-see `Dataclass module`_), 
+see :ref:`Dataclass module`), 
 which carry along both the image data and associated uncertainty and mask arrays.
 
 The routines are implemented with the Reducer class, which
