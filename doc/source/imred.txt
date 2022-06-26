@@ -5,8 +5,9 @@ imred is a module that implements some classes/tools for basic data reduction:
 overscan subraction, bias subtraction, dark subtraction, and flat fielding.
 Routines are included for basic combination of images that
 can be used to make basic calibration products.  Data are read and
-processed using CCDData/NDData structures, which carry along both the image
-data and associated uncertainty and mask arrays.
+processed using pyvista Data structures (a superset of astropy CCDData/NDData, 
+see `Dataclass module`_), 
+which carry along both the image data and associated uncertainty and mask arrays.
 
 The routines are implemented with the Reducer class, which
 performs various tasks: reads data from disk and does various reduction 
@@ -27,7 +28,7 @@ For a new instrument, they should be straightforward to construct, see below.
 For a given instrument, there can be multiple files associated with each exposure,
 e.g. DIS blue/red, and the configuration file then specifies the multiple
 configurations. During reduction operations, all files for an exposure 
-are processed, with data returned as a list of NDData/CCDData objects.
+are processed, with data returned as a list of pyvista Data objects.
 
 The reading function of the Reducer allows for file names to be
 read by specifying a sequence number (rather than typing the full

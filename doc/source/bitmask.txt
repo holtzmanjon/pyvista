@@ -1,0 +1,9 @@
+bitmask module
+************
+
+bitmask functions
+===============
+.. automodule:: pyvista.bitmask
+   :members:
+   :member-order: bysource
+
