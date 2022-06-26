@@ -6,7 +6,7 @@ Dataclass module
 Here we define a Data class which is very similar to astropy CCDData and uses
 much of the astropy code, but defines a class that can also include a wavelength
 extension. We also add a bitmask attribute that is an integer rather than
-a boolean to allow it to be used as a bitmask (see :ref:`bitmask`). 
+a boolean to allow it to be used as a bitmask (see :ref:`bitmask`).  test
 We also remove the requirement
 of including units. Finally, the name CCDData is not used, since we may 
 be using digital data that may not come from a CCD!
