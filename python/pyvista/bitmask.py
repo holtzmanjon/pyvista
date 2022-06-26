@@ -1,5 +1,5 @@
 """
-Routines for handling ASPCAP bitmasks
+Routines for handling bitmasks
 """
 
 import numpy as np
@@ -77,7 +77,7 @@ class BitMask():
         """ Formatted output of bit definitions
         """
         if fmt == 'txt' :
-            fp.write('{:25s}{:>6s}  {:s}'.format('Name','Bit','Description'))
+            fp.write('{:25s}{:>6s}  {:s}\n'.format('Name','Bit','Description'))
         elif fmt == 'wiki' :
             fp.write('||{:25s}||{:>6s}||{:s}||'.format('Name','Bit','Description'))
         elif fmt == 'latex' :
@@ -104,7 +104,7 @@ class BitMask():
         for ibit,name in enumerate(self.name) :
             if (name != 'RESERVED' and name != '' ) :
                 if fmt == 'txt' :
-                    fp.write('{:25s}{:6d}  {:s}'.format(name,ibit,self.descrip[ibit]))
+                    fp.write('{:25s}{:6d}  {:s}\n'.format(name,ibit,self.descrip[ibit]))
                 elif fmt == 'wiki' :
                     fp.write('||{:25s}||{:6d}||{:s}||'.format(name,ibit,self.descrip[ibit]))
                 elif fmt == 'latex' :
@@ -148,9 +148,9 @@ class PixelBitMask(BitMask) :
 
     descrip=([
      'Pixel marked as BAD in bad pixel mask or from strong persistence jump',
-     'Pixel marked as cosmic ray in ap3d',
-     'Pixel marked as saturated in ap3d',
-     'Pixel marked as unfixable in ap3d',
+     'Pixel marked as cosmic ray',
+     'Pixel marked as saturated',
+     'Pixel marked as unfixable',
      'Pixel marked as bad as determined from dark frame',
      'Pixel marked as bad as determined from flat frame',
      'Pixel set to have very high error (not used)',
@@ -171,7 +171,7 @@ class PixelBitMask(BitMask) :
      '',
      '',
      '',
-     '',
+     'Bad extraction',
      '',
      '',
      '',

@@ -53,9 +53,23 @@ class Data(CCDData) :
         super().__init__(*args, **kwd)
 
     def add_wave(self,wave) :
+        """ Add a wavelength attribute to Data object
+
+            Parameters
+            ----------
+            wave : float, array-like
+                   Wavelength array to add
+        """
         self.wave = wave
 
     def add_bitmask(self,bitmask) :
+        """ Add a bitmask attribute to Data object
+
+            Parameters
+            ----------
+            bitmask : int, array-like
+                   Bitmask array to add
+        """
         self.bitmask = bitmask
 
     def to_hdu(self, hdu_bitmask='BITMASK', hdu_uncertainty='UNCERT',
