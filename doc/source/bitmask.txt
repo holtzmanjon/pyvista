@@ -3,6 +3,52 @@
 bitmask module
 **************
 
+The bitmask module provides routines for working with bitmasks, and defines
+a PixelBitMask.
+
+A bitmask is an integer (for pyvista Data objects, a 32-bit integer), where each bit
+can be used to flag a particular condition, so instead of just having a boolean mask
+(good or bad), it can be more nuanced. It is possible that one might have bits in
+a bitmask that flag a condition that should be recogized, but does not necessarily
+imply that the data are bad. To accomodate that, a defined bitmask identifies
+conditions for each bit, and also include a flag to denote whether that conidition
+is sufficient to deem a pixel as bad.
+
+The pyvista PixelBitMask include bits for bad pixels, pixels identified as 
+cosmic rays, saturated pixels, etc.  Definitions for a complete set are still
+in progress.
+
+One uses a bitmask by instantiating an object, e.g., 
+
+.. code-block:: csh
+
+   from pyvista import bitmask
+   pixmask = bitmask.PixelBitMask()
+
+
+This then has methods for associating a bit with a name (getname() and getval()) and 
+for checking whether a given bitmask value denotes that the pixel is bad. For example,
+
+.. code-block:: csh
+
+   satpix = np.where(bitmaskarray & pixmask.getval('SATPIX'))
+
+can be used to identify pixels flagged as saturated.
+
+.. code-block:: csh
+
+   badpix = np.where(bitmaskarray & pixmask.badval())
+
+can be used to identify pixels flagged as bad (any of the bad bits set).
+
+To see the PixelBitMask definitions, you can use:
+
+.. code-block:: csh
+
+   pixmask.print()
+
+
+
 bitmask functions
 ===============
 .. automodule:: pyvista.bitmask
