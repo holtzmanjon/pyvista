@@ -215,7 +215,7 @@ class WaveCal() :
         twod='2D' in self.type
         fitter=fitting.LinearLSQFitter()
         if degree is not None : self.degree=degree
-        if self.model is None : self.model = self.getmod()
+        self.model = self.getmod()
         mod = self.model
 
         if not hasattr(self,'ax') : self.ax = None
@@ -344,10 +344,6 @@ class WaveCal() :
             models.append(self.model)
           if nmod == 1 : self.model = models[0]
           else : self.model = models       
-        if self.ax is not None :
-          plt.close(self.fig)
-          self.fig=None
-          self.ax=None
 
     def set_spectrum(self,spectrum) :
         """ Set spectrum used to derive fit
@@ -362,7 +358,7 @@ class WaveCal() :
     def identify(self,spectrum,file=None,wav=None,wref=None,inter=False,
                  orders=None,verbose=False,rad=5,thresh=100, fit=True, maxshift=1.e10,
                  disp=None,display=None,plot=None,pixplot=False,
-                 xmin=None,xmax=None,lags=range(-300,300), nskip=1) :
+                 xmin=None,xmax=None,lags=range(-300,300), nskip=25) :
         """ Given some estimate of wavelength solution and file with lines,
             identify peaks and centroid, via methods:
 
@@ -421,7 +417,7 @@ class WaveCal() :
                 fitpeak,shift = image.xcorr(self.spectrum,spectrum.data,lags)
                 if shift.ndim == 1 :
                     pixshift=(fitpeak+lags[0])[0]
-                    if verbose : print('  Derived pixel shift from input wcal: ',fitpeak+lags[0])
+                    print('  Derived pixel shift from input wcal: ',fitpeak+lags[0])
                     if display is not None :
                         display.plotax1.cla()
                         display.plotax1.text(0.05,0.95,'spectrum and reference',transform=display.plotax1.transAxes)
@@ -595,7 +591,9 @@ class WaveCal() :
         self.weights=np.array(weight)
         self.spectrum = spectrum.data
 
-        if fit: self.fit()
+        if fit: 
+            self.fit()
+            spectrum.add_wave(self.wave(image=spectrum.data.shape))
         print('')
 
     def scomb(self,hd,wav,average=True,usemask=True) :
@@ -678,9 +676,9 @@ class WaveCal() :
             wmax=w[i,sort].max()
             w2=np.abs(wav-wmin).argmin()
             w1=np.abs(wav-wmax).argmin()
-            out[i,w2:w1] += np.interp(wav[w2:w1],w[i,sort],hd.data[i,sort])
+            out[i,w2:w1] += np.interp(wav,w[i,sort],hd.data[i,sort])
             sig[i,w2:w1] += np.sqrt(
-                            np.interp(wav[w2:w1],w[i,sort],hd.uncertainty.array[i,sort]**2))
+                            np.interp(wavw[i,sort],hd.uncertainty.array[i,sort]**2))
 
         return Data(out,uncertainty=StdDevUncertainty(sig),bitmask=mask)
 
@@ -796,6 +794,8 @@ class Trace() :
         if rows is not None : self.rows=rows
         if lags is not None : self.lags=lags
         if model is not None : self.model=model
+        else : self.model=None
+        self.sigmodel=None
         if sc0 is not None : self.sc0=sc0
 
     def write(self,file,append=False) :
@@ -1084,7 +1084,7 @@ class Trace() :
         return np.array(peaks)+self.rows[0], fiber
 
  
-    def find(self,hd,width=100,lags=None,plot=None,display=None) :
+    def find(self,hd,width=100,lags=None,plot=None,display=None,inter=False) :
         """ Determine shift from existing trace to input frame
 
             Parameters
@@ -1106,6 +1106,15 @@ class Trace() :
             im = image.transpose(hd)
         else :
             im = copy.deepcopy(hd)
+
+        if inter :
+            try : display.tv(im)
+            except : raise ValueError('must use display= with inter=True')
+            print('Hit "f" on location of spectrum: ')
+            button,x,y=display.tvmark()
+            self.pix0=y-self.model[0](x)
+            print('setting trace offset to: ', self.pix0)
+            return 
       
         # get median around central column
         spec=np.median(im.data[:,self.sc0-width:self.sc0+width],axis=1)
@@ -1248,6 +1257,8 @@ class Trace() :
                          hd.bitmask[:,col*skip:ec],
                          np.arange(col*skip,ec),
                          self.model,rad,self.pix0,back,self.sigmodel))
+
+        print('  extracting ...')
         if threads > 0 :
             pool = mp.Pool(threads)
             if fit : output = pool.map_async(extract_col_fit, pars).get()
