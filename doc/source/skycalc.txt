@@ -1,4 +1,4 @@
-skycalc module
+SKYCALC module
 **************
 
 Introduction
