@@ -5,7 +5,8 @@ import pdb
 from astropy.nddata import CCDData
 
 def gauss2d(data, coords,fwhm=1,back=0,noise=False,rn=0) :
-    """ Add 2d gaussians to data given input coords, fwhm, noise"""
+    """ Add 2d gaussians to data given input coords, fwhm, noise
+    """
 
     # if we are only given one object, make it a list
     try : iter(coords[0])
