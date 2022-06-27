@@ -9,3 +9,4 @@ holtz-tools
 importlib_resources
 pyautogui
 pyyaml
+astroplan

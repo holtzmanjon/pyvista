@@ -22,6 +22,7 @@ setup(
                       'astropy',
                       'ccdproc',
                       'photutils',
+                      'astroplan',
                       'pyyaml',
                       'pyautogui',
                       'importlib_resources',

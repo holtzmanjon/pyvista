@@ -1,6 +1,4 @@
-"""
-Routines for handling bitmasks
-"""
+#Routines for handling bitmasks
 
 import numpy as np
 import pdb
