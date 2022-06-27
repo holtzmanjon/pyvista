@@ -165,18 +165,31 @@ differential refraction effects in either the calibration stars or
 the object itself. The accuracy of the absolute calibration is further
 limited by light losses outside the slit.
 
-A FluxCal object is instantiated, specifying the polynomial degree (degree=)
-to be used for the response curve fit. Observed 1d (i.e., extracted) 
+A FluxCal object is instantiated, specifying either the polynomial degree (degree=)
+to be used for the response curve fit, or else you can use a median or mean
+of the observed flux standards (degree=-1). Observed 1d (i.e., extracted) 
 spectra of spectrophotometric stars are added using the 
 addstar(spectrum, waves, file=) method, where the input file gives
 the true fluxes as a function of wavelength; libraries of standard
-star spectra from ESO are included. The observed spectrum is corrected
+star spectra from ESO are included. Alternatively, you can specify the
+flux of the standard star using the stdflux= keyword, passing an astropy
+Table with (at least) columns wave, flux, and bin.
+The observed spectrum is corrected
 for extinction and saved, along with the true spectrum. 
+
 Once or or more stars have been
-loaded, a response curve is derived using the response() method
-by fitting a polynomial to the
+loaded, a response curve is derived using the response() method.
+If degree>=0 is used,  a polynomial is fit to the
 logarithm of the ratio of the extinction-corrected observed to true 
 fluxes, allowing for an independent scale factor for each star. 
+If degree<0, then a median of the flux curves is used, or a mean if 
+mean=True is passed to response(). A median is probably only appropriate
+if multiple flux standards have been observed in a single observation
+(i.e., a multiobject spectrograph), otherwise a mean is probably more
+useful, since it is probably unlikely that all of the individual star
+response curves will be at the same level, given variations in
+throughput from exposure to exposure and the assumption of a mean
+extinction curve.
 
 Given the response curve, input spectra can be corrected for extinction
 and instrumental response using the correct() method.
