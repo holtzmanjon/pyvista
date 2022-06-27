@@ -1,0 +1,19 @@
+skycalc module
+**************
+
+Introduction
+++++++++++++
+
+skycalc is a module that mostly provides an interface to
+the astroplan package for observations planning. It has
+a routine that emulates the hour angle listing of
+John Thorstensen's skycalc program.
+
+
+Module functions
+++++++++++++++++
+.. automodule:: pyvista.skycalc
+   :members:
+
+
+
