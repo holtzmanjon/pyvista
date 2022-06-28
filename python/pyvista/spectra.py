@@ -358,7 +358,7 @@ class WaveCal() :
     def identify(self,spectrum,file=None,wav=None,wref=None,inter=False,
                  orders=None,verbose=False,rad=5,thresh=100, fit=True, maxshift=1.e10,
                  disp=None,display=None,plot=None,pixplot=False,
-                 xmin=None,xmax=None,lags=range(-300,300), nskip=25) :
+                 xmin=None,xmax=None,lags=range(-300,300), nskip=None) :
         """ Given some estimate of wavelength solution and file with lines,
             identify peaks and centroid, via methods:
 
@@ -393,6 +393,9 @@ class WaveCal() :
         if xmax is None : xmax=sz[-1]
         nrow=sz[0]
         if orders is not None : self.orders = orders
+        if nskip is None :
+            if len(set(self.orders)) == 1 : nskip=25
+            else : nskip=1
 
         # get initial reference wavelengths if not given
         if wav is None :
@@ -413,7 +416,7 @@ class WaveCal() :
                 wav=np.atleast_2d(w0+(pix-pix0)*disp)
             elif self.spectrum is not None :
                 # cross correlate with reference image to get pixel shift
-                if verbose :print('  cross correlating with reference spectrum using lags: ', lags)
+                print('  cross correlating with reference spectrum using lags: ', lags)
                 fitpeak,shift = image.xcorr(self.spectrum,spectrum.data,lags)
                 if shift.ndim == 1 :
                     pixshift=(fitpeak+lags[0])[0]
@@ -676,11 +679,11 @@ class WaveCal() :
             wmax=w[i,sort].max()
             w2=np.abs(wav-wmin).argmin()
             w1=np.abs(wav-wmax).argmin()
-            out[i,w2:w1] += np.interp(wav,w[i,sort],hd.data[i,sort])
-            sig[i,w2:w1] += np.sqrt(
-                            np.interp(wavw[i,sort],hd.uncertainty.array[i,sort]**2))
+            out[i,:] += np.interp(wav,w[i,sort],hd.data[i,sort])
+            sig[i,:] += np.sqrt(
+                            np.interp(wav,w[i,sort],hd.uncertainty.array[i,sort]**2))
 
-        return Data(out,uncertainty=StdDevUncertainty(sig),bitmask=mask)
+        return Data(out,uncertainty=StdDevUncertainty(sig),bitmask=mask,wave=wav)
 
 class Trace() :
     """ Class for spectral traces
@@ -1028,7 +1031,7 @@ class Trace() :
             while getinput('  See trace. Hit space bar to continue....',plot.fig)[2] != ' ' :
                 pass
 
-    def retrace(self,hd,plot=None,display=None,thresh=20) :
+    def retrace(self,hd,plot=None,display=None,thresh=20,gaussian=False) :
         """ Retrace starting with existing model
         """
         if plot == None and display != None : plot = display
@@ -1037,7 +1040,7 @@ class Trace() :
         for row in range(len(self.model)) :
             print("Using shift: ",self.pix0)
             srows.append(self.model[row](self.sc0)+self.pix0)
-        self.trace(hd,srows,plot=plot,thresh=thresh)
+        self.trace(hd,srows,plot=plot,thresh=thresh,gaussian=gaussian)
     
     def findpeak(self,hd,width=100,thresh=5,plot=False) :
         """ Find peaks in spatial profile for subsequent tracing
@@ -1055,7 +1058,8 @@ class Trace() :
 
             Returns
             -------
-            list of peak locations
+            tuple : list of peak locations, and list of indices
+                    peak locations can be passed to trace()
 
         """
         if self.transpose :
@@ -1221,6 +1225,10 @@ class Trace() :
 
         if hd.bitmask is None :
             hd.add_bitmask(np.zeros_like(hd.data,dtype=np.uintc))
+
+        if fit and (self.sigmodel is None or len(self.sigmodel) == 0) :
+            raise ValueError('must have a sigmodel to use fit extraction.'+
+                             'Use gaussian=True in trace')
 
         if rad is None : rad=self.rad
         if len(back) > 0 :
@@ -1648,6 +1656,18 @@ def gauss(x, *p):
 def findpeak(x,thresh,diff=10000,bundle=10000) :
     """ Find peaks in vector x above input threshold
         attempts to associate an index with each depending on spacing
+
+        Parameters
+        ----------
+        x : float, array-like
+            input vector to find peaks in
+        thresh : float
+            threshold for peak finding 
+        diff : int
+            maximum difference in pixels between traces before incrementing fiber index
+        bundle : int
+            number of fibers after which to allow max distance 
+            to be exceeded without incrementing
     """
     j=[]
     fiber=[]
