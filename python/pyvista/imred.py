@@ -454,11 +454,12 @@ class Reducer() :
             else : 
                 boxes = trimbox
                 outboxes = outbox
-            tmp = np.ones(im.bitmask.shape,dtype=bool)
-            for box in boxes :
-                box.setval(tmp,False)
+            if im.bitmask is None :
+                print('adding a bitmask...')
+                im.add_bitmask(np.zeros(im.data.shape,dtype=np.uintc))
             pixmask=bitmask.PixelBitMask()
-            im.bitmask |= pixmask.getval('INACTIVE_PIXEL')
+            for box in boxes :
+                box.setbit(im.bitmask,pixmask.getval('INACTIVE_PIXEL'))
             if trimimage :
                 xmax=0 
                 ymax=0 
