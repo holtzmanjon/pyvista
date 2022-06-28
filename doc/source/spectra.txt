@@ -44,18 +44,32 @@ Finally, a function will be fit to the derived centroids and
 the model (currently astropy Polynomial1D) wll be stored
 in the trace structure.
 
-To make a trace manually use the trace(spectrum,row) method, 
-where row is the starting
+To make a trace manually use the trace(spectrum,row) method, where row is the starting
 guess for the spatial postion at the center of the spectrum (or sc0). 
 You can use the findpeak() method to find object(s) automatically and
-pass the returned value(s) to trace(). If row is a list (i.e. for 
-multiple objects or orders), then multiple traces will be made. 
+pass the returned value(s) to trace(). Alternatively, you can use find() which
+will cross-correlated a saved trace crossection and identify a location from the
+highest peak; if you specify inter=True with find(), then the image will be displayed
+(display= must also be specified to give the TV object to use), and you can mark the
+location interactively.  If row is a list (i.e. for multiple objects or orders), then 
+multiple traces will be made.  
 
 For spectrographs where the traces are relatively stable in location (e.g.
 multiple orders), a saved model can be convenient to use to remake traces.
 To retrace, use the retrace(spectrum) method. This will do a cross-correlation 
 of a saved cross-section with the input spectrum to determine a shift, 
 then will use that as a starting location to retrace.
+
+The default method for finding the trace locations is to use a centroid. If you
+add gaussian=True to trace(), then the center will be determined using a Gaussian
+fit to the profile. This will also determine the derived Gaussian widths and fit
+a polynomial model to these, which is required if one wants to do optimal extraction
+using a Gaussian profile.
+
+If you pass a pyvista TV object with the display= keyword, the display will show
+the location of the calculated centers, and the polynomial fit to these: centers
+in red are those rejected during the fiting process. You will need to hit the
+space bar in the display window to continue.
 
 Extraction is done using the extract(spectrum,rad=,[back=[[b1,b2],[b3,b4]]) 
 method, which uses boxcar extraction with the specified radius. 
@@ -68,6 +82,10 @@ sky emission lines. In this case, you might want to determine a 2D
 wavelength solution (see below), and resample the sky spectra to the
 wavelength scale of the object (or to some other wavelength scale) 
 before subtraction.
+
+If you pass a pyvista TV object with the display= keyword, then the display will
+show the location of the extraction and background windows (if any).
+You will need to hit the space bar in the display window to continue.
 
 Attributes
    - type : type of astropy model to use for trace shape (currently, just 
