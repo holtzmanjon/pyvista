@@ -166,6 +166,12 @@ class BOX() :
         if self.nrow() == 0 or self.ncol() == 0 : return 0.
         data[self.ymin:self.ymax+1,self.xmin:self.xmax+1] = val
 
+    def setbit(self,data,val):
+        """ Sets bit of data in box to specified value
+        """
+        if self.nrow() == 0 or self.ncol() == 0 : return 0.
+        data[self.ymin:self.ymax+1,self.xmin:self.xmax+1] |= val
+
     def getval(self,data):
         """ Returns data in box
 
