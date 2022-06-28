@@ -1268,7 +1268,7 @@ class Trace() :
                          np.arange(col*skip,ec),
                          self.model,rad,self.pix0,back,self.sigmodel))
 
-        print('  extracting ... (may take some time, '+
+        print('  extracting ... (may take some time,\n '+
               '                  consider threads= if multithreading is available')
         if threads > 0 :
             pool = mp.Pool(threads)
