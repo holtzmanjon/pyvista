@@ -1132,6 +1132,7 @@ class Trace() :
         # cross-correlate with saved spectrum to get shift
         fitpeak,shift = image.xcorr(self.spectrum,spec,lags)
         pixshift=(fitpeak+lags[0])[0]
+        print('  Derived pixel shift from input trace: ',pixshift)
         if plot is not None :
             plot.clear()
             plot.tv(im)
@@ -1149,7 +1150,8 @@ class Trace() :
             plot.plotax2.plot(lags,shift)
             plot.plotax2.set_xlabel('lag')
             plt.draw()
-            getinput('  See spectra and cross-correlation. Hit any key in display window to continue....',plot.fig)
+            getinput('  See spectra and cross-correlation.\n'+
+                     '  Hit any key in display window to continue....',plot.fig)
         self.pix0=fitpeak+lags[0]
         self.pix0=pixshift
         return fitpeak+lags[0]
@@ -1266,7 +1268,8 @@ class Trace() :
                          np.arange(col*skip,ec),
                          self.model,rad,self.pix0,back,self.sigmodel))
 
-        print('  extracting ...')
+        print('  extracting ... (may take some time, '+
+              '                  consider threads= if multithreading is available')
         if threads > 0 :
             pool = mp.Pool(threads)
             if fit : output = pool.map_async(extract_col_fit, pars).get()
