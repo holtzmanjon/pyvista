@@ -310,8 +310,11 @@ class Reducer() :
                 im.data = im.data.astype(np.float32)
             im.header['FILE'] = os.path.basename(file)
             if 'OBJECT' not in im.header  or im.header['OBJECT'] == '':
-                try: im.header['OBJECT'] = im.header['OBJNAME']
-                except KeyError : im.header['OBJECT'] = im.header['FILE']
+                if 'OBJNAME' in im.header and im.header['OBJNAME'] != '' : 
+                    im.header['OBJECT'] = im.header['OBJNAME']
+                else : 
+                    try : im.header['OBJECT'] = im.header['FILE']
+                    except KeyError : print('No OBJECT, OBJNAME, or FILE in header')
             if 'RA' not in im.header  :
                 try: im.header['RA'] = im.header['OBJCTRA']
                 except : print('no RA or OBJCTRA found')
