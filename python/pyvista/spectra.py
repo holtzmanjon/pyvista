@@ -214,8 +214,9 @@ class WaveCal() :
         # set up fitter and model
         twod='2D' in self.type
         fitter=fitting.LinearLSQFitter()
-        if degree is not None : self.degree=degree
-        self.model = self.getmod()
+        if degree is not None : 
+            self.degree=degree
+            self.model = self.getmod()
         mod = self.model
 
         if not hasattr(self,'ax') : self.ax = None
