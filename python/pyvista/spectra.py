@@ -1032,7 +1032,7 @@ class Trace() :
             while getinput('  See trace. Hit space bar to continue....',plot.fig)[2] != ' ' :
                 pass
 
-    def retrace(self,hd,plot=None,display=None,thresh=20,gaussian=False) :
+    def retrace(self,hd,plot=None,display=None,thresh=20,gaussian=False,skip=10) :
         """ Retrace starting with existing model
         """
         if plot == None and display != None : plot = display
@@ -1041,7 +1041,7 @@ class Trace() :
         for row in range(len(self.model)) :
             print("Using shift: ",self.pix0)
             srows.append(self.model[row](self.sc0)+self.pix0)
-        self.trace(hd,srows,plot=plot,thresh=thresh,gaussian=gaussian)
+        self.trace(hd,srows,plot=plot,thresh=thresh,gaussian=gaussian,skip=10)
     
     def findpeak(self,hd,width=100,thresh=5,plot=False) :
         """ Find peaks in spatial profile for subsequent tracing
