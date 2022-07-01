@@ -93,7 +93,7 @@ class WaveCal() :
                     setattr(self,tag,None)
             self.orders=np.atleast_1d(self.orders)
             # make the initial models from the saved data
-            self.model = None
+            self.model = self.getmod()
             self.fit()
         else :
             self.type = type
