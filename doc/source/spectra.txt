@@ -148,7 +148,7 @@ to remove line nearest to cursor in wavelength, 'l' to remove all lines to
 left, 'r' to remove all lines to right; removal is done by setting the weights
 of these lines to zero in the WaveCal structure. After removing lines to get a 
 better initial solution, it may be desirable to re-enable these lines to 
-see if they can be more correctly identified gibven a better initial wavelength
+see if they can be more correctly identified given a better initial wavelength
 guess.
 
 An example, given an extracted spectrum spec, might proceed as follows:
@@ -169,6 +169,19 @@ of the wavelength solution, either from an input wavelength array (wav= keyword)
 or from a [wave,pix] pair plus a dispersion (wref= and disp=) keyword, as 
 described above. This solution will be used to try to find lines: a centroid 
 around the input position of width given by the rad= keyword is computed. 
+
+One you have an acceptable wavelength solution, it can be used to create
+a wavelength array and transferred to the wave attribute of an object using
+the add_wave() method.
+
+The WaveCal object also includes a skyline() method, which can be used to
+adjust the wavelength solution for an object based on sky emission lines. 
+The object should already have a wavelength solution, e.g. from arcs attached.
+The skyline() routine will use this to look for skylines and then redo the
+wavelength solution, but only allowing for the 0th order term to change, 
+i.e. a constant wavelength shift. If multiple sky lines across a broad
+wavelength range are available, you can also fit for a dispersion change
+if you set linear=True.
 
 FluxCal
 =======
