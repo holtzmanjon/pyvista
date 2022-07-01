@@ -1234,6 +1234,7 @@ class Trace() :
                              'Use gaussian=True in trace')
 
         if rad is None : rad=self.rad
+        if back is None : back = []
         if len(back) > 0 :
             for bk in back:
                 try :
