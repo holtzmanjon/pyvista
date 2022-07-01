@@ -600,6 +600,36 @@ class WaveCal() :
             spectrum.add_wave(self.wave(image=spectrum.data.shape))
         print('')
 
+    def skyline(self,hd,plot=True,thresh=50,inter=True,linear=False,file='skyline.dat') :
+        """ Adjust wavelength solution based on sky lines
+
+            Parameters
+            ----------
+            hd : Data object
+                 input pyvista Data object, must contain wave attribute with initial wavelengths
+            plot : bool, default=True
+                   display plot results
+            thresh : float, default=50
+                   minimum S/N for line detection
+            inter : bool, default=True
+                   allow for interactive removal of lines
+            linear : bool, default=False
+                   if True, allow for dispersion to be ajusted as well as wavelength zeropoint 
+                   requires at least two sky lines!
+            file : str, default='skyline.dat'
+                   file with sky lines to look for, if you want to override default:w
+        """
+
+        if hd.wave is None :
+            raise ValueError('input object must contain wave attribute')
+
+        # set higher order terms to fixed
+        for i in range(self.degree) :
+            if not linear or i>0 :
+                self.model.fixed['c{:d}'.format(i+1)] = True
+
+        self.identify(hd,wav=hd.wave,file=file,plot=plot,thresh=thresh,inter=inter)
+
     def scomb(self,hd,wav,average=True,usemask=True) :
         """ Resample onto input wavelength grid
 
