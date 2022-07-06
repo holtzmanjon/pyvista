@@ -69,7 +69,7 @@ class WaveCal() :
     """
 
     def __init__ (self,file=None, type='chebyshev',degree=2,ydegree=2,
-                  pix0=0,index=0) :
+                  pix0=0,index=0,hdu=1) :
         if file is not None :
             if file == '?' :
                 out=glob.glob(
@@ -81,9 +81,9 @@ class WaveCal() :
             if isinstance(file,astropy.io.fits.fitsrec.FITS_rec) :
                 tab=Table(file)
             elif str(file)[0] == '.' or str(file)[0] == '/' :
-                tab=Table.read(file)
+                tab=Table.read(file,hdu=hdu)
             else :
-                tab=Table.read(files(pyvista.data).joinpath(file))
+                tab=Table.read(files(pyvista.data).joinpath(file),hdu=hdu)
             for tag in ['type','degree','ydegree','waves',
                         'waves_order','orders','index',
                         'pix0','pix','y','spectrum','weights'] :
@@ -458,7 +458,7 @@ class WaveCal() :
                         wav[row,:] = self.model(cols-pix0)/order
                     # ensure we have 2D fit
                     self.type = 'chebyshev2D'
-                    self.model = None
+                    self.model = self.getmod()
                     self.orders = orders
                     print("")
             else :
@@ -745,7 +745,7 @@ class Trace() :
 
     def __init__ (self,file=None,inst=None, type='Polynomial1D',degree=2,
                   pix0=0,rad=5, spectrum=None,model=None,sc0=None,rows=None,
-                  transpose=False,lags=None,channel=None) :
+                  transpose=False,lags=None,channel=None,hdu=1) :
 
         if file is not None :
             """ Initialize object from FITS file
@@ -759,9 +759,9 @@ class Trace() :
                 return
             try:
                 if str(file)[0] == '.' or str(file)[0] == '/' :
-                    tab=Table.read(file)
+                    tab=Table.read(file,hdu=hdu)
                 else :
-                    tab=Table.read(files(pyvista.data).joinpath(file))
+                    tab=Table.read(files(pyvista.data).joinpath(file),hdu=hdu)
             except FileNotFoundError :
                 raise ValueError("can't find file {:s}",file)
 
@@ -887,7 +887,7 @@ class Trace() :
                  index to label trace(s) with
             skip : integer, optional, default=10
                  measure trace center every skip pixels, using median of 
-                 data from -skip/2 to sip/2
+                 data from -skip/2 to skip/2
             gaussian : bool, optional, default=False
                  if True, use gaussian fit for trace location instead of centroid. 
                  with gaussian=True, will also store trace widths (from fit)
@@ -1119,7 +1119,7 @@ class Trace() :
         return np.array(peaks)+self.rows[0], fiber
 
  
-    def find(self,hd,width=100,lags=None,plot=None,display=None,inter=False) :
+    def find(self,hd,width=100,lags=None,plot=None,display=None,inter=False,rad=3) :
         """ Determine shift from existing trace to input frame
 
             Parameters
@@ -1131,6 +1131,8 @@ class Trace() :
                  to give spatial profile
             lags : array-like, default=self.lags
                  range of cross-correlation lags to allow
+            rad : int, default=3
+                 radius around xcorr peak to do polynomial fit to
             display : pyvista.tv object, default=None
                  if not None, tv object to display in
         """
@@ -1161,7 +1163,7 @@ class Trace() :
         except: pass
 
         # cross-correlate with saved spectrum to get shift
-        fitpeak,shift = image.xcorr(self.spectrum,spec,lags)
+        fitpeak,shift = image.xcorr(self.spectrum,spec,lags,rad=rad)
         pixshift=(fitpeak+lags[0])[0]
         print('  Derived pixel shift from input trace: ',pixshift)
         if plot is not None :
