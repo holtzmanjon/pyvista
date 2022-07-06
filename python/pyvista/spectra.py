@@ -69,7 +69,7 @@ class WaveCal() :
     """
 
     def __init__ (self,file=None, type='chebyshev',degree=2,ydegree=2,
-                  pix0=0,index=0) :
+                  pix0=0,index=0,hdu=1) :
         if file is not None :
             if file == '?' :
                 out=glob.glob(
@@ -81,9 +81,9 @@ class WaveCal() :
             if isinstance(file,astropy.io.fits.fitsrec.FITS_rec) :
                 tab=Table(file)
             elif str(file)[0] == '.' or str(file)[0] == '/' :
-                tab=Table.read(file)
+                tab=Table.read(file,hdu=hdu)
             else :
-                tab=Table.read(files(pyvista.data).joinpath(file))
+                tab=Table.read(files(pyvista.data).joinpath(file),hdu=hdu)
             for tag in ['type','degree','ydegree','waves',
                         'waves_order','orders','index',
                         'pix0','pix','y','spectrum','weights'] :
@@ -93,7 +93,7 @@ class WaveCal() :
                     setattr(self,tag,None)
             self.orders=np.atleast_1d(self.orders)
             # make the initial models from the saved data
-            self.model = None
+            self.model = self.getmod()
             self.fit()
         else :
             self.type = type
@@ -214,8 +214,9 @@ class WaveCal() :
         # set up fitter and model
         twod='2D' in self.type
         fitter=fitting.LinearLSQFitter()
-        if degree is not None : self.degree=degree
-        if self.model is None : self.model = self.getmod()
+        if degree is not None : 
+            self.degree=degree
+            self.model = self.getmod()
         mod = self.model
 
         if not hasattr(self,'ax') : self.ax = None
@@ -344,10 +345,6 @@ class WaveCal() :
             models.append(self.model)
           if nmod == 1 : self.model = models[0]
           else : self.model = models       
-        if self.ax is not None :
-          plt.close(self.fig)
-          self.fig=None
-          self.ax=None
 
     def set_spectrum(self,spectrum) :
         """ Set spectrum used to derive fit
@@ -362,7 +359,7 @@ class WaveCal() :
     def identify(self,spectrum,file=None,wav=None,wref=None,inter=False,
                  orders=None,verbose=False,rad=5,thresh=100, fit=True, maxshift=1.e10,
                  disp=None,display=None,plot=None,pixplot=False,
-                 xmin=None,xmax=None,lags=range(-300,300), nskip=1) :
+                 xmin=None,xmax=None,lags=range(-300,300), nskip=None) :
         """ Given some estimate of wavelength solution and file with lines,
             identify peaks and centroid, via methods:
 
@@ -397,6 +394,9 @@ class WaveCal() :
         if xmax is None : xmax=sz[-1]
         nrow=sz[0]
         if orders is not None : self.orders = orders
+        if nskip is None :
+            if len(set(self.orders)) == 1 : nskip=25
+            else : nskip=1
 
         # get initial reference wavelengths if not given
         if wav is None :
@@ -417,11 +417,11 @@ class WaveCal() :
                 wav=np.atleast_2d(w0+(pix-pix0)*disp)
             elif self.spectrum is not None :
                 # cross correlate with reference image to get pixel shift
-                if verbose :print('  cross correlating with reference spectrum using lags: ', lags)
+                print('  cross correlating with reference spectrum using lags: ', lags)
                 fitpeak,shift = image.xcorr(self.spectrum,spectrum.data,lags)
                 if shift.ndim == 1 :
                     pixshift=(fitpeak+lags[0])[0]
-                    if verbose : print('  Derived pixel shift from input wcal: ',fitpeak+lags[0])
+                    print('  Derived pixel shift from input wcal: ',fitpeak+lags[0])
                     if display is not None :
                         display.plotax1.cla()
                         display.plotax1.text(0.05,0.95,'spectrum and reference',transform=display.plotax1.transAxes)
@@ -458,7 +458,7 @@ class WaveCal() :
                         wav[row,:] = self.model(cols-pix0)/order
                     # ensure we have 2D fit
                     self.type = 'chebyshev2D'
-                    self.model = None
+                    self.model = self.getmod()
                     self.orders = orders
                     print("")
             else :
@@ -595,8 +595,40 @@ class WaveCal() :
         self.weights=np.array(weight)
         self.spectrum = spectrum.data
 
-        if fit: self.fit()
+        if fit: 
+            self.fit()
+            spectrum.add_wave(self.wave(image=spectrum.data.shape))
         print('')
+
+    def skyline(self,hd,plot=True,thresh=50,inter=True,linear=False,file='skyline.dat') :
+        """ Adjust wavelength solution based on sky lines
+
+            Parameters
+            ----------
+            hd : Data object
+                 input pyvista Data object, must contain wave attribute with initial wavelengths
+            plot : bool, default=True
+                   display plot results
+            thresh : float, default=50
+                   minimum S/N for line detection
+            inter : bool, default=True
+                   allow for interactive removal of lines
+            linear : bool, default=False
+                   if True, allow for dispersion to be ajusted as well as wavelength zeropoint 
+                   requires at least two sky lines!
+            file : str, default='skyline.dat'
+                   file with sky lines to look for, if you want to override default:w
+        """
+
+        if hd.wave is None :
+            raise ValueError('input object must contain wave attribute')
+
+        # set higher order terms to fixed
+        for i in range(self.degree) :
+            if not linear or i>0 :
+                self.model.fixed['c{:d}'.format(i+1)] = True
+
+        self.identify(hd,wav=hd.wave,file=file,plot=plot,thresh=thresh,inter=inter)
 
     def scomb(self,hd,wav,average=True,usemask=True) :
         """ Resample onto input wavelength grid
@@ -678,11 +710,11 @@ class WaveCal() :
             wmax=w[i,sort].max()
             w2=np.abs(wav-wmin).argmin()
             w1=np.abs(wav-wmax).argmin()
-            out[i,w2:w1] += np.interp(wav[w2:w1],w[i,sort],hd.data[i,sort])
-            sig[i,w2:w1] += np.sqrt(
-                            np.interp(wav[w2:w1],w[i,sort],hd.uncertainty.array[i,sort]**2))
+            out[i,:] += np.interp(wav,w[i,sort],hd.data[i,sort])
+            sig[i,:] += np.sqrt(
+                            np.interp(wav,w[i,sort],hd.uncertainty.array[i,sort]**2))
 
-        return Data(out,uncertainty=StdDevUncertainty(sig),bitmask=mask)
+        return Data(out,uncertainty=StdDevUncertainty(sig),bitmask=mask,wave=wav)
 
 class Trace() :
     """ Class for spectral traces
@@ -713,7 +745,7 @@ class Trace() :
 
     def __init__ (self,file=None,inst=None, type='Polynomial1D',degree=2,
                   pix0=0,rad=5, spectrum=None,model=None,sc0=None,rows=None,
-                  transpose=False,lags=None,channel=None) :
+                  transpose=False,lags=None,channel=None,hdu=1) :
 
         if file is not None :
             """ Initialize object from FITS file
@@ -727,9 +759,9 @@ class Trace() :
                 return
             try:
                 if str(file)[0] == '.' or str(file)[0] == '/' :
-                    tab=Table.read(file)
+                    tab=Table.read(file,hdu=hdu)
                 else :
-                    tab=Table.read(files(pyvista.data).joinpath(file))
+                    tab=Table.read(files(pyvista.data).joinpath(file),hdu=hdu)
             except FileNotFoundError :
                 raise ValueError("can't find file {:s}",file)
 
@@ -796,6 +828,8 @@ class Trace() :
         if rows is not None : self.rows=rows
         if lags is not None : self.lags=lags
         if model is not None : self.model=model
+        else : self.model=None
+        self.sigmodel=None
         if sc0 is not None : self.sc0=sc0
 
     def write(self,file,append=False) :
@@ -853,7 +887,7 @@ class Trace() :
                  index to label trace(s) with
             skip : integer, optional, default=10
                  measure trace center every skip pixels, using median of 
-                 data from -skip/2 to sip/2
+                 data from -skip/2 to skip/2
             gaussian : bool, optional, default=False
                  if True, use gaussian fit for trace location instead of centroid. 
                  with gaussian=True, will also store trace widths (from fit)
@@ -1028,7 +1062,7 @@ class Trace() :
             while getinput('  See trace. Hit space bar to continue....',plot.fig)[2] != ' ' :
                 pass
 
-    def retrace(self,hd,plot=None,display=None,thresh=20) :
+    def retrace(self,hd,plot=None,display=None,thresh=20,gaussian=False,skip=10) :
         """ Retrace starting with existing model
         """
         if plot == None and display != None : plot = display
@@ -1037,7 +1071,7 @@ class Trace() :
         for row in range(len(self.model)) :
             print("Using shift: ",self.pix0)
             srows.append(self.model[row](self.sc0)+self.pix0)
-        self.trace(hd,srows,plot=plot,thresh=thresh)
+        self.trace(hd,srows,plot=plot,thresh=thresh,gaussian=gaussian,skip=10)
     
     def findpeak(self,hd,width=100,thresh=5,plot=False) :
         """ Find peaks in spatial profile for subsequent tracing
@@ -1055,7 +1089,8 @@ class Trace() :
 
             Returns
             -------
-            list of peak locations
+            tuple : list of peak locations, and list of indices
+                    peak locations can be passed to trace()
 
         """
         if self.transpose :
@@ -1084,7 +1119,7 @@ class Trace() :
         return np.array(peaks)+self.rows[0], fiber
 
  
-    def find(self,hd,width=100,lags=None,plot=None,display=None) :
+    def find(self,hd,width=100,lags=None,plot=None,display=None,inter=False,rad=3) :
         """ Determine shift from existing trace to input frame
 
             Parameters
@@ -1096,6 +1131,8 @@ class Trace() :
                  to give spatial profile
             lags : array-like, default=self.lags
                  range of cross-correlation lags to allow
+            rad : int, default=3
+                 radius around xcorr peak to do polynomial fit to
             display : pyvista.tv object, default=None
                  if not None, tv object to display in
         """
@@ -1106,6 +1143,15 @@ class Trace() :
             im = image.transpose(hd)
         else :
             im = copy.deepcopy(hd)
+
+        if inter :
+            try : display.tv(im)
+            except : raise ValueError('must use display= with inter=True')
+            print('Hit "f" on location of spectrum: ')
+            button,x,y=display.tvmark()
+            self.pix0=y-self.model[0](x)
+            print('setting trace offset to: ', self.pix0)
+            return 
       
         # get median around central column
         spec=np.median(im.data[:,self.sc0-width:self.sc0+width],axis=1)
@@ -1117,8 +1163,9 @@ class Trace() :
         except: pass
 
         # cross-correlate with saved spectrum to get shift
-        fitpeak,shift = image.xcorr(self.spectrum,spec,lags)
+        fitpeak,shift = image.xcorr(self.spectrum,spec,lags,rad=rad)
         pixshift=(fitpeak+lags[0])[0]
+        print('  Derived pixel shift from input trace: ',pixshift)
         if plot is not None :
             plot.clear()
             plot.tv(im)
@@ -1136,7 +1183,8 @@ class Trace() :
             plot.plotax2.plot(lags,shift)
             plot.plotax2.set_xlabel('lag')
             plt.draw()
-            getinput('  See spectra and cross-correlation. Hit any key in display window to continue....',plot.fig)
+            getinput('  See spectra and cross-correlation.\n'+
+                     '  Hit any key in display window to continue....',plot.fig)
         self.pix0=fitpeak+lags[0]
         self.pix0=pixshift
         return fitpeak+lags[0]
@@ -1213,7 +1261,12 @@ class Trace() :
         if hd.bitmask is None :
             hd.add_bitmask(np.zeros_like(hd.data,dtype=np.uintc))
 
+        if fit and (self.sigmodel is None or len(self.sigmodel) == 0) :
+            raise ValueError('must have a sigmodel to use fit extraction.'+
+                             'Use gaussian=True in trace')
+
         if rad is None : rad=self.rad
+        if back is None : back = []
         if len(back) > 0 :
             for bk in back:
                 try :
@@ -1248,6 +1301,9 @@ class Trace() :
                          hd.bitmask[:,col*skip:ec],
                          np.arange(col*skip,ec),
                          self.model,rad,self.pix0,back,self.sigmodel))
+
+        print('  extracting ... (may take some time,\n '+
+              '                  consider threads= if multithreading is available')
         if threads > 0 :
             pool = mp.Pool(threads)
             if fit : output = pool.map_async(extract_col_fit, pars).get()
@@ -1637,6 +1693,18 @@ def gauss(x, *p):
 def findpeak(x,thresh,diff=10000,bundle=10000) :
     """ Find peaks in vector x above input threshold
         attempts to associate an index with each depending on spacing
+
+        Parameters
+        ----------
+        x : float, array-like
+            input vector to find peaks in
+        thresh : float
+            threshold for peak finding 
+        diff : int
+            maximum difference in pixels between traces before incrementing fiber index
+        bundle : int
+            number of fibers after which to allow max distance 
+            to be exceeded without incrementing
     """
     j=[]
     fiber=[]

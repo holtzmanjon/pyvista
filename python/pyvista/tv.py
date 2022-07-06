@@ -666,7 +666,6 @@ class TV:
           key pressed, x data position, y data position
         """
         self.light(self.lgt1,'Input','g')
-        plt.draw()
         self.__startBlock()
         reserved=['r','p','v','left','right','up','down','-','+','=','%','#','$'] 
         if self.event.key in reserved : self.tvmark()
@@ -678,6 +677,7 @@ class TV:
         ax.axis('off')
         ax.add_patch(patches.Rectangle((0,0),1,1,color=color,fill=True))
         ax.text(0.5,0.5,text,ha='center',va='center')
+        plt.draw()
  
     def fill(self) :
         y,x=np.mgrid[0:100,0:100]

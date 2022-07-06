@@ -310,8 +310,11 @@ class Reducer() :
                 im.data = im.data.astype(np.float32)
             im.header['FILE'] = os.path.basename(file)
             if 'OBJECT' not in im.header  or im.header['OBJECT'] == '':
-                try: im.header['OBJECT'] = im.header['OBJNAME']
-                except KeyError : im.header['OBJECT'] = im.header['FILE']
+                if 'OBJNAME' in im.header and im.header['OBJNAME'] != '' : 
+                    im.header['OBJECT'] = im.header['OBJNAME']
+                else : 
+                    try : im.header['OBJECT'] = im.header['FILE']
+                    except KeyError : print('No OBJECT, OBJNAME, or FILE in header')
             if 'RA' not in im.header  :
                 try: im.header['RA'] = im.header['OBJCTRA']
                 except : print('no RA or OBJCTRA found')
@@ -454,11 +457,12 @@ class Reducer() :
             else : 
                 boxes = trimbox
                 outboxes = outbox
-            tmp = np.ones(im.bitmask.shape,dtype=bool)
-            for box in boxes :
-                box.setval(tmp,False)
+            if im.bitmask is None :
+                print('adding a bitmask...')
+                im.add_bitmask(np.zeros(im.data.shape,dtype=np.uintc))
             pixmask=bitmask.PixelBitMask()
-            im.bitmask |= pixmask.getval('INACTIVE_PIXEL')
+            for box in boxes :
+                box.setbit(im.bitmask,pixmask.getval('INACTIVE_PIXEL'))
             if trimimage :
                 xmax=0 
                 ymax=0 
@@ -668,7 +672,7 @@ class Reducer() :
         else :
             im.data -= grid_z
 
-    def crrej(self,im,crbox=None,nsig=5,display=None,mask=True,
+    def crrej(self,im,crbox=None,nsig=5,display=None,
               objlim=5.,fsmode='median',inbkg=None) :
         """ Cosmic ray rejection using spatial median filter or lacosmic. 
 
@@ -676,8 +680,7 @@ class Reducer() :
             run over the image. At each location, the median in the box is determined.
             For each pixel in the box, if the value is larger than nsig*uncertainty
             (where uncertainty is taken from the input.uncertainty.array), the pixel
-            is replaced by the median. If the mask keyword is set to True, then
-            the pixel is also flagged in input.bitmask
+            is replaced by the median.  The pixel is also flagged in input.bitmask
 
             If crbox='lacosmic', the LA Cosmic routine, as implemented in ccdproc
             (using astroscrappy) is run on the image, with default options. 
@@ -688,7 +691,6 @@ class Reducer() :
             crbox : list, int shape of box to use for median filters, or 'lacosmic'
             nsig  : float, default 5, threshold for CR rejection if using spatial 
                     median filter
-            mask : bool, default True, CR-identified pixels bitmask CRPIX bit
             display : None for no display, pyvista TV object to display
         """
 
@@ -710,6 +712,8 @@ class Reducer() :
                          objlim=objlim,fsmode=fsmode,inbkg=inbkg,
                          gain=g*u.dimensionless_unscaled,
                          readnoise=rn*u.dimensionless_unscaled)
+                outim.add_bitmask(im.bitmask)
+                outim.add_wave(im.wave)
             else :
                 if self.verbose : print('  zapping CRs with filter [{:d},{:d}]...'.format(*crbox))
                 if crbox[0]%2 == 0 or crbox[1]%2 == 0 :
@@ -1030,7 +1034,8 @@ class Reducer() :
            else : return out[0]
         else : return out
 
-    def mkbias(self,ims,display=None,scat=None,type='median',sigreject=5,trim=False) :
+    def mkbias(self,ims,display=None,scat=None,type='median',sigreject=5,
+               trim=False) :
         """ Driver for superbias combination (no superbias subtraction no normalization)
         """
         return self.combine(ims,display=display,div=False,scat=scat,trim=trim,

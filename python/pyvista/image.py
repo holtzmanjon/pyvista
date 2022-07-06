@@ -166,6 +166,12 @@ class BOX() :
         if self.nrow() == 0 or self.ncol() == 0 : return 0.
         data[self.ymin:self.ymax+1,self.xmin:self.xmax+1] = val
 
+    def setbit(self,data,val):
+        """ Sets bit of data in box to specified value
+        """
+        if self.nrow() == 0 or self.ncol() == 0 : return 0.
+        data[self.ymin:self.ymax+1,self.xmin:self.xmax+1] |= val
+
     def getval(self,data):
         """ Returns data in box
 
@@ -535,7 +541,7 @@ def getdata(hd) :
         print('Unrecognized data type: ',type(hd))
     return(data)
 
-def xcorr(a,b,lags,medfilt=0) :
+def xcorr(a,b,lags,medfilt=0,rad=3) :
     """ Cross correlation function between two arrays, calculated at lags
 
         If input images have the same number of rows, then calculate a single
@@ -593,7 +599,7 @@ def xcorr(a,b,lags,medfilt=0) :
     for row in range(shift.shape[0]) :
         peak=shift[row,:].argmax()
         try :
-            fit=np.polyfit(range(-3,4),shift[row,peak-3:peak+4],2)
+            fit=np.polyfit(range(-rad,rad+1),shift[row,peak-rad:peak+rad+1],2)
             fitpeak[row]=peak+-fit[1]/(2*fit[0])
         except TypeError :
             fitpeak[row]=peak

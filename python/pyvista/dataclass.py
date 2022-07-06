@@ -16,6 +16,7 @@ from astropy import log
 from tools import plots
 import numpy as np
 import matplotlib
+import matplotlib.pyplot as plt
 import pdb
 
 from astropy.nddata.nduncertainty import (StdDevUncertainty, NDUncertainty, VarianceUncertainty, InverseVariance)
