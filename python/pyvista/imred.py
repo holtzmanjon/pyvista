@@ -912,7 +912,7 @@ class Reducer() :
                     plt.colorbar(shrink=0.8)
                     plt.axis('off')
                 fig.tight_layout()
-                fig.savefig(name+'.png')
+                fig.savefig(name.replace('.fits','.png'))
                 plt.close()
                 #matplotlib.use(backend)
  
