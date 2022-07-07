@@ -171,7 +171,7 @@ def test(n=5,rot=0.05,dx=1,dy=-1,display=None) :
 
     if display is not None :
         display.tv(b)
-        stars.mark(display,holes,color='r')
-        stars.mark(display,locstars,color='g')
+        stars.mark(display,holes,color='r',exit=True)
+        stars.mark(display,locstars,color='g',exit=True)
 
 
