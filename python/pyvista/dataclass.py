@@ -18,6 +18,9 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import pdb
+from pyvista import bitmask
+try : from linetools.spectra.xspectrum1d import XSpectrum1D
+except: pass
 
 from astropy.nddata.nduncertainty import (StdDevUncertainty, NDUncertainty, VarianceUncertainty, InverseVariance)
 _known_uncertainties = (StdDevUncertainty, VarianceUncertainty, InverseVariance)
@@ -210,7 +213,7 @@ class Data(CCDData) :
         return hdulist
 
     def write(self,file,overwrite=True,png=False) :
-        """  Write SpecData to file
+        """  Write Data to file
         """
         self.to_hdu().writeto(file,overwrite=overwrite)
 
@@ -219,22 +222,29 @@ class Data(CCDData) :
             #matplotlib.use('Agg')
             fig,ax=plots.multi(1,1,figsize=(18,6))
             self.plot(ax)
-            fig.savefig(file+'.png')
+            fig.savefig(file.replace('.fits','.png'))
             #matplotlib.use(backend)
             plt.close()
 
     def plot(self,ax,rows=None,**kwargs) :
+        pixmask = bitmask.PixelBitMask()
         if self.data.ndim == 1 :
-            gd = np.where(self.bitmask == False)[0]
+            gd = np.where((self.bitmask & pixmask.badval()) == 0)[0]
             plots.plotl(ax,self.wave[gd],self.data[gd],**kwargs)
         else :
             if rows is None : rows=range(self.wave.shape[0])
             for row in rows :
-                gd = np.where(self.bitmask[row,:] == False)[0]
+                gd = np.where((self.bitmask[row,:] & pixmask.badval()) == 0)[0]
                 plots.plotl(ax,self.wave[row,gd],self.data[row,gd],**kwargs)
-        #gd = np.where(self.bitmask == False)[0]
-        #med=np.nanmedian(self.data[gd])
-        #ax.set_ylim(0,2*med)
+        gd = np.where((self.bitmask & pixmask.badval()) == 0)[0]
+        med=np.nanmedian(self.data[gd])
+        ax.set_ylim(0,2*med)
+
+    def to_linetools(self) :
+        try: 
+            return XSpectrum1D(self.wave,self.data,self.uncertainty.array)
+        except :
+            print('linetools not available')
 
 
 def fits_data_reader(filename, hdu=0, unit=None, hdu_uncertainty='UNCERT',
