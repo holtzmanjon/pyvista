@@ -246,7 +246,7 @@ class WaveCal() :
         self.ax[1].set_xlabel('Wavelength')
         self.ax[1].set_ylabel('obs wave - fit wave')
         if len(bd) > 0 : 
-            self.ax[1].plot(self.waves[bd],diff[bd],'ro')
+            self.ax[1].scatter(self.waves[bd],diff[bd],c='r',s=5)
         self.ax[1].set_ylim(diff[gd].min()-0.5,diff[gd].max()+0.5)
 
         self.fig.tight_layout()
@@ -300,22 +300,22 @@ class WaveCal() :
 
             # plot the results
             if self.ax is not None : 
-                #self.ax[1].cla()
-                #scat=self.ax[1].scatter(self.waves,diff,marker='o',c=self.y,s=5)
-                #plots.plotp(self.ax[1],self.waves[bd],diff[bd],
-                #            marker='o',color='r',size=5)
-#
-#                xlim=self.ax[1].get_xlim()
-#                self.ax[1].set_ylim(diff.min()-0.5,diff.max()+0.5)
-#                self.ax[1].plot(xlim,[0,0],linestyle=':')
-#                self.ax[1].text(0.1,0.9,'rms: {:8.3f}'.format(
-#                                diff[gd].std()),transform=self.ax[1].transAxes)
-#                cb_ax = self.fig.add_axes([0.94,0.05,0.02,0.4])
-#                cb = self.fig.colorbar(scat,cax=cb_ax)
-#                cb.ax.set_ylabel('Row')
-#                plt.draw()
+                self.ax[1].cla()
+                scat=self.ax[1].scatter(self.waves,diff,marker='o',
+                                        c=self.y,s=5,cmap='viridis')
+                plots.plotp(self.ax[1],self.waves[bd],diff[bd],
+                            marker='o',color='r',size=5)
 
-                self.plot()
+                xlim=self.ax[1].get_xlim()
+                self.ax[1].set_ylim(diff.min()-0.5,diff.max()+0.5)
+                self.ax[1].plot(xlim,[0,0],linestyle=':')
+                self.ax[1].text(0.1,0.9,'rms: {:8.3f}'.format(
+                                diff[gd].std()),transform=self.ax[1].transAxes)
+                cb_ax = self.fig.add_axes([0.94,0.05,0.02,0.4])
+                cb = self.fig.colorbar(scat,cax=cb_ax)
+                cb.ax.set_ylabel('Row')
+                plt.draw()
+
                 try: self.fig.canvas.draw_idle()
                 except: pass
                 print('  See 2D wavecal fit. Enter space in plot window to continue')
@@ -1458,6 +1458,7 @@ class Trace() :
             noutrows=len(range(self.rows[0],self.rows[1]))
             spec=np.zeros([noutrows,ncols])
             sig=np.zeros([noutrows,ncols])
+            bitmask=np.zeros([noutrows,ncols],dtype=np.uintc)
             cr=model(np.arange(ncols))
             cr-=cr[self.sc0]
             for col in range(ncols) :
@@ -1465,7 +1466,14 @@ class Trace() :
                                         hd.data[:,col])
                 sig[:,col] = np.sqrt(np.interp(outrows+cr[col],np.arange(nrows),
                                         hd.uncertainty.array[:,col]**2))
-            out.append(Data(spec,StdDevUncertainty(sig),header=hd.header))
+                for bit in range(0,32) :
+                    mask = (hd.bitmask[:,col] & 2**bit)
+                    if mask.max() > 0 :
+                        maskint = np.interp(outrows+cr[col],np.arange(nrows),mask)
+                        bitset = np.where(maskint>0)[0] 
+                        bitmask[bitset,col] |= 2**bit
+            out.append(Data(spec,StdDevUncertainty(sig),
+                            bitmask=bitmask,header=hd.header))
 
         if plot is not None: 
            while getinput('  See extraction window(s). Hit space bar to continue....',plot.fig)[2] != ' ' :
