@@ -11,7 +11,9 @@ from tools import plots, html
 from astropy import units as u
 from astropy.nddata import StdDevUncertainty
 from pyvista.dataclass import Data
+from pyvista import bitmask
 import scipy.signal
+from scipy.ndimage import median_filter
 
 ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../../'
 
@@ -29,6 +31,8 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
     if display and threads > 0 :
         raise ValueError('no multiprocessing with display!')
 
+    pixmask=bitmask.PixelBitMask()
+
     if type(groups) is not list : groups = [groups]
 
     # loop over multiple groups in input file
@@ -40,7 +44,6 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
 
         # clear displays if given
         if display is not None : display.clear()
-        if plot is not None : plot.clf()
 
         # set up Reducer, Combiner, and output directory
         inst = group['inst']
@@ -139,10 +142,6 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                         for iwind in range(nwind) :
                             wtrace = trace
                             wcal = wave
-                            try:
-                                delattr(wcal,'ax')
-                                delattr(wcal,'fig')
-                            except: pass
                             try : file = wavecal['file']
                             except KeyError : file = None
                             # extract and ID lines
@@ -151,9 +150,8 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                                 arcec=wtrace.extract(arc,plot=display)
                                 wcal.identify(spectrum=arcec, rad=3, 
                                           display=display, plot=plot,file=file)
+
                             elif wavecal['wavecal_type'] == 'longslit' :
-                                r0=wtrace.rows[0]
-                                r1=wtrace.rows[1]
                                 # 1d for inspection
                                 wtrace.pix0 +=30
                                 arcec=wtrace.extract(arc,plot=display,rad=20)
@@ -162,7 +160,7 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                                 wcal.identify(spectrum=arcec, rad=3, plot=plot,
                                               display=display,
                                               lags=range(-500,500),file=file)
-
+                                # full 2D wavecal
                                 print("doing 2D wavecal...")
                                 arcec=wtrace.extract2d(arc)
                                 print(" remove continuum and smooth in rows")
@@ -174,9 +172,9 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                                 image.smooth(arcec,[5,1])
                                 wcal.identify(spectrum=arcec, rad=3, 
                                               display=display, plot=plot, 
-                                              nskip=5,lags=range(-50,50))
+                                              nskip=20,lags=range(-50,50))
    
-                            if plot is not None :
+                            if plot :
                                 delattr(wcal,'ax')
                                 delattr(wcal,'fig')
                             if iwind == 0 : append = False
@@ -187,8 +185,6 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                         traces_all.append(traces_channel)
                         waves_all.append(waves_channel)
                         if display is not None : display.clear()
-                    #waves_all[0].write(reddir+wavecal['id']+'.fits')
-                    if plot is not None : plot.clf()
                 else :
                     print('  already made!')
                 wavedict[wavecal['id']] = waves_all
@@ -206,43 +202,13 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                         try : fhtml.write('<BR><h3>{:s}</h3>\n'.format(obj['id']))
                         except KeyError : pass
                         fhtml.write('<br><TABLE BORDER=2>\n')
-                    try : superbias = sbias[obj['bias']]
-                    except KeyError: superbias = None
-                    try : superdark = sdark[obj['dark']]
-                    except KeyError: superdark = None
-                    try : superflat = sflat[obj['flat']]
-                    except KeyError: superflat = None
 
-                    if threads > 0  :
-                        # if multiprocessing, do all frames in this object 
-                        #    in parallel
-                        pars=[]
-                        for id in obj['frames'] :
-                            pars.append((red,id,superbias,superdark,
-                                         superflat,red.scat,red.crbox,
-                                         solve,reddir))
-                        pool = mp.Pool(threads)
-                        output = pool.map_async(process_thread, pars).get()
-                        pool.close()
-                        pool.join()
-                    else :
-                        output = obj['frames']
+                    # basic reduction of frames
+                    output = reduce_frames(obj,red,sbias,sdark,sflat,threads=threads,solve=solve,reddir=reddir)
 
                     for iframe,(id,frames) in enumerate(zip(obj['frames'],output)) : 
                         if display is not None : display.tvclear()
-                        if threads == 0 :
-                            # if not multiprocessing, then do the reduction
-                            frames=red.reduce(id,bias=superbias,
-                                             dark=superdark,
-                                             flat=superflat,
-                                             scat=red.scat,
-                                             crbox=red.crbox,
-                                             solve=solve,
-                                             return_list=True,
-                                             display=display)
-                            name=frames[0].header['FILE']
-                            red.write(frames,reddir+name,overwrite=True,png=True)
-                        else : name=frames[0].header['FILE']
+                        name=frames[0].header['FILE']
                         if html is not None : 
                             name=name.replace('.fits','') 
                             fhtml.write('<TR><TD>{:s}'.format(name))
@@ -252,22 +218,24 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                     if html is not None : fhtml.write('</TABLE>')
                 if html is not None : html.tail(fhtml) 
                 plt.ion()
-            elif 'extract1d' in objects :
-                # 1D spectra
-                for obj in objects['extract1d'] :
+
+            elif 'echelle' in objects :
+                # multi-order 
+                for obj in objects['echelle'] :
                     if html is not None : 
                         try : fhtml.write('<BR><h3>{:s}</h3>\n'.format(obj['id']))
                         except KeyError : pass
                         fhtml.write('<br><TABLE BORDER=2>\n')
-                    try : superbias = sbias[obj['bias']]
-                    except KeyError: superbias = None
-                    try : superdark = sdark[obj['dark']]
-                    except KeyError: superdark = None
-                    try : superflat = sflat[obj['flat']]
-                    except KeyError: superflat = None
-                    waves_all = wavedict[obj['wavecal']]
 
+                    # reduction of frames and 1D flat if requested
                     if obj['flat_type'] == '1d' :
+                        tmp = copy.copy(obj['flat'] )
+                        obj['flat']  = 'none'
+                        output = reduce_frames(obj,red,sbias,sdark,sflat,threads=threads,solve=solve,reddir=reddir)
+                        obj['flat'] = tmp
+                        try : superflat = sflat[obj['flat']]
+                        except KeyError: 
+                            raise ValueError('cannot make 1D flat without superflat specified!')
                         print('extracting 1d flat')
                         ecflat=[]
                         for trace in traces_all :
@@ -280,32 +248,132 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                                           red.trim(superflat,trimimage=True),
                                           plot=display,threads=threads))
                             ecflat.append(tmp)
-                        superflat = None
-
-                    if threads > 0  :
-                        # if multiprocessing, do all frames in this object 
-                        #    in parallel
-                        pars=[]
-                        for id in obj['frames'] :
-                            pars.append((red,id,superbias,superdark,
-                                        superflat,red.scat,red.crbox,
-                                        solve,reddir))
-                        pool = mp.Pool(threads)
-                        output = pool.map_async(process_thread, pars).get()
-                        pool.close()
-                        pool.join()
                     else :
-                        output = obj['frames']
+                        output = reduce_frames(obj,red,sbias,sdark,None,threads=threads,solve=solve,reddir=reddir)
 
-                    # now frames
+                    # extraction radius
+                    try : rad = obj['rad'] 
+                    except KeyError : rad = None
+
+                    # retrace?
+                    try : retrace = obj['retrace'] 
+                    except KeyError : retrace = True
+
+                    # wavelength solution to use
+                    waves_all = wavedict[obj['wavecal']]
+
                     for iframe,(id,frames) in enumerate(zip(obj['frames'],output)) : 
                         if display is not None : display.clear() 
                         print("extracting object {}".format(id))
-                        if threads == 0 :
-                            frames=red.reduce(id,bias=superbias,dark=superdark,
-                                          flat=superflat,scat=red.scat,
-                                          return_list=True,crbox=red.crbox,
-                                          display=display) 
+
+                        # loop over channels
+                        max=0
+                        for ichannel,(frame,wave,trace) in enumerate(zip(frames,waves_all,traces_all)) :
+                            # loop over windows
+                            for iwind,(wcal,wtrace) in enumerate(zip(wave,trace)) :
+                                tmptrace=copy.deepcopy(wtrace)
+                                if retrace : 
+                                    print('  retracing ....')
+                                    shift=tmptrace.retrace(frame,
+                                                       plot=display,thresh=10) 
+                                else : 
+                                    shift=tmptrace.find(frame,plot=display) 
+                                objec=tmptrace.extract(frame,rad=rad,
+                                      threads=threads, plot=display)
+                                w=wcal.wave(image=np.array(objec.data.shape))
+                                if obj['flat_type'] == '1d' : 
+                                    objecraw = copy.deepcopy(objec)
+                                    objec.data/=ecflat[ichannel][iwind].data
+                                    objec.uncertainty.array/= \
+                                       ecflat[ichannel][iwind].uncertainty.array
+
+                                if plot :
+                                    gd=np.where((objec.bitmask & pixmask.badval()) == 0)[0]
+                                    med=np.median(objec.data[gd[0],gd[1]])
+                                    max=np.max([max,
+                                         scipy.signal.medfilt(objec.data,[1,101]).max()])
+                                    for row in range(objec.data.shape[0]) :
+                                        gd=np.where((objec.bitmask[row] & pixmask.badval()) == 0)[0]
+                                        plots.plotl(ax[0],w[row,gd],
+                                                    objec.data[row,gd],
+                                                    yr=[0,1.2*max],
+                                                    xt='Wavelength',yt='Flux')
+                                        plots.plotl(ax[1],w[row,gd],
+                                                    objec.data[row,gd]/objec.uncertainty.array[row,gd],
+                                                    xt='Wavelength',yt='S/N')
+                                    plot.suptitle(objec.header['OBJNAME'])
+                                    plt.draw()
+
+                            # write individual orders/raw wavelength in any case
+                            objec.add_wave(w)
+                            objec.write(reddir+objec.header['FILE'].replace(
+                                     '.fits','.ec.fits'),png=True)
+
+                            # resample/combine orders if requested
+                            if 'wresample' in obj :
+                                print('resampling/combining')
+                                wresample = np.array(obj['wresample'])
+                                if len(wresample) == 1 :
+                                    wnew = 10**np.linspace(np.log10(w.min()),np.log10(w.max()),wresample[0])
+                                else :
+                                    wnew = 10.**np.arange(*wresample)
+                                if obj['flat_type'] == '1d' : 
+                                    flatcomb = wcal.scomb(ecflat[ichannel][0],wnew,average=False,usemask=True)
+                                    if len(ecflat[ichannel][0].data) > 1 :
+                                        #remove large scale flat field intensity varation
+                                        ncol = ecflat[ichannel][0].shape[1]
+                                        flatcomb.data /= median_filter(flatcomb.data,[3*ncol])
+                                    comb = wcal.scomb(objecraw,wnew,average=False,usemask=True)
+                                    comb.data /= flatcomb.data
+                                    comb.uncertainty.array = \
+                                         np.sqrt(comb.uncertainty.array**2+flatcomb.uncertainty.array**2)
+                                    comb.bitmask &= flatcomb.bitmask
+                                    comb.write(reddir+objec.header['FILE'].replace(
+                                             '.fits','.comb.fits'),png=True)
+                                else :
+                                    comb = wcal.scomb(objec,wnew,average=False,usemask=True)
+                                    comb.write(reddir+objec.header['FILE'].replace(
+                                             '.fits','.comb.fits'),png=True)
+                                if plot :
+                                    plots.plotl(ax[0],wnew,comb.data,color='k')
+                                    plots.plotl(ax[1],wnew,
+                                           comb.data/comb.uncertainty.array,
+                                           color='k')
+                                    plt.draw()
+                                    plot.canvas.draw_idle()
+                                    plt.pause(0.1)
+                                    input("  hit a key to continue")
+
+                        if html is not None : 
+                            for frame in frames :
+                                name=frames[0].header['FILE'].replace('.fits','')
+                                fhtml.write('<TR><TD>{:s}'.format(name))
+                                fhtml.write(('<TD><a href={:s}.png><IMG src={:s}.png width=500>'+
+                                             '</a>\n').format(name,name))
+                                fhtml.write(('<TD><a href={:s}.png><IMG src={:s}.png width=500>'+
+                                             '</a>\n').format(name+'.ec',name+'.ec'))
+                                if 'wresample' in obj :
+                                    fhtml.write(('<TD><a href={:s}.png><IMG src={:s}.png width=500>'+
+                                                 '</a>\n').format(name+'.comb',name+'.comb'))
+                    if html is not None : fhtml.write('</TABLE>')
+                if html is not None : html.tail(fhtml) 
+
+            elif 'longslit' in objects :
+                # 1D spectra
+                for obj in objects['longslit'] :
+
+                    if html is not None : 
+                        try : fhtml.write('<BR><h3>{:s}</h3>\n'.format(obj['id']))
+                        except KeyError : pass
+                        fhtml.write('<br><TABLE BORDER=2>\n')
+
+                    # basic reduction of frames
+                    output = reduce_frames(obj,red,sbias,sdark,sflat,threads=threads,solve=solve,reddir=reddir)
+
+                    # loop through frames
+                    for iframe,(id,frames) in enumerate(zip(obj['frames'],output)) : 
+                        if display is not None : display.clear() 
+                        print("extracting object {}".format(id))
                         if 'skyframes' in obj :
                             id = obj['skyframes'][iframe]
                             skyframes=red.reduce(id,bias=superbias,
@@ -328,12 +396,8 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                         except KeyError : retrace = True
 
                         # initialize plots
-                        if plot is not None : 
-                            plot.clf()
-                            ax=[]
-                            ax.append(plot.add_subplot(2,1,1))
-                            ax.append(plot.add_subplot(2,1,2,sharex=ax[0]))
-                            plot.subplots_adjust(hspace=0.001)
+                        if plot :
+                            fig,ax=plots.multi(1,2,sharex=True,hspace=0.001)
 
                         # loop over channels
                         max=0
@@ -347,41 +411,43 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                                                        plot=display,thresh=10) 
                                 else : 
                                     shift=tmptrace.find(frame,plot=display) 
-                                ec=tmptrace.extract(frame,rad=rad,
-                                      threads=threads, plot=display)
-                                w=wcal.wave(image=np.array(ec.data.shape))
-                                if obj['flat_type'] == '1d' : 
-                                    ec.data/=ecflat[ichannel][iwind].data
-                                    ec.uncertainty.array/= \
-                                       ecflat[ichannel][iwind].uncertainty.array
-                                if plot is not None :
-                                    gd=np.where(ec.mask == False) 
-                                    med=np.median(ec.data[gd[0],gd[1]])
-                                    max=np.max([max,
-                                         scipy.signal.medfilt(ec.data,[1,101]).max()])
-                                    for row in range(ec.data.shape[0]) :
-                                        gd=np.where(ec.mask[row,:] == False)[0]
-                                        plots.plotl(ax[0],w[row,gd],
-                                                    ec.data[row,gd],
-                                                    yr=[0,1.2*max],
-                                                    xt='Wavelength',yt='Flux')
-                                        plots.plotl(ax[1],w[row,gd],
-                                                    ec.data[row,gd]/ec.uncertainty.array[row,gd],
-                                                    xt='Wavelength',yt='S/N')
-                                    plot.suptitle(ec.header['OBJNAME'])
-                                    plt.draw()
-                            if plot is not None :
-                                plots.plotl(ax[0],wnew,comb.data,color='k')
-                                plots.plotl(ax[1],wnew,
-                                       comb.data/comb.uncertainty.array,
-                                       color='k')
-                                plt.draw()
-                                plot.canvas.draw_idle()
-                                plt.pause(0.1)
-                                input("  hit a key to continue")
-                            ec.add_wave(w)
-                            ec.write(reddir+ec.header['FILE'].replace(
-                                     '.fits','.ec.fits'),png=True)
+                                obj2d=tmptrace.extract2d(frame,display=display)
+                                w=wcal.wave(image=np.array(obj2d.data.shape))
+
+                                #if plot :
+                                #    gd=np.where((obj2d.bitmask & pixmask.badval()) == 0)[0]
+                                #    med=np.median(obj2d.data[gd[0],gd[1]])
+                                #    max=np.max([max,
+                                #         scipy.signal.medfilt(obj2d.data,[1,101]).max()])
+                                #    for row in range(obj2d.data.shape[0]) :
+                                #        gd=np.where((obj2d.bitmask[row] & pixmask.badval()) == 0)[0]
+                                #        plots.plotl(ax[0],w[row,gd],
+                                #                    obj2d.data[row,gd],
+                                #                    yr=[0,1.2*max],
+                                #                    xt='Wavelength',yt='Flux')
+                                #        plots.plotl(ax[1],w[row,gd],
+                                #                    obj2d.data[row,gd]/obj2d.uncertainty.array[row,gd],
+                                #                    xt='Wavelength',yt='S/N')
+                                #    plot.suptitle(obj2d.header['OBJNAME'])
+                                #    plt.draw()
+
+                            # write raw wavelength image in any case
+                            obj2d.add_wave(w)
+                            obj2d.write(reddir+obj2d.header['FILE'].replace(
+                                     '.fits','.2d.fits'),png=True,imshow=True)
+
+                            # resample if requested
+                            if 'wresample' in obj :
+                                print('resampling')
+                                wresample = np.array(obj['wresample'])
+                                if len(wresample) == 1 :
+                                    wnew = 10**np.linspace(np.log10(w.min()),np.log10(w.max()),wresample[0])
+                                else :
+                                    wnew = 10.**np.arange(*wresample)
+                                resamp = wcal.correct(obj2d,wnew)
+                                resamp.write(reddir+obj2d.header['FILE'].replace(
+                                             '.fits','.resamp.fits'),png=True,imshow=True)
+
                         if html is not None : 
                             for frame in frames :
                                 name=frames[0].header['FILE'].replace('.fits','')
@@ -389,21 +455,12 @@ def all(ymlfile,display=None,plot=None,verbose=True,clobber=True,wclobber=None,
                                 fhtml.write(('<TD><a href={:s}.png><IMG src={:s}.png width=500>'+
                                              '</a>\n').format(name,name))
                                 fhtml.write(('<TD><a href={:s}.png><IMG src={:s}.png width=500>'+
-                                             '</a>\n').format(name+'.ec',name+'.ec'))
+                                             '</a>\n').format(name+'.2d',name+'.2d'))
+                                if 'wresample' in obj :
+                                    fhtml.write(('<TD><a href={:s}.png><IMG src={:s}.png width=500>'+
+                                                 '</a>\n').format(name+'.resamp',name+'.resamp'))
                     if html is not None : fhtml.write('</TABLE>')
                 if html is not None : html.tail(fhtml) 
-            elif 'extract2d' in objects :
-                # 2D spectra
-                print('extract2d')
-#    traces=pickle.load(open(group['inst']+'_trace.pkl','rb'))
-#    if type(traces) is not list : traces = [traces]
-#    pdb.set_trace()
-#    for id in group['objects']['extract2d']['frames'] : 
-#        frames=red.reduce(id,bias=sbias,dark=sdark,flat=sflat,scat=red.scat,return_list=True) 
-#        for frame,trace in zip(frames,traces) :
-#            if red.transpose : frame=red.imtranspose(frame)
-#            out=trace.extract2d(frame,plot=t)
-
 
 def mkcal(cals,caltype,reducer,reddir,sbias=None,sdark=None,clobber=False,
           html=None,**kwargs) :
@@ -495,7 +552,8 @@ def mkcal(cals,caltype,reducer,reddir,sbias=None,sdark=None,clobber=False,
     return outcal
 
 def process_thread(pars) :
-
+    """ Process a single frame
+    """
     red,id,superbias,superdark,superflat,scat,crbox,solve,reddir = pars
     frames= red.reduce(id, bias=superbias,
                           dark=superdark,
@@ -504,7 +562,39 @@ def process_thread(pars) :
                           crbox=red.crbox,
                           solve=solve,
                           return_list=True,display=None)
-    name=frames[0].header['FILE']
-    red.write(frames,reddir+name,overwrite=True,png=True)
+    if reddir is not None :
+        name=frames[0].header['FILE']
+        red.write(frames,reddir+name,overwrite=True,png=True)
     return frames
+
+def reduce_frames(obj,red,sbias,sdark,sflat,threads=0,solve=False,reddir=None) :
+    """ Reduce a set of frames, in parallel if threads>0
+
+    """
+    try : superbias = sbias[obj['bias']]
+    except KeyError: superbias = None
+    try : superdark = sdark[obj['dark']]
+    except KeyError: superdark = None
+    try : superflat = sflat[obj['flat']]
+    except KeyError: superflat = None
+
+    pars=[]
+    for id in obj['frames'] :
+        pars.append((red,id,superbias,superdark,
+                    superflat,red.scat,red.crbox,
+                    solve,reddir))
+
+    if threads > 0  :
+        # if multiprocessing, do all frames in this object 
+        #    in parallel
+        pool = mp.Pool(threads)
+        output = pool.map_async(process_thread, pars).get()
+        pool.close()
+        pool.join()
+    else :
+        output=[]
+        for par in pars :
+            output.append(process_thread(par))
+
+    return output
 
