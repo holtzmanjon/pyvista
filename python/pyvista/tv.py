@@ -527,7 +527,7 @@ class TV:
         if min is None : 
            min = 0.
         if max is None : 
-           min,max = minmax(data)
+           min,max = image.minmax(data)
         self.scale = np.array([min,max])
         self.scalelist.pop(current)
         self.scalelist.insert(current,self.scale)
@@ -707,28 +707,4 @@ class TV:
         """
         extent = self.ax.get_window_extent().transformed(self.fig.dpi_scale_trans.inverted())
         self.fig.savefig(name, bbox_inches=extent)
-
-
-
-@support_nddata
-def minmax(data,mask=None, low=3,high=10):
-    """ Return min,max scaling factors for input data using median, and MAD
-   
-        Args:
-            img : input CCDData
-            low : number of MADs below median to retunr
-            high : number of MADs above median to retunr
-
-        Returns:
-            min,max : low and high scaling factors
-    """
-    if mask is not None :
-        gd = np.where(np.isfinite(data) & ~mask)
-    else :
-        gd = np.where(np.isfinite(data))
-    #std=scipy.stats.median_absolute_deviation(data[gd])
-    std=np.median(np.abs(data[gd]-np.median(data[gd])))
-    min = np.median(data[gd])-low*std
-    max = np.median(data[gd])+high*std
-    return min,max
 
