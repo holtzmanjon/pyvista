@@ -7,7 +7,6 @@ from astropy.io import fits, ascii
 from astropy.modeling import models, fitting
 from astropy.convolution import convolve, Box1DKernel
 from astropy.nddata import StdDevUncertainty, support_nddata
-from pyvista.dataclass import Data
 import scipy.signal
 import scipy.ndimage
 import matplotlib.pyplot as plt
@@ -663,10 +662,25 @@ def smooth(hd,size) :
     hd.uncertainty=StdDevUncertainty(np.sqrt(scipy.ndimage.uniform_filter(hd.uncertainty.array**2,size=size)/npix))
 
 
-def transpose(im) :
-    """ Transpose a Data object
+@support_nddata
+def minmax(data,mask=None, low=3,high=10):
+    """ Return min,max scaling factors for input data using median, and MAD
+   
+        Args:
+            img : input CCDData
+            low : number of MADs below median to retunr
+            high : number of MADs above median to retunr
+
+        Returns:
+            min,max : low and high scaling factors
     """
-    return Data(im.data.T,header=im.header,
-                   uncertainty=StdDevUncertainty(im.uncertainty.array.T),
-                   bitmask=im.bitmask.T,unit=u.dimensionless_unscaled)
+    if mask is not None :
+        gd = np.where(np.isfinite(data) & ~mask)
+    else :
+        gd = np.where(np.isfinite(data))
+    #std=scipy.stats.median_absolute_deviation(data[gd])
+    std=np.median(np.abs(data[gd]-np.median(data[gd])))
+    min = np.median(data[gd])-low*std
+    max = np.median(data[gd])+high*std
+    return min,max
 
