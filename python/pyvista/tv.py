@@ -227,6 +227,7 @@ class TV:
                 self.plotax1.tick_params(axis='x',colors='c')
                 self.plotax1.tick_params(axis='y',colors='c')
                 self.plotax1.set_xlim(self.ax.get_xlim())
+                self.histclick = False
                 self.plotax2.cla()
                 self.plotax2.plot(self.img[:,xdata])
                 self.plotax2.set_xlabel('Y',color='c')
@@ -701,6 +702,7 @@ class TV:
             xcen=g[0].x_mean.value
             ycen=g[0].y_mean.value
             self.tvcirc(xcen,ycen,np.sqrt(xfwhm*yfwhm)/2.)
+            self.histclick = False
 
     def savefig(self,name) :
         """ hardcopy of only display Axes
