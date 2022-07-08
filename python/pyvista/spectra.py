@@ -22,7 +22,7 @@ from astropy.convolution import convolve, Box1DKernel, Box2DKernel
 from astropy.table import Table
 import pyvista
 import pyvista.data
-from pyvista import image, tv, skycalc, bitmask
+from pyvista import image, tv, skycalc, bitmask, dataclass
 from tools import plots
 
 class WaveCal() :
@@ -69,7 +69,7 @@ class WaveCal() :
     """
 
     def __init__ (self,file=None, type='chebyshev',degree=2,ydegree=2,
-                  pix0=0,index=0,hdu=1) :
+                  pix0=0,index=0,hdu=1,orders=None) :
         if file is not None :
             if file == '?' :
                 out=glob.glob(
@@ -107,7 +107,10 @@ class WaveCal() :
             self.model = None
             self.ax = None
             self.spectrum = None
-            self.orders = [1]
+            if orders is not None :
+                self.orders = orders
+            else :
+                self.orders = [1]
             self.index = None
 
     def write(self,file,append=False) :
@@ -199,6 +202,63 @@ class WaveCal() :
             return
         return mod
 
+    def plot(self,hard=None) :
+        """ Plot current solution
+        """
+
+        if self.ax is None :
+            fig,ax = plt.subplots(2,1,sharex=True,figsize=(10,5))
+            fig.subplots_adjust(hspace=1.05)
+            self.fig = fig
+            self.ax = ax
+
+        #plot spectrum with current wavelength solution
+        self.ax[0].cla()
+        wav = self.wave(image=self.spectrum.shape)
+        if len(self.spectrum) > 1 :
+            row = self.spectrum.shape[0] // 2
+            self.ax[0].plot(wav[row,:],self.spectrum[row,:])
+        else :
+            self.ax[0].plot(wav[0],self.spectrum[0,:])
+        for line in self.waves :
+            self.ax[0].text(line,1.,'{:7.1f}'.format(line),
+                            rotation='vertical',va='top',ha='center')
+
+        # plot residuals
+        diff=self.waves-self.wave(pixels=[self.pix,self.y])
+        gd = np.where(self.weights > 0.001)[0]
+        bd = np.where(self.weights <= 0.)[0]
+
+        self.ax[1].cla()
+        if len(self.spectrum) == 1 :
+            self.ax[1].plot(self.waves[gd],diff[gd],'go')
+        else :
+            scat=self.ax[1].scatter(self.waves,diff,marker='o',c=self.y,s=5,cmap='viridis')
+            cb_ax = self.fig.add_axes([0.94,0.05,0.02,0.4])
+            cb = self.fig.colorbar(scat,cax=cb_ax)
+            cb.ax.set_ylabel('Row')
+
+        xlim=self.ax[1].get_xlim()
+        self.ax[1].set_ylim(diff.min()-0.5,diff.max()+0.5)
+        self.ax[1].plot(xlim,[0,0],linestyle=':')
+        self.ax[1].text(0.1,0.9,'rms: {:8.3f} Angstroms'.format(
+                                diff[gd].std()),transform=self.ax[1].transAxes)
+        self.ax[1].set_xlabel('Wavelength')
+        self.ax[1].set_ylabel('obs wave - fit wave')
+        if len(bd) > 0 : 
+            self.ax[1].plot(self.waves[bd],diff[bd],'ro')
+        self.ax[1].set_ylim(diff[gd].min()-0.5,diff[gd].max()+0.5)
+
+        self.fig.tight_layout()
+        plt.draw()
+        if hard is not None :
+            self.fig.savefig(hard+'.png')
+
+    def dispersion(self) :
+        """ approximate dispersion from 1st order term"
+        """
+        return self.model.c1.value/(self.model._domain[1]-self.model._domain[0])*2.
+
     def fit(self,degree=None,reject=3) :
         """ do a wavelength fit 
 
@@ -240,20 +300,22 @@ class WaveCal() :
 
             # plot the results
             if self.ax is not None : 
-                self.ax[1].cla()
-                scat=self.ax[1].scatter(self.waves,diff,marker='o',c=self.y,s=5)
-                plots.plotp(self.ax[1],self.waves[bd],diff[bd],
-                            marker='o',color='r',size=5)
+                #self.ax[1].cla()
+                #scat=self.ax[1].scatter(self.waves,diff,marker='o',c=self.y,s=5)
+                #plots.plotp(self.ax[1],self.waves[bd],diff[bd],
+                #            marker='o',color='r',size=5)
+#
+#                xlim=self.ax[1].get_xlim()
+#                self.ax[1].set_ylim(diff.min()-0.5,diff.max()+0.5)
+#                self.ax[1].plot(xlim,[0,0],linestyle=':')
+#                self.ax[1].text(0.1,0.9,'rms: {:8.3f}'.format(
+#                                diff[gd].std()),transform=self.ax[1].transAxes)
+#                cb_ax = self.fig.add_axes([0.94,0.05,0.02,0.4])
+#                cb = self.fig.colorbar(scat,cax=cb_ax)
+#                cb.ax.set_ylabel('Row')
+#                plt.draw()
 
-                xlim=self.ax[1].get_xlim()
-                self.ax[1].set_ylim(diff.min()-0.5,diff.max()+0.5)
-                self.ax[1].plot(xlim,[0,0],linestyle=':')
-                self.ax[1].text(0.1,0.9,'rms: {:8.3f}'.format(
-                                diff[gd].std()),transform=self.ax[1].transAxes)
-                cb_ax = self.fig.add_axes([0.94,0.05,0.02,0.4])
-                cb = self.fig.colorbar(scat,cax=cb_ax)
-                cb.ax.set_ylabel('Row')
-                plt.draw()
+                self.plot()
                 try: self.fig.canvas.draw_idle()
                 except: pass
                 print('  See 2D wavecal fit. Enter space in plot window to continue')
@@ -270,7 +332,8 @@ class WaveCal() :
                              weights=self.weights[irow])
             gd=np.where(self.weights[irow]>0.)[0]
             diff=self.waves-self.wave(pixels=[self.pix,self.y])
-            print('  rms: {:8.3f} Angstroms ({:d} lines)'.format(diff[irow[gd]].std(),len(irow)))
+            print('  rms: {:8.3f} Angstroms ({:d} lines)'.format(
+                  diff[irow[gd]].std(),len(irow)))
             if self.ax is not None :
                 # iterate allowing for interactive removal of points
                 done = False
@@ -424,7 +487,8 @@ class WaveCal() :
                     print('  Derived pixel shift from input wcal: ',fitpeak+lags[0])
                     if display is not None :
                         display.plotax1.cla()
-                        display.plotax1.text(0.05,0.95,'spectrum and reference',transform=display.plotax1.transAxes)
+                        display.plotax1.text(0.05,0.95,'spectrum and reference',
+                                             transform=display.plotax1.transAxes)
                         for row in range(spectrum.data.shape[0]) :
                             display.plotax1.plot(spectrum.data[row,:],color='m')
                             display.plotax1.plot(self.spectrum[row,:],color='g')
@@ -569,8 +633,11 @@ class WaveCal() :
                     if display is not None and  isinstance(display,pyvista.tv.TV) :
                         display.ax.scatter(cent,row,marker='o',color='g',s=2)
                     if plot is not None and plot != False :
-                        if pixplot :ax[0].plot([cent,cent],ax[0].get_ylim(),color='r')
-                        else : ax[0].text(line,1.,'{:7.1f}'.format(line),rotation='vertical',va='top',ha='center')
+                        if pixplot :
+                            ax[0].plot([cent,cent],ax[0].get_ylim(),color='r')
+                        else : 
+                            ax[0].text(line,1.,'{:7.1f}'.format(line),
+                                       rotation='vertical',va='top',ha='center')
                     x.append(cent)
                     y.append(row)
                     fwhm.append(np.abs(coeff[2]*2.354))
@@ -684,7 +751,7 @@ class WaveCal() :
         else :
             sig = np.sqrt(sig)
         return Data(out,uncertainty=StdDevUncertainty(sig),
-                       bitmask=mask,header=hd.header)
+                       bitmask=mask,header=hd.header,wave=wav)
 
 
     def correct(self,hd,wav) :
@@ -909,7 +976,7 @@ class Trace() :
             raise ValueError('length of index and srows must be the same')
 
         if self.transpose :
-            hd = image.transpose(im)
+            hd = dataclass.transpose(im)
         else :
             hd = im
 
@@ -1094,7 +1161,7 @@ class Trace() :
 
         """
         if self.transpose :
-            im = image.transpose(hd)
+            im = dataclass.transpose(hd)
         else :
             im = copy.deepcopy(hd)
 
@@ -1140,7 +1207,7 @@ class Trace() :
         if plot == None and display != None : plot = display
 
         if self.transpose :
-            im = image.transpose(hd)
+            im = dataclass.transpose(hd)
         else :
             im = copy.deepcopy(hd)
 
@@ -1254,7 +1321,7 @@ class Trace() :
         """
         if plot == None and display != None : plot = display
         if self.transpose :
-            hd = image.transpose(im)
+            hd = dataclass.transpose(im)
         else :
             hd = copy.deepcopy(im)
 
@@ -1364,14 +1431,15 @@ class Trace() :
                     bitmask=bitmask,header=hd.header)
 
   
-    def extract2d(self,im,rows=None,plot=None) :
+    def extract2d(self,im,rows=None,plot=None,display=None) :
         """  Extract 2D spectrum given trace(s)
 
-             Assumes all requests row uses same trace, just offset, 
+             Assumes all requested rows uses same trace, just offset, 
              not a 2D model for traces. Linear interpolation is used.
         """
+        if plot == None and display != None : plot = display
         if self.transpose :
-            hd = image.transpose(im)
+            hd = dataclass.transpose(im)
         else :
             hd = im
         nrows=hd.data.shape[0]
@@ -1398,10 +1466,11 @@ class Trace() :
                                         hd.data[:,col])
                 sig[:,col] = np.sqrt(np.interp(outrows+cr[col],np.arange(nrows),
                                         hd.uncertainty.array[:,col]**2))
-            out.append(Data(spec,StdDevUncertainty(sig),unit='adu'))
-        if plot is not None: getinput(
-                          '  enter something to continue....',plot.fig)
+            out.append(Data(spec,StdDevUncertainty(sig),header=hd.header))
 
+        if plot is not None: 
+           while getinput('  See extraction window(s). Hit space bar to continue....',plot.fig)[2] != ' ' :
+               pass
         if len(out) == 1 : return out[0]
         else : return out
 
