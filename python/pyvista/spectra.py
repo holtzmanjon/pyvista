@@ -10,7 +10,7 @@ import copy
 import scipy.signal
 import scipy.interpolate
 from scipy.optimize import curve_fit
-from scipy.ndimage import median_filter
+from scipy.ndimage import median_filter, gaussian_filter1d
 from scipy.linalg import solve_banded
 import numpy as np
 import astropy
@@ -1002,6 +1002,7 @@ class Trace() :
         if plot : 
             plot.clear()
             plot.tv(hd)
+            plot.plotax2.cla()
 
         if rad is None : rad = self.rad-1
         for irow,srow in enumerate(srows) :
@@ -1016,19 +1017,14 @@ class Trace() :
             # march left from center
             for col in range(self.sc0,skip//2,-skip) :
                 # centroid
-                cr=sr-rad+hd.data[sr-rad:sr+rad+1,col].argmax()
-                ysum[col] = np.sum( np.median(
-                            hd.data[cr-rad:cr+rad+1,col-skip//2:col+skip//2+1],axis=1) ) 
-                ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*np.median(
-                            hd.data[cr-rad:cr+rad+1,
-                                    col-skip//2:col+skip//2+1],axis=1) ) / ysum[col]
-                yvar[col] = np.sum(np.median(
-                            hd.uncertainty.array[cr-rad:cr+rad+1,
-                                                 col-skip//2:col+skip//2+1],axis=1)**2) 
-                if hd.bitmask is not None :
-                    ymask[col] = np.any(hd.bitmask[cr-rad:cr+rad+1,col]&pixmask.badval()) 
-                else:
-                    ymask[col] = False
+                data = np.median(hd.data[:,col-skip//2:col+skip//2+1],axis=1)
+                var = np.median(hd.uncertainty.array[:,col-skip//2:col+skip//2+1]**2,axis=1)/(2*skip)
+                cr=sr-rad+data[sr-rad:sr+rad+1].argmax()
+
+                ysum[col] = np.sum(data[cr-rad:cr+rad+1])
+                ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*data[cr-rad:cr+rad+1]) / ysum[col]
+                yvar[col] = np.sum(var[cr-rad:cr+rad+1])
+                ymask[col] = False
 
                 # gaussian fit
                 if gaussian :
@@ -1039,7 +1035,7 @@ class Trace() :
                     except : pass
 
                 # if centroid is too far from starting guess, mask as bad
-                if np.abs(ypos[col]-sr) > np.max([rad/2.,0.75]) : 
+                if np.abs(ypos[col]-sr) > rad :
                     ymask[col] = True
 
                 # use this position as starting center for next 
@@ -1052,21 +1048,17 @@ class Trace() :
             sr=copy.copy(srow)
             sr=int(round(sr))
             sr=hd.data[sr-rad:sr+rad+1,self.sc0].argmax()+sr-rad
-            for col in range(self.sc0+1,ncol,skip) :
+
+            for col in range(self.sc0+skip,ncol,skip) :
                 # centroid
-                cr=sr-rad+hd.data[sr-rad:sr+rad+1,col].argmax()
-                ysum[col] = np.sum(np.median(
-                            hd.data[cr-rad:cr+rad+1, col-skip//2:col+skip//2+1],axis=1)) 
-                ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*np.median(
-                            hd.data[cr-rad:cr+rad+1,
-                                    col-skip//2:col+skip//2+1],axis=1)) / ysum[col]
-                yvar[col] = np.sum(np.median(
-                            hd.uncertainty.array[cr-rad:cr+rad+1,
-                                                 col-skip//2:col+skip//2+1],axis=1)**2) 
-                if hd.bitmask is not None :
-                    ymask[col] = np.any(hd.bitmask[cr-rad:cr+rad+1,col]&pixmask.badval()) 
-                else:
-                    ymask[col] = False
+                data = np.median(hd.data[:,col-skip//2:col+skip//2+1],axis=1)
+                var = np.median(hd.uncertainty.array[:,col-skip//2:col+skip//2+1]**2,axis=1)/(2*skip)
+                cr=sr-rad+data[sr-rad:sr+rad+1].argmax()
+
+                ysum[col] = np.sum(data[cr-rad:cr+rad+1])
+                ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*data[cr-rad:cr+rad+1]) / ysum[col]
+                yvar[col] = np.sum(var[cr-rad:cr+rad+1])
+                ymask[col] = False
 
                 # gaussian fit
                 if gaussian :
@@ -1077,7 +1069,7 @@ class Trace() :
                     except : pass
 
                 # use this position as starting center for next if above threshold S/N
-                if np.abs(ypos[col]-sr) > np.max([rad/2.,0.75]) : 
+                if np.abs(ypos[col]-sr) > rad :
                     ymask[col] = True
                 if ((not ymask[col]) & np.isfinite(ysum[col]) & 
                     (ysum[col]/np.sqrt(yvar[col]) > thresh) ) : 
@@ -1096,30 +1088,30 @@ class Trace() :
                 res = model(cols)-ypos
 
             # reject outlier points (>1 pixel) and refit
-            gd = np.where((~ymask) & (ysum/np.sqrt(yvar)>thresh) & (np.abs(res)<1))[0]
+            gd = np.where((~ymask) & (ysum/np.sqrt(yvar)>thresh) & (np.abs(res)<rad))[0]
             if gaussian: 
                 model=(fitter(mod,cols[gd],ygpos[gd]))
                 sigmodel=(fitter(mod,cols[gd],ygsig[gd]))
                 self.sigmodel.append(sigmodel)
             else :
                 model=(fitter(mod,cols[gd],ypos[gd]))
-            if len(gd) < 10 : 
-                print('  failed trace for row: {:d}'.format(irow))
+            if len(gd) < self.degree*2 : 
+                print('  failed trace for row: {:d} {:d} {:d}'.format(irow,len(gd),len(res)))
             self.model.append(model)
 
             if plot : 
                 valid = np.where(ypos>0.)[0]
-                plot.ax.scatter(cols[valid],ypos[valid],marker='o',color='r',s=4) 
+                plot.ax.scatter(cols[valid],ypos[valid],marker='o',color='r',s=50) 
                 if gaussian : 
-                    plot.ax.scatter(cols[gd],ygpos[gd],marker='o',color='g',s=10) 
+                    plot.ax.scatter(cols[gd],ygpos[gd],marker='o',color='g',s=50) 
                 else :
-                    plot.ax.scatter(cols[gd],ypos[gd],marker='o',color='g',s=10) 
+                    plot.ax.scatter(cols[gd],ypos[gd],marker='o',color='g',s=50) 
                 plot.ax.plot(cols,model(cols),color='m')
-                plot.plotax2.cla()
                 plot.plotax2.plot(cols,model(cols),color='m')
                 plot.plotax2.text(0.05,0.95,'Derived trace',
                        transform=plot.plotax2.transAxes)
                 #plt.pause(0.05)
+            plt.draw()
 
         self.pix0=0
         if index is not None : self.index = index
@@ -1140,7 +1132,7 @@ class Trace() :
             srows.append(self.model[row](self.sc0)+self.pix0)
         self.trace(hd,srows,plot=plot,thresh=thresh,gaussian=gaussian,skip=10)
     
-    def findpeak(self,hd,width=100,thresh=5,plot=False) :
+    def findpeak(self,hd,width=100,thresh=5,plot=False,smooth=5) :
         """ Find peaks in spatial profile for subsequent tracing
 
             Parameters
@@ -1153,6 +1145,8 @@ class Trace() :
             thresh : float, default = 5
                  threshold for finding objects, as a factor to be 
                  multiplied by the median uncertainty
+            smooth : float, default = 5
+                 smoothing FWHM (pixels) for cross-section before peak finding
 
             Returns
             -------
@@ -1171,18 +1165,23 @@ class Trace() :
         back =np.median(im.data[self.rows[0]:self.rows[1],
                                 self.sc0-width:self.sc0+width])
         sig =np.median(im.uncertainty.array[self.rows[0]:self.rows[1],
-                                self.sc0-width:self.sc0+width])
+                                self.sc0-width:self.sc0+width])/np.sqrt(2*width)
+
+        data = np.median(im.data[self.rows[0]:self.rows[1],
+                                 self.sc0-width:self.sc0+width],axis=1)-back,
+        if smooth > 0 : data = gaussian_filter1d(data[0], smooth/2.354)
 
         if plot :
             plt.figure()
             plt.plot(np.arange(self.rows[0],self.rows[1]),
                      np.median(im.data[self.rows[0]:self.rows[1],
                                self.sc0-width:self.sc0+width],axis=1)-back)
+            plt.plot(data)
             plt.xlabel('Spatial pixel')
             plt.ylabel('Median flux')
-        peaks,fiber = findpeak(np.median(im.data[self.rows[0]:self.rows[1],
-                               self.sc0-width:self.sc0+width],axis=1)-back,
-                         thresh=thresh*sig)
+        
+        peaks,fiber = findpeak(data, thresh=thresh*sig)
+        print(peaks,fiber)
         return np.array(peaks)+self.rows[0], fiber
 
  
