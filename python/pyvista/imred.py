@@ -6,7 +6,6 @@ import copy
 from astropy import units as u
 from astropy.nddata import StdDevUncertainty
 from pyvista.dataclass import Data
-import pyvista.dataclass
 from astropy.io import fits, ascii
 from astropy.wcs import WCS
 from astropy.modeling import models, fitting
@@ -17,7 +16,7 @@ import yaml
 import subprocess
 import sys
 import tempfile
-from pyvista import stars, image, tv, bitmask
+from pyvista import stars, image, tv, bitmask, dataclass
 try: from pyvista import apogee
 except : pass
 import pyvista.data as DATA
@@ -561,7 +560,7 @@ class Reducer() :
                  col = int(dim[1]/2)
                  row = corr.data[:,col]
                  display.plotax2.plot(row)
-                 min,max=tv.minmax(row,low=5,high=5)
+                 min,max=image.minmax(row,low=5,high=5)
                  display.plotax2.set_ylim(min,max)
                  display.plotax2.set_xlabel('row')
                  display.plotax2.text(0.05,0.95,'Column {:d}'.format(col),
@@ -569,7 +568,7 @@ class Reducer() :
                  #display.plotax2.cla()
                  row = int(dim[0]/2)
                  col = corr.data[row,:]
-                 min,max=tv.minmax(col,low=10,high=10)
+                 min,max=image.minmax(col,low=10,high=10)
                  display.plotax2.plot(col)
                  display.plotax2.set_xlabel('col')
                  display.plotax2.text(0.05,0.95,'Row {:d}'.format(row),
@@ -701,7 +700,7 @@ class Reducer() :
         for i,(im,gain,rn) in enumerate(zip(ims,self.gain,self.rn)) :
             if display is not None : 
                 display.clear()
-                min,max=tv.minmax(im,low=5,high=30)
+                min,max=image.minmax(im,low=5,high=30)
                 display.tv(im.uncertainty.array,min=min,max=max)
                 display.tv(im,min=min,max=max)
             if crbox == 'lacosmic':
@@ -906,7 +905,7 @@ class Reducer() :
                         plt.ylabel('Flux')
                 else :
                     fig=plt.figure(figsize=(12,9))
-                    vmin,vmax=tv.minmax(frame.data)
+                    vmin,vmax=image.minmax(frame.data)
                     plt.imshow(frame.data,vmin=vmin,vmax=vmax,
                            cmap='Greys_r',interpolation='nearest',origin='lower')
                     plt.colorbar(shrink=0.8)
@@ -923,7 +922,7 @@ class Reducer() :
         # create list of images, reading and overscan subtracting
         allcube = []
         for im in ims :
-            if not isinstance(im,pyvista.dataclass.Data) :
+            if not isinstance(im,dataclass.Data) :
                 data = self.reduce(im, **kwargs)
             else :
                 data = im
@@ -1009,12 +1008,12 @@ class Reducer() :
                 else :
                     gd=np.where(med>0)
  
-                min,max=tv.minmax(med[gd[0],gd[1]],low=10,high=10)
+                min,max=image.minmax(med[gd[0],gd[1]],low=10,high=10)
                 display.plotax2.hist(med[gd[0],gd[1]],bins=np.linspace(min,max,100),histtype='step')
                 display.fig.canvas.draw_idle()
                 getinput("  See final image, use - key for S/N image.",display)
                 for i,im in enumerate(ims) :
-                    min,max=tv.minmax(med[gd[0],gd[1]],low=5,high=5)
+                    min,max=image.minmax(med[gd[0],gd[1]],low=5,high=5)
                     display.fig.canvas.draw_idle()
                     if div :
                         display.plotax2.hist((allcube[i][chip].data/med)[gd[0],gd[1]],
@@ -1099,7 +1098,7 @@ class Reducer() :
         sflat=[]
         for flat in flats :
             if self.transpose :
-                tmp = image.transpose(flat)
+                tmp = dataclass.transpose(flat)
             else :
                 tmp = copy.deepcopy(flat)
             nrows=tmp.data.shape[0]
@@ -1118,7 +1117,7 @@ class Reducer() :
             if display is not None :
                 display.tv(tmp,min=0.7,max=1.3)
             if self.transpose :
-                sflat.append(image.transpose(tmp))
+                sflat.append(dataclass.transpose(tmp))
             else :
                 sflat.append(tmp)
 
