@@ -1,4 +1,5 @@
 import copy
+import pdb
 import numpy as np
 from pyvista import simulate, tv, stars
 from skimage.transform import SimilarityTransform, EuclideanTransform
@@ -142,6 +143,18 @@ def fit(holes, locstars) :
     trans.estimate(src,dest)
     print('Rotation (degrees) : ',trans.rotation*180/np.pi)
     print('Translation (arcsec) ', trans.translation*scale)
+    for s,d in zip(src,dest) :
+      fit=trans(s)[0]
+      print(s,fit,d,np.sqrt((fit[0]-d[0])**2 +(fit[1]-d[1])**2))
+
+    sim=SimilarityTransform()
+    sim.estimate(src,dest)
+    print('Rotation (degrees) : ',sim.rotation*180/np.pi)
+    print('Translation (arcsec) ', sim.translation*scale)
+    print('Scale ', sim.scale)
+    for s,d in zip(src,dest) :
+      fit=sim(s)[0]
+      print(s,fit,d,np.sqrt((fit[0]-d[0])**2 +(fit[1]-d[1])**2))
 
     return trans.rotation*180/np.pi,trans.translation*scale
 
