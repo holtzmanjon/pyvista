@@ -653,13 +653,17 @@ def zap(hd,size,nsig=3,mask=False) :
         if hd.mask is None : hd.mask=np.zeros(hd.data.shape,dtype=bool)
         hd.mask[bd[0],bd[1]] = True
 
-def smooth(hd,size) :
+@support_nddata
+def smooth(data,size,uncertainty=None,bitmask=None) :
     """ Boxcar smooth image
     """
-    hd.data=scipy.ndimage.uniform_filter(hd.data,size=size)
     npix=1
     for dim in size : npix*=dim
-    hd.uncertainty=StdDevUncertainty(np.sqrt(scipy.ndimage.uniform_filter(hd.uncertainty.array**2,size=size)/npix))
+    data=scipy.ndimage.uniform_filter(data*npix,size=size)
+    if uncertainty is not None :
+        uncertainty=StdDevUncertainty(np.sqrt(scipy.ndimage.uniform_filter(uncertainty.array**2,size=size)/npix))
+
+    return data
 
 
 @support_nddata
