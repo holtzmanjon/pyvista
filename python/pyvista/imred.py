@@ -696,8 +696,11 @@ class Reducer() :
         if crbox is None: return im
         if type(im) is not list : ims=[im]
         else : ims = im
+        if type(nsig) is not list : nsigs=[nsig]
+        else : nsigs = nsig
         out=[]
         for i,(im,gain,rn) in enumerate(zip(ims,self.gain,self.rn)) :
+          for iter,nsig in enumerate(nsigs) : 
             if display is not None : 
                 display.clear()
                 min,max=image.minmax(im,low=5,high=30)
@@ -723,11 +726,15 @@ class Reducer() :
                     if tmp != 'c' : return
                 outim=copy.deepcopy(im)
                 image.zap(outim,crbox,nsig=nsig)
+                if iter > 0 :
+                    # if not first iteration, only allow changes to neighbors of CRs
+                    mask = np.where((image.smooth(im.bitmask,[3,3]) & pixmask('CRPIX')) == 0)
+                    outim.data[mask[0],mask[1]] = im.data[mask[0],mask[1]]
             if display is not None : 
                 display.tv(outim,min=min,max=max)
                 display.tv(im.subtract(outim),min=min,max=max)
                 getinput("  See CRs and CR-zapped image and original using - key",display)
-            crpix = np.where(~np.isclose(im.subtract(outim),0.))
+            crpix = np.where(~np.isclose(im.data-outim.data,0.))
             pixmask = bitmask.PixelBitMask()
             outim.bitmask[crpix] |= pixmask.getval('CRPIX')
             out.append(outim)
