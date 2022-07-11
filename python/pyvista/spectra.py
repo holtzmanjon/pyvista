@@ -1029,7 +1029,7 @@ class Trace() :
                 # gaussian fit
                 if gaussian :
                     try : 
-                        gcoeff=gfit(hd.data[:,col],cr,rad=self.rad,sig=2,back=0.)
+                        gcoeff=gfit(hd.data[:,col],cr,rad=rad,sig=2,back=0.)
                         ygpos[col] = gcoeff[1]
                         ygsig[col] = gcoeff[2]
                     except : pass
@@ -1101,10 +1101,11 @@ class Trace() :
 
             if plot : 
                 valid = np.where(ypos>0.)[0]
-                plot.ax.scatter(cols[valid],ypos[valid],marker='o',color='r',s=50) 
                 if gaussian : 
+                    plot.ax.scatter(cols[valid],ygpos[valid],marker='o',color='r',s=50) 
                     plot.ax.scatter(cols[gd],ygpos[gd],marker='o',color='g',s=50) 
                 else :
+                    plot.ax.scatter(cols[valid],ypos[valid],marker='o',color='r',s=50) 
                     plot.ax.scatter(cols[gd],ypos[gd],marker='o',color='g',s=50) 
                 plot.ax.plot(cols,model(cols),color='m')
                 plot.plotax2.plot(cols,model(cols),color='m')
