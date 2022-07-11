@@ -364,7 +364,7 @@ class Reducer() :
             form = self.formstr[chan]
             gain = self.gain[chan]
             rn = self.rn[chan]
-        #for form,gain,rn in zip(self.formstr,self.gain,self.rn) :
+
             # find the files that match the directory/format
             if type(num) is int :
                 search=self.dir+'/'+self.root+form.format(num)
@@ -1093,6 +1093,7 @@ class Reducer() :
             # display final combined frame and individual frames relative to combined
             if display :
                 display.clear()
+                comb.header['OBJECT'] = 'Combined frame'
                 display.tv(comb,sn=True)
                 display.tv(comb)
                 if comb.mask is not None :
@@ -1104,7 +1105,8 @@ class Reducer() :
                     gd=np.where(med>0)
  
                 min,max=image.minmax(med[gd[0],gd[1]],low=10,high=10)
-                display.plotax2.hist(med[gd[0],gd[1]],bins=np.linspace(min,max,100),histtype='step')
+                display.plotax2.hist(med[gd[0],gd[1]],
+                       bins=np.linspace(min,max,100),histtype='step')
                 display.fig.canvas.draw_idle()
                 getinput("  See final image, use - key for S/N image.",display)
                 for i,im in enumerate(ims) :
@@ -1113,13 +1115,15 @@ class Reducer() :
                     if div :
                         display.plotax2.hist((allcube[i][chip].data/med)[gd[0],gd[1]],
                                             bins=np.linspace(0.5,1.5,100),histtype='step')
-                        display.tv(allcube[i][chip].data/med,min=0.5,max=1.5)
+                        display.tv(allcube[i][chip].data/med,min=0.5,max=1.5,
+                                   object='{} / master'.format(im))
                         getinput("    see image: {} divided by master".format(im),display)
                     else :
                         delta=5*self.rn[chip]
                         display.plotax2.hist((allcube[i][chip].data-med)[gd[0],gd[1]],
                                             bins=np.linspace(-delta,delta,100),histtype='step')
-                        display.tv(allcube[i][chip].data-med,min=-delta,max=delta)
+                        display.tv(allcube[i][chip].data-med,min=-delta,max=delta,
+                                   object='{} - master'.format(im))
                         getinput("    see image: {} minus master".format(im),display)
 
         # return the frame
@@ -1132,8 +1136,10 @@ class Reducer() :
                trim=False) :
         """ Driver for superbias combination (no superbias subtraction no normalization)
         """
-        return self.combine(ims,display=display,div=False,scat=scat,trim=trim,
+        bias= self.combine(ims,display=display,div=False,scat=scat,trim=trim,
                             type=type,sigreject=sigreject)
+        bias.header['OBJECT'] = 'Combined bias'
+        return bias
 
     def mkdark(self,ims,bias=None,display=None,scat=None,trim=False,
                type='median',sigreject=5,clip=None) :
@@ -1141,6 +1147,7 @@ class Reducer() :
         """
         dark= self.combine(ims,bias=bias,display=display,trim=trim,
                             div=False,scat=scat,type=type,sigreject=sigreject)
+        dark.header['OBJECT'] = 'Combined dark'
         if clip != None:
             low = np.where(dark.data < clip*dark.uncertainty.array)
             dark.data[low] = 0.
@@ -1178,6 +1185,7 @@ class Reducer() :
         """
         flat= self.combine(ims,bias=bias,dark=dark,normalize=True,trim=trim,
                  scat=scat,display=display,type=type,sigreject=sigreject)
+        flat.header['OBJECT'] = 'Combined flat'
         if spec :
             return self.mkspecflat(flat,width=width,display=display)
         else :
