@@ -4,12 +4,14 @@ from photutils import DAOStarFinder
 import code
 import copy
 from astropy import units as u
+from astropy.table import Table
 from astropy.nddata import StdDevUncertainty
 from pyvista.dataclass import Data
 from astropy.io import fits, ascii
 from astropy.wcs import WCS
 from astropy.modeling import models, fitting
 from astropy.convolution import convolve, Box1DKernel, Box2DKernel, Box2DKernel
+from tools import html
 import ccdproc
 import scipy.signal
 import yaml
@@ -204,6 +206,82 @@ class Reducer() :
             print('  Norm box: ')
             for box in self.normbox :
                 box.show()
+
+
+    def log(self,htmlfile=None,cols=['DATE-OBS','RA','DEC','EXPTIME']) :
+        """ Create chronological image log from file headers
+
+            If any .csv file exists, add table to htmlfile with contents 
+
+        Parameters
+        ----------
+        htmlfile : str, default=None
+                   if specified, write HTML log to htmlfile
+        cols : array-like, str, default=['DATE-OBS','RA','DEC','EXPTIME']
+               cards from FITS header to include
+
+        Returns
+        -------
+        astropy table from FITS headers
+
+        """
+        files=glob.glob(self.dir+'/*.fit*')
+
+        date=[]
+        for file in files :
+          a=fits.open(file)[0].header
+          try :
+              date.append(a['DATE-OBS'])
+          except KeyError :
+              print('file {:s} does not have DATE-OBS'.format(file))
+
+        date=np.array(date)
+        sort=np.argsort(date)
+
+        names=['FILE']
+        dtypes=['S24']
+        for col in cols :
+            names.append(col)
+            dtypes.append('S16')
+        #tab=Table(names=('FILE','DATE-OBS','RA','DEC','EXPTIME'),
+        #          dtype=('S24','S24','S16','S16','f4'))
+        tab=Table(names=names,dtype=dtypes)
+
+        if htmlfile is not None :
+            fp=html.head(htmlfile)
+            fp.write('<TABLE BORDER=2>\n')
+            fp.write('<TR><TD>FILE\n')
+            for col in cols :
+                fp.write('<TD>{:s}\n'.format(col))
+        for i in sort :
+          a=fits.open(files[i])[0].header
+          if htmlfile is not None :
+              fp.write('<TR><TD>{:s}\n'.format(os.path.basename(files[i])))  
+          row=[os.path.basename(files[i])]
+          for col in cols :
+              row.append(str(a[col]))
+              if htmlfile is not None:
+                  fp.write('<TD>{:s}\n'.format(str(a[col])))
+          tab.add_row(row)
+        if htmlfile is not None :
+            fp.write('</TABLE>\n')
+
+        files=glob.glob(self.dir+'/*csv')
+        for file in files :
+            log=ascii.read(file)
+            if htmlfile is not None :
+                fp.write('<h3>{:s}'.format(file))
+                fp.write('<TABLE BORDER=2>\n')
+                for row in log :
+                  fp.write('<TR>')
+                  for col in row :
+                    fp.write('<TD>')
+                    fp.write(str(col))
+                fp.write('</TABLE>\n')
+        
+        if htmlfile is not None : html.tail(fp)
+
+        return tab
 
     def reduce(self,num,channel=None,crbox=None,bias=None,dark=None,flat=None,
                scat=None,badpix=None,solve=False,return_list=False,display=None,
@@ -707,7 +785,8 @@ class Reducer() :
                 display.tv(im.uncertainty.array,min=min,max=max)
                 display.tv(im,min=min,max=max)
             if crbox == 'lacosmic':
-                if self.verbose : print('  zapping CRs with ccdproc.cosmicray_lacosmic')
+                if self.verbose : 
+                    print('  zapping CRs with ccdproc.cosmicray_lacosmic')
                 if isinstance(gain,list) : g=1.
                 else : g=gain
                 outim= ccdproc.cosmicray_lacosmic(im,gain_apply=False,
@@ -717,18 +796,20 @@ class Reducer() :
                 outim.add_bitmask(im.bitmask)
                 outim.add_wave(im.wave)
             else :
-                if self.verbose : print('  zapping CRs with filter [{:d},{:d}]...'.format(*crbox))
+                if self.verbose : 
+                    print('  zapping CRs with filter [{:d},{:d}]...'.format(*crbox))
                 if crbox[0]%2 == 0 or crbox[1]%2 == 0 :
                     raise ValueError('cosmic ray rejection box dimensions must be odd numbers...')
                 if crbox[0]*crbox[1] > 49 :
                     print('WARNING: large rejection box may take a long time to complete!')
                     tmp=input(" Hit c to continue anyway, else quit")
                     if tmp != 'c' : return
-                outim=copy.deepcopy(im)
+                if iter == 0 : outim=copy.deepcopy(im)
                 image.zap(outim,crbox,nsig=nsig)
                 if iter > 0 :
                     # if not first iteration, only allow changes to neighbors of CRs
-                    mask = np.where((image.smooth(im.bitmask,[3,3]) & pixmask('CRPIX')) == 0)
+                    mask = np.where( image.smooth
+                            (outim.bitmask&pixmask.getval('CRPIX'),[3,3]) == 0)
                     outim.data[mask[0],mask[1]] = im.data[mask[0],mask[1]]
             if display is not None : 
                 display.tv(outim,min=min,max=max)
@@ -737,7 +818,7 @@ class Reducer() :
             crpix = np.where(~np.isclose(im.data-outim.data,0.))
             pixmask = bitmask.PixelBitMask()
             outim.bitmask[crpix] |= pixmask.getval('CRPIX')
-            out.append(outim)
+          out.append(outim)
         if len(out) == 1 : return out[0]
         else : return out
 
