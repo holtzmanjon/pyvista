@@ -208,7 +208,8 @@ class Reducer() :
                 box.show()
 
 
-    def log(self,htmlfile=None,cols=['DATE-OBS','RA','DEC','EXPTIME']) :
+    def log(self,htmlfile=None,
+            cols=['DATE-OBS','OBJNAME','RA','DEC','EXPTIME']) :
         """ Create chronological image log from file headers
 
             If any .csv file exists, add table to htmlfile with contents 
@@ -217,7 +218,7 @@ class Reducer() :
         ----------
         htmlfile : str, default=None
                    if specified, write HTML log to htmlfile
-        cols : array-like, str, default=['DATE-OBS','RA','DEC','EXPTIME']
+        cols : array-like, str, default=['DATE-OBS','OBJECT','RA','DEC','EXPTIME']
                cards from FITS header to include
 
         Returns
@@ -234,34 +235,40 @@ class Reducer() :
               date.append(a['DATE-OBS'])
           except KeyError :
               print('file {:s} does not have DATE-OBS'.format(file))
-
         date=np.array(date)
         sort=np.argsort(date)
-
-        names=['FILE']
-        dtypes=['S24']
-        for col in cols :
-            names.append(col)
-            dtypes.append('S16')
-        #tab=Table(names=('FILE','DATE-OBS','RA','DEC','EXPTIME'),
-        #          dtype=('S24','S24','S16','S16','f4'))
-        tab=Table(names=names,dtype=dtypes)
 
         if htmlfile is not None :
             fp=html.head(htmlfile)
             fp.write('<TABLE BORDER=2>\n')
-            fp.write('<TR><TD>FILE\n')
-            for col in cols :
-                fp.write('<TD>{:s}\n'.format(col))
+
+        names=['FILE']
+        dtypes=['S24']
+        if htmlfile is not None : fp.write('<TR><TD>FILE\n')
+        for col in cols :
+            try : 
+                val=a[col]
+                names.append(col)
+                dtypes.append('S16')
+                if htmlfile is not None :
+                    fp.write('<TD>{:s}\n'.format(col))
+            except KeyError:
+                print('no card {:s} in header'.format(col))
+        #tab=Table(names=('FILE','DATE-OBS','RA','DEC','EXPTIME'),
+        #          dtype=('S24','S24','S16','S16','f4'))
+        tab=Table(names=names,dtype=dtypes)
+
         for i in sort :
           a=fits.open(files[i])[0].header
           if htmlfile is not None :
               fp.write('<TR><TD>{:s}\n'.format(os.path.basename(files[i])))  
           row=[os.path.basename(files[i])]
           for col in cols :
+            try:
               row.append(str(a[col]))
               if htmlfile is not None:
                   fp.write('<TD>{:s}\n'.format(str(a[col])))
+            except: pass
           tab.add_row(row)
         if htmlfile is not None :
             fp.write('</TABLE>\n')
