@@ -46,6 +46,7 @@ class TV:
         self.doflip = False
         self.usezoom = clickzoom
         self.histclick = True
+        self.object = None
 
         # set up initial img and header lists
         self.current = -1
@@ -101,7 +102,7 @@ class TV:
                     try:
                        object=self.hdr['object']
                     except:
-                       object=None
+                       object=self.object
                     return "[x,y]=[%4d, %4d] val=%8.5g   [%s %s]=[%10.6f,%10.6f]   OBJECT: %s" % (x,y, self.img[y, x], mywcs.wcs.ctype[0],mywcs.wcs.ctype[1],world[0,0], world[0,1], object)
                 except:
                     mywcs=None
@@ -479,7 +480,7 @@ class TV:
         else : self.ax.set_ylim(np.min(ylim),np.max(ylim))
         plt.draw()
 
-    def tv(self,img,min=None,max=None,cmap=None,sn=False) :
+    def tv(self,img,min=None,max=None,cmap=None,sn=False,object=None) :
         """
         main display routine: displays image with optional scaling
 
@@ -499,6 +500,9 @@ class TV:
         else :
             print('input must be numpy array or have data attribute that is')
             return
+
+        # if object is explicitly specified, load it
+        self.object = object
 
         # set figure and axes
         plt.figure(self.fig.number)
@@ -591,6 +595,11 @@ class TV:
         self.histclick = True
 
         plt.draw()
+        try :
+          x,y=pyautogui.position()
+        except:
+          x,y=(500,500)
+        self.fig.canvas.motion_notify_event(x,y)
 
     def tvtext(self,x,y,text,color='m',ha='center',va='center') :
         """ Annotates with text
