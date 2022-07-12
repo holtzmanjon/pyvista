@@ -810,7 +810,7 @@ class Trace() :
 
     """
 
-    def __init__ (self,file=None,inst=None, type='Polynomial1D',degree=2,
+    def __init__ (self,file=None,inst=None, type='Polynomial1D',degree=2,sigdegree=0,
                   pix0=0,rad=5, spectrum=None,model=None,sc0=None,rows=None,
                   transpose=False,lags=None,channel=None,hdu=1) :
 
@@ -873,6 +873,7 @@ class Trace() :
 
         self.type = type
         self.degree = degree
+        self.sigdegree = sigdegree
         self.pix0 = pix0
         self.spectrum = spectrum
         self.rad = rad
@@ -968,6 +969,7 @@ class Trace() :
         fitter=fitting.LinearLSQFitter()
         if self.type == 'Polynomial1D' :
             mod=models.Polynomial1D(degree=self.degree)
+            sigmod=models.Polynomial1D(degree=self.sigdegree)
         else :
             raise ValueError('unknown fitting type: '+self.type)
             return
@@ -998,7 +1000,9 @@ class Trace() :
         # we want to handle multiple traces, so make sure srows is iterable
         if type(srows ) is int or type(srows) is float : srows=[srows]
         self.model=[]
-        if gaussian : self.sigmodel=[]
+        if gaussian : 
+            self.sigmodel=[]
+            #fig,ax=plots.multi(1,1)
         if plot : 
             plot.clear()
             plot.tv(hd)
@@ -1028,8 +1032,10 @@ class Trace() :
 
                 # gaussian fit
                 if gaussian :
+                    gcoeff=gfit(data,cr,rad=rad,sig=2,back=0.)
                     try : 
-                        gcoeff=gfit(hd.data[:,col],cr,rad=rad,sig=2,back=0.)
+                        gcoeff=gfit(data,cr,rad=rad,sig=2,back=0.)
+                        #ax.plot(data)
                         ygpos[col] = gcoeff[1]
                         ygsig[col] = gcoeff[2]
                     except : pass
@@ -1063,7 +1069,8 @@ class Trace() :
                 # gaussian fit
                 if gaussian :
                     try : 
-                        gcoeff=gfit(hd.data[:,col],cr,rad=self.rad,sig=2,back=0.)
+                        gcoeff=gfit(data,cr,rad=self.rad,sig=2,back=0.)
+                        #ax.plot(data)
                         ygpos[col] = gcoeff[1]
                         ygsig[col] = gcoeff[2]
                     except : pass
@@ -1091,7 +1098,7 @@ class Trace() :
             gd = np.where((~ymask) & (ysum/np.sqrt(yvar)>thresh) & (np.abs(res)<rad))[0]
             if gaussian: 
                 model=(fitter(mod,cols[gd],ygpos[gd]))
-                sigmodel=(fitter(mod,cols[gd],ygsig[gd]))
+                sigmodel=(fitter(sigmod,cols[gd],ygsig[gd]))
                 self.sigmodel.append(sigmodel)
             else :
                 model=(fitter(mod,cols[gd],ypos[gd]))
@@ -1742,10 +1749,14 @@ def gfit(data,x0,rad=10,sig=3,back=None) :
     peak=yy.argmax()+x0-rad
     xx = np.arange(peak-rad,peak+rad+1)
     yy = data[peak-rad:peak+rad+1]
-    if back == None : p0 = [data[peak],peak,sig]
-    else : p0 = [data[peak],peak,sig,back]
+    if back == None : 
+        p0 = [data[peak],peak,sig]
+        bounds = ((yy.min(),peak-rad,0.3),(yy.max(),peak+rad,rad))
+    else : 
+        p0 = [data[peak],peak,sig,yy.min()]
+        bounds = ((yy.min(),peak-rad,0.3,0),(yy.max(),peak+rad,rad,yy.max()))
     
-    coeff, var_matrix = curve_fit(gauss, xx, yy, p0=p0)
+    coeff, var_matrix = curve_fit(gauss, xx, yy, p0=p0,bounds=bounds)
     fit = gauss(xx,*coeff)
     return coeff
 
@@ -1841,6 +1852,15 @@ def extract_col_fit(pars) :
         sigma=np.array(sigma)
         n=len(models)
 
+        # get background to subtract
+        bpix = np.array([])
+        bvar = np.array([])
+        for bk in back :
+            bpix=np.append(bpix,data[bk[0]:bk[1],jcol])
+            bvar=np.append(bvar,err[bk[0]:bk[1],jcol]**2)
+        bck = np.median(bpix)
+        print(col,bck)
+
         ab=np.zeros([3,n])
         b=np.zeros([n])
         for row in range(data.shape[0]) :
@@ -1857,11 +1877,10 @@ def extract_col_fit(pars) :
               for j in [-1,0,1] :
                 ab[j+1,nearest] += ( qgauss(row, 1.,center[nearest],sigma[nearest]) *
                                      qgauss(row, 1.,center[nearest+j],sigma[nearest+j]) )
-          b[nearest] += data[row,jcol] * qgauss(row,1.,center[nearest],sigma[nearest])
+          b[nearest] += (data[row,jcol]-bck) * qgauss(row,1.,center[nearest],sigma[nearest])
 
         x=solve_banded((1,1),ab,b)
         spec[:,jcol] = x
-        print('done col: ', col)
     return spec,sig, mask
 
 
