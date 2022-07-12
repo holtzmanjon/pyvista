@@ -791,7 +791,9 @@ class Trace() :
     type : str
         type of astropy model to use
     degree : int
-        polynomial degree to use
+        polynomial degree to use for trace
+    sigdegree : int
+        polynomial degree to use for fitting gaussian sigma trace width
     sc0 : int
         starting column for trace, will work in both directions from here
     pix0 : int
@@ -958,7 +960,8 @@ class Trace() :
                  data from -skip/2 to skip/2
             gaussian : bool, optional, default=False
                  if True, use gaussian fit for trace location instead of centroid. 
-                 with gaussian=True, will also store trace widths (from fit)
+                 with gaussian=True, will also fit trace widths into
+                 sigmodel, with polynomial of degree self.sigdegree
             sc0 : integer, optional, default=ncol/2
             plot : bool, optional, default=None
             display : TV object, optional, default=None
