@@ -804,7 +804,7 @@ class Reducer() :
                 outim.add_wave(im.wave)
             else :
                 if self.verbose : 
-                    print('  zapping CRs with filter [{:d},{:d}]...'.format(*crbox))
+                    print('  Iteration {:d}, zapping CRs with filter [{:d},{:d}]...'.format(iter, *crbox))
                 if crbox[0]%2 == 0 or crbox[1]%2 == 0 :
                     raise ValueError('cosmic ray rejection box dimensions must be odd numbers...')
                 if crbox[0]*crbox[1] > 49 :
