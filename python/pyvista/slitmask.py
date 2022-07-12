@@ -3,7 +3,7 @@ import pdb
 import numpy as np
 from pyvista import simulate, tv, stars
 from skimage.transform import SimilarityTransform, EuclideanTransform
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, MeanShift
 from astropy.table import Table
 
 scale=0.258
@@ -72,7 +72,7 @@ def sim(n=5, rad=4, sky=500, back=1000., xr=[500,1500],yr=[1000,3000], counts=[5
 
     return a, b
 
-def findholes(a,thresh=1250,n=5) :
+def findholes(a,thresh=1250,n=5, bandwidth=20) :
     """ Find centers of slitmask holes from flat-field image
 
     Parameters
@@ -93,6 +93,12 @@ def findholes(a,thresh=1250,n=5) :
     c=KMeans(n_clusters=n)
     gdpix=np.where(a > thresh)
     X=np.vstack([gdpix[0],gdpix[1]]).T
+    c.fit(X)
+    tab=Table()
+    tab['y'] = c.cluster_centers_[:,0]
+    tab['x'] = c.cluster_centers_[:,1]
+
+    c=MeanShift(bandwidth=bandwidth,bin_seeding=True,min_bin_freq=50)
     c.fit(X)
     tab=Table()
     tab['y'] = c.cluster_centers_[:,0]
@@ -122,8 +128,19 @@ def findstars(b,thresh=500,sharp=[0.4,2]) :
 
     return out[gd]
 
-def fit(holes, locstars) :
+def fit(holes, locstars, ordered=False) :
     """ Given tables of hole and star locations, find offset and rotation
+
+        Parameters
+        ----------
+        holes : astropy Table
+                table of hole positions
+        stars : astropy Table
+                table of star positions
+        ordered : bool, default=False
+                if False, match holes to stars by closest distance.
+                if True, stars and holes should match by table order
+                  (and tables should have the same number of entries)
 
     """
 
@@ -131,11 +148,17 @@ def fit(holes, locstars) :
     dest=[]
     x0=1024
     y0=2048
-    for hole in holes :
-       d2 = (locstars['x']-hole['x'])**2 + (locstars['y']-hole['y'])**2
-       j= np.argmin(d2)
-       src.append([hole['x']-x0,hole['y']-y0])
-       dest.append([locstars[j]['x']-x0,locstars[j]['y']-y0])
+    if ordered :
+        for hole,star in zip(holes,locstars) :
+           src.append([hole['x']-x0,hole['y']-y0])
+           dest.append([star['x']-x0,star['y']-y0])
+        
+    else :
+        for hole in holes :
+           d2 = (locstars['x']-hole['x'])**2 + (locstars['y']-hole['y'])**2
+           j= np.argmin(d2)
+           src.append([hole['x']-x0,hole['y']-y0])
+           dest.append([locstars[j]['x']-x0,locstars[j]['y']-y0])
     src=np.array(src)
     dest=np.array(dest)
 
