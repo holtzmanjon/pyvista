@@ -14,11 +14,12 @@ from astropy.convolution import convolve, Box1DKernel, Box2DKernel, Box2DKernel
 from tools import html
 import ccdproc
 import scipy.signal
+from scipy.optimize import curve_fit
 import yaml
 import subprocess
 import sys
 import tempfile
-from pyvista import stars, image, tv, bitmask, dataclass
+from pyvista import stars, image, tv, bitmask, dataclass, spectra
 try: from pyvista import apogee
 except : pass
 import pyvista.data as DATA
@@ -1155,7 +1156,7 @@ class Reducer() :
         return dark
 
     def mkflat(self,ims,bias=None,dark=None,scat=None,display=None,trim=False,
-               type='median',sigreject=5,spec=False,width=101) :
+               type='median',sigreject=5,spec=False,width=101,littrow=False) :
         """ Driver for superflat combination 
              (with superbias if specified, normalize to normbox
 
@@ -1176,6 +1177,10 @@ class Reducer() :
             spec : bool, default=False
                   if True, creates "spectral" flat by taking out wavelength
                   shape
+            littrow : bool, default=False
+                  if True, attempts to fit and remove Littrow ghost from flat,
+                  LITTROW_GHOST bit must be set in bitmask first to identify ghost location
+                  only relevant if spec==True
             width : int, default=101
                   window width for removing spectral shape for spec=True
 
@@ -1187,11 +1192,11 @@ class Reducer() :
                  scat=scat,display=display,type=type,sigreject=sigreject)
         flat.header['OBJECT'] = 'Combined flat'
         if spec :
-            return self.mkspecflat(flat,width=width,display=display)
+            return self.mkspecflat(flat,width=width,display=display,littrow=littrow)
         else :
             return flat
 
-    def mkspecflat(self,flats,width=101,display=None) :
+    def mkspecflat(self,flats,width=101,display=None,littrow=False) :
         """ Spectral flat takes out variation along wavelength direction
         """
 
@@ -1205,6 +1210,28 @@ class Reducer() :
             else :
                 tmp = copy.deepcopy(flat)
             nrows=tmp.data.shape[0]
+            # subtract Littrow ghost
+            if littrow :
+                print('   fitting/subtracting Littrow ghost')
+                pixmask=bitmask.PixelBitMask()
+                nmed2=10
+                fixed = copy.deepcopy(tmp.data)
+                for i in np.arange(nmed2,tmp.shape[0]-nmed2) :
+                    try :
+                        pix=np.where((tmp.bitmask[i]&pixmask.getval('LITTROW_GHOST')) > 0)[0]
+                        yy=np.median(tmp.data[i-nmed2:i+nmed2,pix.min()-10:pix.max()+10],axis=0)
+                        xx=np.arange(yy.size)
+                        p0 = [.05,(pix.max()-pix.min())/2+10,(pix.max()-pix.min())/4.,1.,0.]
+                        coeffs,var = curve_fit(spectra.gauss,xx,yy,p0)
+                        xx=np.arange(tmp.data.shape[1])
+                        if coeffs[3] > 0.5 :
+                            coeffs[3] = 0.
+                            coeffs[4] = 0.
+                            coeffs[1] += pix.min()-10
+                            fixed[i] -= spectra.gauss(xx,*coeffs)
+                    except: pass
+                tmp.data = fixed
+
             # limit region for spectral shape to high S/N area (slit width)
             snmed = np.nanmedian(tmp.data/tmp.uncertainty.array,axis=1)
             gdrows = np.where(snmed>50)[0]
