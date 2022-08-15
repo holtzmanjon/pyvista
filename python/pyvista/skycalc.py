@@ -88,7 +88,7 @@ def table(ra=0., dec=0., obs='apo', date='2019-10-01',name='object',plot=False,t
 def airmass(header,obs=None) :
     """ Get airmass from header cards
 
-        Tries AIRMASS, AIRMAS, and SECZ first
+        Tries AIRMASS, AIRMAS, and SECZ (in that order) first
         otherwise computes from DATE-OBS, RA, DEC if obs= is given
     """
 
@@ -117,10 +117,12 @@ def airmass(header,obs=None) :
 
 
 def parang(hd,obs='apo',tz='US/Mountain') :
+    """ Calculates parallactic angle given header information DATE-OBS, RA, DEC, plus observatory
+    """
     site=Observer.at_site(obs,timezone=tz)
     time=Time(hd.header['DATE-OBS'])
     obj=FixedTarget(coord=SkyCoord(hd.header['RA']+'h',hd.header['DEC']+'d'))
     print(time)
     print(obj)
-    site.parallactic_angle(time,obj).deg
+    return site.parallactic_angle(time,obj).deg
 
