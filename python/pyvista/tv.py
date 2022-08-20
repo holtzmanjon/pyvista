@@ -46,6 +46,7 @@ class TV:
         self.doflip = False
         self.usezoom = clickzoom
         self.histclick = True
+        self.object = None
 
         # set up initial img and header lists
         self.current = -1
@@ -101,7 +102,7 @@ class TV:
                     try:
                        object=self.hdr['object']
                     except:
-                       object=None
+                       object=self.object
                     return "[x,y]=[%4d, %4d] val=%8.5g   [%s %s]=[%10.6f,%10.6f]   OBJECT: %s" % (x,y, self.img[y, x], mywcs.wcs.ctype[0],mywcs.wcs.ctype[1],world[0,0], world[0,1], object)
                 except:
                     mywcs=None
@@ -227,6 +228,7 @@ class TV:
                 self.plotax1.tick_params(axis='x',colors='c')
                 self.plotax1.tick_params(axis='y',colors='c')
                 self.plotax1.set_xlim(self.ax.get_xlim())
+                self.histclick = False
                 self.plotax2.cla()
                 self.plotax2.plot(self.img[:,xdata])
                 self.plotax2.set_xlabel('Y',color='c')
@@ -478,7 +480,7 @@ class TV:
         else : self.ax.set_ylim(np.min(ylim),np.max(ylim))
         plt.draw()
 
-    def tv(self,img,min=None,max=None,cmap=None,sn=False) :
+    def tv(self,img,min=None,max=None,cmap=None,sn=False,object=None) :
         """
         main display routine: displays image with optional scaling
 
@@ -498,6 +500,9 @@ class TV:
         else :
             print('input must be numpy array or have data attribute that is')
             return
+
+        # if object is explicitly specified, load it
+        self.object = object
 
         # set figure and axes
         plt.figure(self.fig.number)
@@ -527,7 +532,7 @@ class TV:
         if min is None : 
            min = 0.
         if max is None : 
-           min,max = minmax(data)
+           min,max = image.minmax(data)
         self.scale = np.array([min,max])
         self.scalelist.pop(current)
         self.scalelist.insert(current,self.scale)
@@ -590,6 +595,11 @@ class TV:
         self.histclick = True
 
         plt.draw()
+        try :
+          x,y=pyautogui.position()
+        except:
+          x,y=(500,500)
+        self.fig.canvas.motion_notify_event(x,y)
 
     def tvtext(self,x,y,text,color='m',ha='center',va='center') :
         """ Annotates with text
@@ -701,34 +711,11 @@ class TV:
             xcen=g[0].x_mean.value
             ycen=g[0].y_mean.value
             self.tvcirc(xcen,ycen,np.sqrt(xfwhm*yfwhm)/2.)
+            self.histclick = False
 
     def savefig(self,name) :
         """ hardcopy of only display Axes
         """
         extent = self.ax.get_window_extent().transformed(self.fig.dpi_scale_trans.inverted())
         self.fig.savefig(name, bbox_inches=extent)
-
-
-
-@support_nddata
-def minmax(data,mask=None, low=3,high=10):
-    """ Return min,max scaling factors for input data using median, and MAD
-   
-        Args:
-            img : input CCDData
-            low : number of MADs below median to retunr
-            high : number of MADs above median to retunr
-
-        Returns:
-            min,max : low and high scaling factors
-    """
-    if mask is not None :
-        gd = np.where(np.isfinite(data) & ~mask)
-    else :
-        gd = np.where(np.isfinite(data))
-    #std=scipy.stats.median_absolute_deviation(data[gd])
-    std=np.median(np.abs(data[gd]-np.median(data[gd])))
-    min = np.median(data[gd])-low*std
-    max = np.median(data[gd])+high*std
-    return min,max
 

@@ -4,20 +4,21 @@ from photutils import DAOStarFinder
 import code
 import copy
 from astropy import units as u
+from astropy.table import Table
 from astropy.nddata import StdDevUncertainty
 from pyvista.dataclass import Data
-import pyvista.dataclass
 from astropy.io import fits, ascii
 from astropy.wcs import WCS
 from astropy.modeling import models, fitting
 from astropy.convolution import convolve, Box1DKernel, Box2DKernel, Box2DKernel
+from tools import html
 import ccdproc
 import scipy.signal
 import yaml
 import subprocess
 import sys
 import tempfile
-from pyvista import stars, image, tv, bitmask
+from pyvista import stars, image, tv, bitmask, dataclass
 try: from pyvista import apogee
 except : pass
 import pyvista.data as DATA
@@ -206,6 +207,89 @@ class Reducer() :
             for box in self.normbox :
                 box.show()
 
+
+    def log(self,htmlfile=None,
+            cols=['DATE-OBS','OBJNAME','RA','DEC','EXPTIME']) :
+        """ Create chronological image log from file headers
+
+            If any .csv file exists, add table to htmlfile with contents 
+
+        Parameters
+        ----------
+        htmlfile : str, default=None
+                   if specified, write HTML log to htmlfile
+        cols : array-like, str, default=['DATE-OBS','OBJECT','RA','DEC','EXPTIME']
+               cards from FITS header to include
+
+        Returns
+        -------
+        astropy table from FITS headers
+
+        """
+        files=glob.glob(self.dir+'/*.fit*')
+
+        date=[]
+        for file in files :
+          a=fits.open(file)[0].header
+          try :
+              date.append(a['DATE-OBS'])
+          except KeyError :
+              print('file {:s} does not have DATE-OBS'.format(file))
+        date=np.array(date)
+        sort=np.argsort(date)
+
+        if htmlfile is not None :
+            fp=html.head(htmlfile)
+            fp.write('<TABLE BORDER=2>\n')
+
+        names=['FILE']
+        dtypes=['S24']
+        if htmlfile is not None : fp.write('<TR><TD>FILE\n')
+        for col in cols :
+            try : 
+                val=a[col]
+                names.append(col)
+                dtypes.append('S16')
+                if htmlfile is not None :
+                    fp.write('<TD>{:s}\n'.format(col))
+            except KeyError:
+                print('no card {:s} in header'.format(col))
+        #tab=Table(names=('FILE','DATE-OBS','RA','DEC','EXPTIME'),
+        #          dtype=('S24','S24','S16','S16','f4'))
+        tab=Table(names=names,dtype=dtypes)
+
+        for i in sort :
+          a=fits.open(files[i])[0].header
+          if htmlfile is not None :
+              fp.write('<TR><TD>{:s}\n'.format(os.path.basename(files[i])))  
+          row=[os.path.basename(files[i])]
+          for col in cols :
+            try:
+              row.append(str(a[col]))
+              if htmlfile is not None:
+                  fp.write('<TD>{:s}\n'.format(str(a[col])))
+            except: pass
+          tab.add_row(row)
+        if htmlfile is not None :
+            fp.write('</TABLE>\n')
+
+        files=glob.glob(self.dir+'/*csv')
+        for file in files :
+            log=ascii.read(file)
+            if htmlfile is not None :
+                fp.write('<h3>{:s}'.format(file))
+                fp.write('<TABLE BORDER=2>\n')
+                for row in log :
+                  fp.write('<TR>')
+                  for col in row :
+                    fp.write('<TD>')
+                    fp.write(str(col))
+                fp.write('</TABLE>\n')
+        
+        if htmlfile is not None : html.tail(fp)
+
+        return tab
+
     def reduce(self,num,channel=None,crbox=None,bias=None,dark=None,flat=None,
                scat=None,badpix=None,solve=False,return_list=False,display=None,
                trim=True,seeing=2) :
@@ -280,7 +364,7 @@ class Reducer() :
             form = self.formstr[chan]
             gain = self.gain[chan]
             rn = self.rn[chan]
-        #for form,gain,rn in zip(self.formstr,self.gain,self.rn) :
+
             # find the files that match the directory/format
             if type(num) is int :
                 search=self.dir+'/'+self.root+form.format(num)
@@ -310,8 +394,11 @@ class Reducer() :
                 im.data = im.data.astype(np.float32)
             im.header['FILE'] = os.path.basename(file)
             if 'OBJECT' not in im.header  or im.header['OBJECT'] == '':
-                try: im.header['OBJECT'] = im.header['OBJNAME']
-                except KeyError : im.header['OBJECT'] = im.header['FILE']
+                if 'OBJNAME' in im.header and im.header['OBJNAME'] != '' : 
+                    im.header['OBJECT'] = im.header['OBJNAME']
+                else : 
+                    try : im.header['OBJECT'] = im.header['FILE']
+                    except KeyError : print('No OBJECT, OBJNAME, or FILE in header')
             if 'RA' not in im.header  :
                 try: im.header['RA'] = im.header['OBJCTRA']
                 except : print('no RA or OBJCTRA found')
@@ -558,7 +645,7 @@ class Reducer() :
                  col = int(dim[1]/2)
                  row = corr.data[:,col]
                  display.plotax2.plot(row)
-                 min,max=tv.minmax(row,low=5,high=5)
+                 min,max=image.minmax(row,low=5,high=5)
                  display.plotax2.set_ylim(min,max)
                  display.plotax2.set_xlabel('row')
                  display.plotax2.text(0.05,0.95,'Column {:d}'.format(col),
@@ -566,7 +653,7 @@ class Reducer() :
                  #display.plotax2.cla()
                  row = int(dim[0]/2)
                  col = corr.data[row,:]
-                 min,max=tv.minmax(col,low=10,high=10)
+                 min,max=image.minmax(col,low=10,high=10)
                  display.plotax2.plot(col)
                  display.plotax2.set_xlabel('col')
                  display.plotax2.text(0.05,0.95,'Row {:d}'.format(row),
@@ -694,15 +781,19 @@ class Reducer() :
         if crbox is None: return im
         if type(im) is not list : ims=[im]
         else : ims = im
+        if type(nsig) is not list : nsigs=[nsig]
+        else : nsigs = nsig
         out=[]
         for i,(im,gain,rn) in enumerate(zip(ims,self.gain,self.rn)) :
+          for iter,nsig in enumerate(nsigs) : 
             if display is not None : 
                 display.clear()
-                min,max=tv.minmax(im,low=5,high=30)
+                min,max=image.minmax(im,low=5,high=30)
                 display.tv(im.uncertainty.array,min=min,max=max)
                 display.tv(im,min=min,max=max)
             if crbox == 'lacosmic':
-                if self.verbose : print('  zapping CRs with ccdproc.cosmicray_lacosmic')
+                if self.verbose : 
+                    print('  zapping CRs with ccdproc.cosmicray_lacosmic')
                 if isinstance(gain,list) : g=1.
                 else : g=gain
                 outim= ccdproc.cosmicray_lacosmic(im,gain_apply=False,
@@ -712,23 +803,29 @@ class Reducer() :
                 outim.add_bitmask(im.bitmask)
                 outim.add_wave(im.wave)
             else :
-                if self.verbose : print('  zapping CRs with filter [{:d},{:d}]...'.format(*crbox))
+                if self.verbose : 
+                    print('  Iteration {:d}, zapping CRs with filter [{:d},{:d}]...'.format(iter, *crbox))
                 if crbox[0]%2 == 0 or crbox[1]%2 == 0 :
                     raise ValueError('cosmic ray rejection box dimensions must be odd numbers...')
                 if crbox[0]*crbox[1] > 49 :
                     print('WARNING: large rejection box may take a long time to complete!')
                     tmp=input(" Hit c to continue anyway, else quit")
                     if tmp != 'c' : return
-                outim=copy.deepcopy(im)
+                if iter == 0 : outim=copy.deepcopy(im)
                 image.zap(outim,crbox,nsig=nsig)
+                if iter > 0 :
+                    # if not first iteration, only allow changes to neighbors of CRs
+                    mask = np.where( image.smooth
+                            (outim.bitmask&pixmask.getval('CRPIX'),[3,3]) == 0)
+                    outim.data[mask[0],mask[1]] = im.data[mask[0],mask[1]]
             if display is not None : 
                 display.tv(outim,min=min,max=max)
                 display.tv(im.subtract(outim),min=min,max=max)
                 getinput("  See CRs and CR-zapped image and original using - key",display)
-            crpix = np.where(~np.isclose(im.subtract(outim),0.))
+            crpix = np.where(~np.isclose(im.data-outim.data,0.))
             pixmask = bitmask.PixelBitMask()
             outim.bitmask[crpix] |= pixmask.getval('CRPIX')
-            out.append(outim)
+          out.append(outim)
         if len(out) == 1 : return out[0]
         else : return out
 
@@ -903,13 +1000,13 @@ class Reducer() :
                         plt.ylabel('Flux')
                 else :
                     fig=plt.figure(figsize=(12,9))
-                    vmin,vmax=tv.minmax(frame.data)
+                    vmin,vmax=image.minmax(frame.data)
                     plt.imshow(frame.data,vmin=vmin,vmax=vmax,
                            cmap='Greys_r',interpolation='nearest',origin='lower')
                     plt.colorbar(shrink=0.8)
                     plt.axis('off')
                 fig.tight_layout()
-                fig.savefig(name+'.png')
+                fig.savefig(name.replace('.fits','.png'))
                 plt.close()
                 #matplotlib.use(backend)
  
@@ -920,7 +1017,7 @@ class Reducer() :
         # create list of images, reading and overscan subtracting
         allcube = []
         for im in ims :
-            if not isinstance(im,pyvista.dataclass.Data) :
+            if not isinstance(im,dataclass.Data) :
                 data = self.reduce(im, **kwargs)
             else :
                 data = im
@@ -996,6 +1093,7 @@ class Reducer() :
             # display final combined frame and individual frames relative to combined
             if display :
                 display.clear()
+                comb.header['OBJECT'] = 'Combined frame'
                 display.tv(comb,sn=True)
                 display.tv(comb)
                 if comb.mask is not None :
@@ -1006,23 +1104,26 @@ class Reducer() :
                 else :
                     gd=np.where(med>0)
  
-                min,max=tv.minmax(med[gd[0],gd[1]],low=10,high=10)
-                display.plotax2.hist(med[gd[0],gd[1]],bins=np.linspace(min,max,100),histtype='step')
+                min,max=image.minmax(med[gd[0],gd[1]],low=10,high=10)
+                display.plotax2.hist(med[gd[0],gd[1]],
+                       bins=np.linspace(min,max,100),histtype='step')
                 display.fig.canvas.draw_idle()
                 getinput("  See final image, use - key for S/N image.",display)
                 for i,im in enumerate(ims) :
-                    min,max=tv.minmax(med[gd[0],gd[1]],low=5,high=5)
+                    min,max=image.minmax(med[gd[0],gd[1]],low=5,high=5)
                     display.fig.canvas.draw_idle()
                     if div :
                         display.plotax2.hist((allcube[i][chip].data/med)[gd[0],gd[1]],
                                             bins=np.linspace(0.5,1.5,100),histtype='step')
-                        display.tv(allcube[i][chip].data/med,min=0.5,max=1.5)
+                        display.tv(allcube[i][chip].data/med,min=0.5,max=1.5,
+                                   object='{} / master'.format(im))
                         getinput("    see image: {} divided by master".format(im),display)
                     else :
                         delta=5*self.rn[chip]
                         display.plotax2.hist((allcube[i][chip].data-med)[gd[0],gd[1]],
                                             bins=np.linspace(-delta,delta,100),histtype='step')
-                        display.tv(allcube[i][chip].data-med,min=-delta,max=delta)
+                        display.tv(allcube[i][chip].data-med,min=-delta,max=delta,
+                                   object='{} - master'.format(im))
                         getinput("    see image: {} minus master".format(im),display)
 
         # return the frame
@@ -1035,8 +1136,10 @@ class Reducer() :
                trim=False) :
         """ Driver for superbias combination (no superbias subtraction no normalization)
         """
-        return self.combine(ims,display=display,div=False,scat=scat,trim=trim,
+        bias= self.combine(ims,display=display,div=False,scat=scat,trim=trim,
                             type=type,sigreject=sigreject)
+        bias.header['OBJECT'] = 'Combined bias'
+        return bias
 
     def mkdark(self,ims,bias=None,display=None,scat=None,trim=False,
                type='median',sigreject=5,clip=None) :
@@ -1044,6 +1147,7 @@ class Reducer() :
         """
         dark= self.combine(ims,bias=bias,display=display,trim=trim,
                             div=False,scat=scat,type=type,sigreject=sigreject)
+        dark.header['OBJECT'] = 'Combined dark'
         if clip != None:
             low = np.where(dark.data < clip*dark.uncertainty.array)
             dark.data[low] = 0.
@@ -1081,6 +1185,7 @@ class Reducer() :
         """
         flat= self.combine(ims,bias=bias,dark=dark,normalize=True,trim=trim,
                  scat=scat,display=display,type=type,sigreject=sigreject)
+        flat.header['OBJECT'] = 'Combined flat'
         if spec :
             return self.mkspecflat(flat,width=width,display=display)
         else :
@@ -1096,7 +1201,7 @@ class Reducer() :
         sflat=[]
         for flat in flats :
             if self.transpose :
-                tmp = image.transpose(flat)
+                tmp = dataclass.transpose(flat)
             else :
                 tmp = copy.deepcopy(flat)
             nrows=tmp.data.shape[0]
@@ -1115,7 +1220,7 @@ class Reducer() :
             if display is not None :
                 display.tv(tmp,min=0.7,max=1.3)
             if self.transpose :
-                sflat.append(image.transpose(tmp))
+                sflat.append(dataclass.transpose(tmp))
             else :
                 sflat.append(tmp)
 
