@@ -12,7 +12,7 @@ from astropy.time import Time
 from astropy.coordinates import get_moon, get_sun
 from astropy import units
 
-def table(ra=0., dec=0., obs='apo', date='2019-10-01',name='object',plot=False,tz='US/Mountain') :
+def table(ra=0., dec=0., obs='apo', date=None,name='object',plot=False,tz='US/Mountain') :
 
     """  Get airmass table for specified object position, observatory, date
     """
@@ -26,8 +26,9 @@ def table(ra=0., dec=0., obs='apo', date='2019-10-01',name='object',plot=False,t
     else :
         obj=FixedTarget(name=name,coord=SkyCoord(ra+'h',dec+'d'))
 
+    if date == None : date = Time.now().iso.split()[0]
     time = Time('{:s} 00:00:00'.format(date),scale='utc',
-           location=(site.location.lon,site.location.lat),precision=0)
+                location=(site.location.lon,site.location.lat),precision=0)
     sunset =site.sun_set_time(time)
     civil = site.twilight_evening_civil(time)
     nautical = site.twilight_evening_nautical(time)
