@@ -65,7 +65,7 @@ def cds(file,dark=None) :
         except:
             print('not enough reads in dark')
             pdb.set_trace()
-    out= (cube[-1,0:2048,0:2048] - cube[1,0:2048,0:2048] ).astype(np.float32)
+    out= (cube[-1,0:2048,0:2048].astype(np.float32) - cube[1,0:2048,0:2048].astype(np.float32) )
     return CCDData(data=vert(out),header=header,unit=u.dimensionless_unscaled)
 
 def vert(data) :
@@ -134,11 +134,12 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=300,threads=24,m
         trace=spectra.Trace(dir+name)
     else :
         flat=red.reduce(int(plan['psfid']),channel=channel,dark=dark)
-        trace=spectra.Trace(transpose=red.transpose,rad=2,lags=np.arange(-3,4))
+        trace=spectra.Trace(transpose=red.transpose,rad=2,lags=np.arange(-3,4),sc0=1024,rows=[4,2045])
         ff=np.sum(flat.data[:,1000:1100],axis=1)
         if channel==0 : thresh=40000
         else : thresh=40000
-        peaks,fiber=spectra.findpeak(ff,diff=10,bundle=10000,thresh=thresh)
+        #peaks,fiber=spectra.findpeak(ff,diff=10,bundle=10000,thresh=thresh)
+        peaks,fiber=trace.findpeak(flat,diff=10,bundle=10000,thresh=50,smooth=2)
         print('found {:d} peaks'.format(len(peaks)))
         trace.trace(flat,peaks[0:nfibers],index=fiber[0:nfibers],skip=4)
         trace.write(dir+name)
