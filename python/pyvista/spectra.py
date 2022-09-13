@@ -1143,7 +1143,7 @@ class Trace() :
             srows.append(self.model[row](self.sc0)+self.pix0)
         self.trace(hd,srows,plot=plot,thresh=thresh,gaussian=gaussian,skip=10)
     
-    def findpeak(self,hd,width=100,thresh=5,plot=False,smooth=5) :
+    def findpeak(self,hd,width=100,thresh=5,plot=False,smooth=5,diff=10000,bundle=10000) :
         """ Find peaks in spatial profile for subsequent tracing
 
             Parameters
@@ -1191,7 +1191,7 @@ class Trace() :
             plt.xlabel('Spatial pixel')
             plt.ylabel('Median flux')
         
-        peaks,fiber = findpeak(data, thresh=thresh*sig)
+        peaks,fiber = findpeak(data, thresh=thresh*sig, diff=diff, bundle=bundle)
         print(peaks,fiber)
         return np.array(peaks)+self.rows[0], fiber
 
@@ -1502,7 +1502,7 @@ class FluxCal() :
     ----------
     """
 
-    def __init__(self,degree=3) :
+    def __init__(self,degree=3,median=False) :
         self.nstars = 0
         self.waves = []
         self.weights = []
@@ -1514,6 +1514,9 @@ class FluxCal() :
         self.degree = degree
         self.median = False
         self.mean = True
+        if median : 
+            self.mean = False
+            self.median = True
         self.response_curve = None
 
     def extinct(self,hd,wave,file='flux/apo_extinct.dat') :
