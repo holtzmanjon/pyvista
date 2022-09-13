@@ -6,8 +6,11 @@ Introduction
 
 skycalc is a module that mostly provides an interface to
 the astroplan package for observations planning. It has
-a routine that emulates the hour angle listing of
-John Thorstensen's skycalc program.
+a table() routine that emulates the hour angle listing of
+John Thorstensen's skycalc program. It also contains a 
+simple routine for returning airmass from an image header
+(allowing for different ways of storing it), as well as
+a routine for returning parallactic angle
 
 
 Module functions
