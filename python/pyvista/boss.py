@@ -240,11 +240,12 @@ def mkflux(out,plug,planfile,medfilt=15,plot=True,channel=0) :
     """
     plan=yanny.yanny(planfile)
     dir=os.path.dirname(planfile)+'/'
+    name=os.path.basename(planfile)
 
     # get GAIA data
     print('getting gaia')
-    gaia_posn=dir+planfile.replace('spPlan2d','spGaiaPosn').replace('.par','.xml')
-    gaia_flux=dir+planfile.replace('spPlan2d','spGaiaFlux').replace('.par','.xml')
+    gaia_posn=dir+name.replace('spPlan2d','spGaiaPosn').replace('.par','.xml')
+    gaia_flux=dir+name.replace('spPlan2d','spGaiaFlux').replace('.par','.xml')
     if os.path.exists(gaia_posn) :
         g=parse_single_table(gaia_posn).array
         x=parse_single_table(gaia_flux).array
@@ -266,9 +267,11 @@ def mkflux(out,plug,planfile,medfilt=15,plot=True,channel=0) :
         wws = [6500,7500,8500]
 
     # add the stars for which we have GAIA spectra
-    flx=spectra.FluxCal(degree=-1)
+    flx=spectra.FluxCal(degree=-1,median=True)
     for ind,j in enumerate(j1) :
-        if plug['delta_ra'][j] > 0 or plug['delta_dec'][j] > 0 : continue
+        try :
+            if plug['delta_ra'][j] > 0 or plug['delta_dec'][j] > 0 : continue
+        except : pass
         row = plug['fiberId'][j]-1
         flux = x['flux'][i2[j2[ind]]]
         stdflux=Table()
@@ -391,12 +394,25 @@ def html(planfile,maxobj=None,channel=0) :
         except: pass
         colors=['b','r']
         for fiber in range(1,501) :
-            j = np.where(plug['fiberId'] == fiber)[0][0]
-            print(plug['fiberId'][j],plug['category'][j])
+            j = np.where(plug['fiberId'] == fiber)[0]
+            if len(j) == 0 : continue
+            else : j=j[0]
+            try :
+                cat = plug['category'][j]
+            except :
+                cat = plug['objType'][j]
+            try :
+                catid = plug['catalogid'][j]
+            except :
+                catid = 0
+
+            print(plug['fiberId'][j],cat)
             fhtml.write('<TR>\n')
             fhtml.write('<TD>{:d}\n'.format(fiber))
-            fhtml.write('<TD>{:d}\n'.format(plug['catalogid'][j]))
-            fhtml.write('<TD>{:s}\n'.format(plug['category'][j].decode()))
+            fhtml.write('<TD>{:d}\n'.format(catid))
+            fhtml.write('<BR>{:f}\n'.format(plug['ra'][j]))
+            fhtml.write('<BR>{:f}\n'.format(plug['dec'][j]))
+            fhtml.write('<TD>{:s}\n'.format(cat.decode()))
             fhtml.write('<TD>{:7.2f}<br>{:7.2f}<br>{:7.2f}\n'.format(*plug['mag'][j,1:4]))
             fig,ax=plots.multi(1,1,figsize=(8,2))
             gd=np.where(np.isfinite(comb.data[fiber-1]))[0]

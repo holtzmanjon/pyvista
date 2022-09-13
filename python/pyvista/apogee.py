@@ -112,7 +112,12 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=300,threads=24,m
     if done :  return
 
     # set up Reducer
-    red=imred.Reducer('APOGEE',dir=os.environ['APOGEE_DATA_N']+'/'+str(plan['mjd']))
+    if plan['instrument'] == 'apogee-n' :
+        red=imred.Reducer('APOGEE',dir=os.environ['APOGEE_DATA_N']+'/'+str(plan['mjd']))
+        prefix='ap'
+    else :
+        red=imred.Reducer('APOGEE',dir=os.environ['APOGEE_DATA_S']+'/'+str(plan['mjd']))
+        prefix='as'
 
     # get Dark
     if int(plan['darkid']) > 0 :
