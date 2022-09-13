@@ -208,7 +208,7 @@ class Reducer() :
                 box.show()
 
 
-    def log(self,htmlfile=None,
+    def log(self,htmlfile=None,ext='fit*',
             cols=['DATE-OBS','OBJNAME','RA','DEC','EXPTIME']) :
         """ Create chronological image log from file headers
 
@@ -226,7 +226,7 @@ class Reducer() :
         astropy table from FITS headers
 
         """
-        files=glob.glob(self.dir+'/*.fit*')
+        files=glob.glob(self.dir+'/*.'+ext)
 
         date=[]
         for file in files :
@@ -941,14 +941,14 @@ class Reducer() :
         for f in glob.glob(os.path.basename(tmpfile[1])+'*') : os.remove(f)
         return im
 
-    def noise(self,pairs,rows=None,cols=None,nbox=200,display=None) :
+    def noise(self,pairs,rows=None,cols=None,nbox=200,display=None,channel=None) :
         """ Noise characterization from image pairs
         """
         mean=[]
         std=[]
         for pair in pairs :
-            a=self.reduce(pair[0])
-            b=self.reduce(pair[1])
+            a=self.reduce(pair[0],channel=channel)
+            b=self.reduce(pair[1],channel=channel)
             diff=a.data-b.data
             avg=(a.data+b.data)/2
             if display != None :
@@ -958,9 +958,9 @@ class Reducer() :
             if cols is None : cols=np.arange(0,a.shape[1],nbox)
             for irow,r0 in enumerate(rows[0:-1]) :
                 for icol,c0 in enumerate(cols[0:-1]) :
+                    box = image.BOX(xr=[cols[icol],cols[icol+1]],
+                            yr=[rows[irow],rows[irow+1]]) 
                     if display != None :
-                        box = image.BOX(xr=[cols[icol],cols[icol+1]],
-                                yr=[rows[irow],rows[irow+1]]) 
                         display.tvbox(0,0,box=box)
                     print(r0,c0,box.median(avg),box.stdev(diff))
                     mean.append(box.median(avg))
