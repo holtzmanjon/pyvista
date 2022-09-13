@@ -941,14 +941,14 @@ class Reducer() :
         for f in glob.glob(os.path.basename(tmpfile[1])+'*') : os.remove(f)
         return im
 
-    def noise(self,pairs,rows=None,cols=None,nbox=200,display=None) :
+    def noise(self,pairs,rows=None,cols=None,nbox=200,display=None,channel=None) :
         """ Noise characterization from image pairs
         """
         mean=[]
         std=[]
         for pair in pairs :
-            a=self.reduce(pair[0])
-            b=self.reduce(pair[1])
+            a=self.reduce(pair[0],channel=channel)
+            b=self.reduce(pair[1],channel=channel)
             diff=a.data-b.data
             avg=(a.data+b.data)/2
             if display != None :
