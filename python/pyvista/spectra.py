@@ -131,7 +131,7 @@ class WaveCal() :
             tab.write(file,overwrite=True)
         return tab
 
-    def wave(self,pixels=None,image=None) :
+    def wave(self,pixels=None,image=None,domain=False) :
         """ Wavelength from pixel using wavelength solution model
 
         With pixels=[pixels,rows] keyword, return wavelengths for input set of pixels/rows
@@ -170,8 +170,16 @@ class WaveCal() :
                         out[row,:] = self.model(cols-self.pix0,rows)/order
                     else :
                         out[row,:] = self.model(cols-self.pix0)/order
+                        if domain :
+                            bd=np.where(((cols-self.pix0) < self.model.domain[0]-10) |
+                                    ((cols-self.pix0) > self.model.domain[1]+10) )[0]
+                            out[row,bd] = np.nan
             else :
                 out= self.model(cols-self.pix0)/self.orders[0]
+                if domain :
+                    bd=np.where(((cols-self.pix0) < self.model.domain[0]-10) |
+                                ((cols-self.pix0) > self.model.domain[1]+10) )[0]
+                    out[bd] = np.nan
             return out
 
     def add_wave(self, hd) :
@@ -504,7 +512,7 @@ class WaveCal() :
                         print("  See spectrum and template spectrum (top), cross correlation(bottom)",display.fig)
                     # single shift for all pixels
                     self.pix0 = self.pix0+fitpeak+lags[0]
-                    wav=np.atleast_2d(self.wave(image=np.array(sz)))
+                    wav=np.atleast_2d(self.wave(image=np.array(sz),domain=True))
                     #wav=np.atleast_2d(self.wave(image=sz))
                 else :
                     # different shift for each row
@@ -1760,7 +1768,7 @@ def gfit(data,x0,rad=10,sig=3,back=None) :
         bounds = ((yy.min(),peak-rad,0.3),(yy.max(),peak+rad,rad))
     else : 
         p0 = [data[peak],peak,sig,yy.min()]
-        bounds = ((yy.min(),peak-rad,0.3,0),(yy.max(),peak+rad,rad,yy.max()))
+        bounds = ((yy.min(),peak-rad,0.3,0),(yy.max()+1.e-3,peak+rad,rad,yy.max()))
     
     coeff, var_matrix = curve_fit(gauss, xx, yy, p0=p0,bounds=bounds)
     fit = gauss(xx,*coeff)
