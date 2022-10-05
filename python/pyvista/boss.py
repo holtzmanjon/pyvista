@@ -58,8 +58,11 @@ def visit_channel(planfile=None,channel=0,clobber=False,threads=12,plot=True,
     if done : return
 
     # set up Reducer
-    red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_N']+'/'+plan['MJD'])
-   
+    if plan['OBSERVATORY'] == 'apo' : 
+        red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_N']+'/'+plan['MJD'])
+    else :
+        red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_S']+'/'+plan['MJD'])
+
     # get Trace/PSF/flat1D
     print('trace')
     trace,flat1d=mktrace(planfile,channel=channel,clobber=clobber,display=display,threads=threads)
@@ -91,10 +94,11 @@ def visit_channel(planfile=None,channel=0,clobber=False,threads=12,plot=True,
 
             # need plugfile info for sky subtract and flux calibration
             if int(plan['MJD']) > 59600 :
-                plug,header,sky,stan = sdss.getconfig(config_id=out.header['CONFID'],specid=1)
+                plug,header,sky,stan = sdss.getconfig(config_id=out.header['CONFID'],specid=1,obs=plan['OBSERVATORY'])
             else :
-                plug,header,sky,stan = sdss.getconfig(plugid=plan['SPEXP']['mapname'][objs[0]].astype(str),specid=1)
+                plug,header,sky,stan = sdss.getconfig(plugid=plan['SPEXP']['mapname'][objs[0]].astype(str),specid=1,obs=plan['OBSERVATORY'])
 
+            pdb.set_trace()
             if skysub: skysubtract(out,plug['fiberId'][sky])
             if flux : mkflux(out,plug,planfile,channel=channel,plot=plot)
 
@@ -133,7 +137,10 @@ def mktrace(planfile,channel=0,clobber=False,nfibers=500,threads=0,display=None,
     plan=yanny.yanny(planfile)
     outdir=os.path.dirname(planfile)+'/'
 
-    red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_N']+'/'+plan['MJD'])
+    if plan['OBSERVATORY'] == 'apo' :
+       red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_N']+'/'+plan['MJD'])
+    else :
+       red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_S']+'/'+plan['MJD'])
 
     iflat=np.where(plan['SPEXP']['flavor'] == b'flat')[0]
     name=plan['SPEXP']['name'][iflat][0][channel].astype(str)
@@ -148,14 +155,18 @@ def mktrace(planfile,channel=0,clobber=False,nfibers=500,threads=0,display=None,
     else :
         print('creating Trace')
         flat=red.reduce(name,channel=channel,trim=True)
-        trace=spectra.Trace(transpose=red.transpose,rad=3,lags=np.arange(-3,4))
+        trace=spectra.Trace(transpose=red.transpose,rad=3,lags=np.arange(-3,4),sc0=2048,rows=[10,4090])
         ff=np.sum(flat.data[2000:2100],axis=0)
         if channel==0 : thresh=0.4e6
         else : thresh=0.2e6
-        peaks,fiber=spectra.findpeak(ff,thresh=thresh,diff=10,bundle=20)
+        thresh=60000
+        #peaks,fiber=spectra.findpeak(ff,thresh=thresh,diff=10,bundle=20)
+        peaks,fiber=trace.findpeak(flat,diff=10,bundle=20,thresh=10,smooth=2)
+
         print('found {:d} peaks'.format(len(peaks)))
+        pdb.set_trace()
         trace.trace(flat,peaks[0:nfibers],index=fiber[0:nfibers],skip=skip,
-                    display=display,gaussian=True)
+                    display=display,gaussian=False,thresh=10)
         trace.write(outname) 
         flat1d=trace.extract(flat,threads=threads,nout=500,display=display)
         # median spectral shape
@@ -178,12 +189,16 @@ def mkwave(planfile,channel=0,threads=0,clobber=False,display=None,plot=False) :
 
     plan=yanny.yanny(planfile)
     outdir=os.path.dirname(planfile)+'/'
-    red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_N']+'/'+plan['MJD'])
+    if plan['OBSERVATORY'] == 'apo' :
+        red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_N']+'/'+plan['MJD'])
+        chan = ['b1','r1']
+    else :
+        red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_S']+'/'+plan['MJD'])
+        chan = ['b2','r2']
 
     # get trace
     trace,flat1d=mktrace(planfile,channel=channel,clobber=clobber,display=display,threads=threads)
 
-    chan = ['b1','r1']
     iarc=np.where(plan['SPEXP']['flavor'] == b'arc')[0]
     name=plan['SPEXP']['name'][iarc][0][channel].astype(str)
     if len(plan['SPEXP']['name'][iarc][0]) > 2  and channel == 1 :
@@ -203,19 +218,25 @@ def mkwave(planfile,channel=0,threads=0,clobber=False,display=None,plot=False) :
         print('creating WaveCal')
         im=red.reduce(name,channel=channel,trim=True)
         arcec=trace.extract(im,threads=threads,nout=500,display=display)
-        wav=spectra.WaveCal('BOSS/BOSS_{:s}_waves.fits'.format(chan[channel]))
+        wav0=spectra.WaveCal('BOSS/BOSS_{:s}_waves.fits'.format(chan[channel]))
         wavs=[]
         rows=[]
         for irow in range(250,500) :
             if irow in trace.index :
+                print(irow)
+                wav=copy.deepcopy(wav0)
                 wav.identify(arcec[irow],plot=plot,thresh=20,rad=5)
                 wavs.append(copy.deepcopy(wav))
+                if len(wav.weights) == len(wav0.weights) : wav0 = copy.deepcopy(wav)
                 rows.append(irow)
-        wav=spectra.WaveCal('BOSS/BOSS_{:s}_waves.fits'.format(chan[channel]))
+        wav0=spectra.WaveCal('BOSS/BOSS_{:s}_waves.fits'.format(chan[channel]))
         for irow in range(249,-1,-1) :
             if irow in trace.index :
+                print(irow)
+                wav=copy.deepcopy(wav0)
                 wav.identify(arcec[irow],plot=plot,thresh=20,rad=5,maxshift=2)
                 wavs.append(copy.deepcopy(wav))
+                if len(wav.weights) == len(wav0.weights) : wav0 = copy.deepcopy(wav)
                 rows.append(irow)
         wavs[0].index = rows[0]
         wavs[0].write(outname)
@@ -438,3 +459,52 @@ def html(planfile,maxobj=None,channel=0) :
             fhtml.write('<TD><A HREF=plots/{:s}><IMG SRC=plots/{:s}></A>\n'.format(png,png))
 
         fhtml.close()
+
+def mkyaml(mjd,obs='apo') :
+         
+    if obs == 'apo' :
+        red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTR_DATA_N']+'/'+str(mjd))
+    else :
+        red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_S']+'/'+str(mjd))
+
+    files = red.log(cols=['DATE-OBS','FIELDID','FLAVOR','EXPTIME'])
+    files['FILE'] = np.char.replace(files['FILE'],'.gz','')
+
+    fields = set(files['FIELDID'])
+    pdb.set_trace()
+    for field in fields :
+        fp=open('spPlan2d-{:s}-{:d}.par'.format(field,mjd),'w')
+        fp.write('plateid {:s}\n'.format(field))
+        fp.write('MJD {:d}\n'.format(mjd))
+        fp.write('OBSERVATORY {:s}\n'.format(obs))
+
+        #planfile2d  'spPlan2d-20875-59571.par'  # Plan file for 2D spectral reductions (this file)
+        #idlspec2dVersion 'v6_0_4'  # Version of idlspec2d when building plan file
+        #idlutilsVersion 'v5_5_17'  # Version of idlutils when building plan file
+        #speclogVersion 'trunk 27531'  # Version of speclog when building plan file
+
+        fp.write('typedef struct {\n')
+        fp.write('  int plateid;\n')
+        fp.write('  int mjd;\n')
+        fp.write('  char mapname[15];\n')
+        fp.write('  char flavor[8];\n')
+        fp.write('  float exptime;\n')
+        fp.write('  char name[2][20];\n')
+        fp.write('} SPEXP;\n')
+        flat = np.where((files['FIELDID'] == field) & (files['FLAVOR'] == 'flat'))[0]
+        if len(flat) == 0 :
+          flat = np.where(files['FLAVOR'] == 'flat')[0]
+        if len(flat) > 0 : 
+            fp.write('SPEXP {:s} {:d} fps flat {:s} {{ {:s} }}\n'.format(
+                     field,mjd, files[flat[0]]['EXPTIME'],files[flat[0]]['FILE']))
+        arc = np.where((files['FIELDID'] == field) & (files['FLAVOR'] == 'arc'))[0]
+        if len(arc) > 0 : 
+            fp.write('SPEXP {:s} {:d} fps arc {:s} {{ {:s} }}\n'.format(
+                      field,mjd, files[arc[0]]['EXPTIME'],files[arc[0]]['FILE']))
+        sci = np.where((files['FIELDID'] == field) & (files['FLAVOR'] == 'science'))[0]
+        for s in sci :
+            fp.write('SPEXP {:s} {:d} fps science {:s} {{ {:s} }}\n'.format(field,mjd, files[s]['EXPTIME'],files[s]['FILE']))
+        fp.close()
+
+
+
