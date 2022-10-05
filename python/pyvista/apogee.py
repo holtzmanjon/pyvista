@@ -9,7 +9,7 @@ import pdb
 import os
 from pydl.pydlutils.yanny import yanny
 from tools import plots, match
-from ccdproc import CCDData
+from pyvista.dataclass import Data
 import matplotlib.pyplot as plt
 import multiprocessing as mp
 import yaml
@@ -66,7 +66,7 @@ def cds(file,dark=None) :
             print('not enough reads in dark')
             pdb.set_trace()
     out= (cube[-1,0:2048,0:2048].astype(np.float32) - cube[1,0:2048,0:2048].astype(np.float32) )
-    return CCDData(data=vert(out),header=header,unit=u.dimensionless_unscaled)
+    return Data(data=vert(out),header=header,unit=u.dimensionless_unscaled)
 
 def vert(data) :
     """ Vertical bias subtraction from reference pixels
@@ -121,7 +121,7 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=300,threads=24,m
 
     # get Dark
     if int(plan['darkid']) > 0 :
-        name='apDark-{:s}-{:08d}.fits'.format(chan[channel],int(plan['darkid']))
+        name=prefix+'Dark-{:s}-{:08d}.fits'.format(chan[channel],int(plan['darkid']))
         try :
            dark=fits.open('{:s}/{:s}/cal/{:s}/darkcorr/{:s}'.format(os.environ['APOGEE_REDUX'],plan['apogee_drp_ver'],plan['instrument'],name))[1].data
         except :
@@ -148,7 +148,7 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=300,threads=24,m
     name='ap1D-{:s}-{:08d}.fits'.format(chan[channel],int(plan['fluxid']))
     print('flux: ', name)
     if os.path.exists(dir+name) and not clobber : 
-        flux=CCDData.read(dir+name)
+        flux=Data.read(dir+name)
     else :
         im=red.reduce(int(plan['fluxid']),channel=channel,dark=dark)
         flux=trace.extract(im,threads=threads,nout=300)
@@ -200,7 +200,7 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=300,threads=24,m
         if obj['flavor']  != 'object' : continue
         name='ap1D-{:s}-{:08d}.fits'.format(chan[channel],exp_no)
         if os.path.exists(dir+name) and not clobber : 
-            out=CCDData.read(dir+name)
+            out=Data.read(dir+name)
         else :
             im=red.reduce(exp_no,channel=channel,dark=dark,display=display)
             out=trace.extract(im,threads=threads,nout=300,display=display)
@@ -209,3 +209,46 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=300,threads=24,m
             out.write(dir+name,overwrite=True)
 
     return out
+
+def mkyaml(mjd,obs='apo') :
+
+    if obs == 'apo' :
+        red=imred.Reducer('APOGEE',dir=os.environ['APOGEE_DATA_N']+'/'+str(mjd))
+    else :
+        red=imred.Reducer('APOGEE',dir=os.environ['APOGEE_DATA_S']+'/'+str(mjd))
+
+    files = red.log(cols=['DATE-OBS','FIELD_ID','EXPTYPE','CONFIGID'],ext='apz',hdu=1,channel='-b-')
+    pdb.set_trace()
+
+    #apogee_drp_ver: daily
+    #telescope: lco25m
+    #psfid: 42550002
+    psfid=0
+    darkid=0
+    fp = open('{:d}.yaml'.format(mjd),'w')
+    if obs == 'lco' :
+        fp.write('telescope: lco25m\n')
+        fp.write('instrument: apogee-s\n')
+    else :
+        fp.write('telescope: apo25m\n')
+        fp.write('instrument: apogee-n\n')
+    fp.write('mjd: {:d}\n'.format(mjd))
+    fp.write('darkid: {:d}\n'.format(darkid))
+    for file in files :
+        name=file['FILE'].split('-')
+        expno = name[2].replace('.apz','')
+        if file['EXPTYPE'] == 'QUARTZFLAT' and psfid==0 : 
+            psfid = expno
+            fluxid = expno
+            fp.write('fluxid: {:s}\n'.format(fluxid))
+            fp.write('psfid: {:s}\n'.format(psfid))
+            fp.write('APEXP:\n')
+
+        if file['EXPTYPE'] == 'OBJECT' :
+            fp.write('- plateid: {:s}\n'.format(file['CONFIGID']))
+            fp.write('  mjd: {:d}\n'.format(mjd))
+            fp.write('  flavor: {:s}\n'.format(file['EXPTYPE'].lower()))
+            name=file['FILE'].split('-')
+            fp.write('  name: {:s}\n'.format(expno))
+            fp.write('  single: -1\n')
+            fp.write('  singlename: none\n')
