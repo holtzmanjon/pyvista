@@ -45,7 +45,7 @@ def getconfig(config_id=None,plugid=None,specid=1,obs='apo') :
     if config_id is not None :
         try : plug,header=config(config_id,specid=specid,useconfF=True,useparent=False,obs=obs)
         except : plug,header=config(config_id,specid=specid,useconfF=False,useparent=False,obs=obs)
-        sky=np.where(plug['category'] == b'sky_boss')[0]
+        sky=np.where(np.char.find(plug['category'].astype(str),'sky') >= 0)[0]
         stan=np.where(np.char.find(plug['category'].astype(str),'standard') >= 0)[0]
         if specid == 1 :
             # substitude GAIA transformed mags for gri for gaia_g < 15
@@ -349,11 +349,12 @@ def db_spec(plug, header, confSummary = True) :
 
     return tab_spec
 
-def db_visit(mjd, field) :
+def db_visit(mjd, field, obs) :
 
     tab_visit=Table()
     tab_visit['mjd'] = [mjd]
     tab_visit['field_id'] =  [field]
+    tab_visit['observatory'] = [obs]
 
     return tab_visit
 
