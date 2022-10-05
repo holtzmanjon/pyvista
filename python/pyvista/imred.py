@@ -208,7 +208,7 @@ class Reducer() :
                 box.show()
 
 
-    def log(self,htmlfile=None,ext='fit*',
+    def log(self,htmlfile=None,ext='fit*',hdu=0,channel='',
             cols=['DATE-OBS','OBJNAME','RA','DEC','EXPTIME']) :
         """ Create chronological image log from file headers
 
@@ -226,11 +226,11 @@ class Reducer() :
         astropy table from FITS headers
 
         """
-        files=glob.glob(self.dir+'/*.'+ext)
+        files=glob.glob(self.dir+'/*{:s}*.'.format(channel)+ext)
 
         date=[]
         for file in files :
-          a=fits.open(file)[0].header
+          a=fits.open(file)[hdu].header
           try :
               date.append(a['DATE-OBS'])
           except KeyError :
@@ -259,7 +259,7 @@ class Reducer() :
         tab=Table(names=names,dtype=dtypes)
 
         for i in sort :
-          a=fits.open(files[i])[0].header
+          a=fits.open(files[i])[hdu].header
           if htmlfile is not None :
               fp.write('<TR><TD>{:s}\n'.format(os.path.basename(files[i])))  
           row=[os.path.basename(files[i])]
@@ -941,7 +941,7 @@ class Reducer() :
         for f in glob.glob(os.path.basename(tmpfile[1])+'*') : os.remove(f)
         return im
 
-    def noise(self,pairs,rows=None,cols=None,nbox=200,display=None,channel=None) :
+    def noise(self,pairs,rows=None,cols=None,nbox=200,display=None,channel=None,levels=None) :
         """ Noise characterization from image pairs
         """
         mean=[]
@@ -954,9 +954,17 @@ class Reducer() :
             if display != None :
                 display.tv(avg)
                 display.tv(diff)
-            if rows is None : rows=np.arange(0,a.shape[0],nbox)
-            if cols is None : cols=np.arange(0,a.shape[1],nbox)
-            for irow,r0 in enumerate(rows[0:-1]) :
+            if levels is not None :
+                for i,level in enumerate(levels[0:-1]) :
+                    j=np.where((avg.flatten() > level) & (avg.flatten() <= levels[i+1]))[0]
+                    if len(j) > 100 :
+                        mean.append((level+levels[i+1])/2.)
+                        std.append(diff.flatten()[j].std())
+                        print((level+levels[i+1])/2.,diff.flatten()[j].std(),len(j))
+            else :
+              if rows is None : rows=np.arange(0,a.shape[0],nbox)
+              if cols is None : cols=np.arange(0,a.shape[1],nbox)
+              for irow,r0 in enumerate(rows[0:-1]) :
                 for icol,c0 in enumerate(cols[0:-1]) :
                     box = image.BOX(xr=[cols[icol],cols[icol+1]],
                             yr=[rows[irow],rows[irow+1]]) 
@@ -969,6 +977,9 @@ class Reducer() :
         std=np.array(std)
         plt.figure()
         plt.plot(mean,std**2,'ro')
+        plt.figure()
+        plt.plot(mean,2*mean/std**2,'ro')
+        pdb.set_trace()
 
 
     def display(self,display,id) :
