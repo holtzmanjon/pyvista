@@ -11,7 +11,7 @@ from astropy.io import fits, ascii
 from astropy.wcs import WCS
 from astropy.modeling import models, fitting
 from astropy.convolution import convolve, Box1DKernel, Box2DKernel, Box2DKernel
-from tools import html
+from tools import html, plots
 import ccdproc
 import scipy.signal
 import yaml
@@ -944,9 +944,14 @@ class Reducer() :
     def noise(self,pairs,rows=None,cols=None,nbox=200,display=None,channel=None,levels=None) :
         """ Noise characterization from image pairs
         """
-        mean=[]
-        std=[]
-        for pair in pairs :
+        title=''
+        fig,ax=plots.multi(1,3,hspace=0.001,sharex=True)
+        colors=['r','g','b','c','m','y','k']
+        for icolor,pair in enumerate(pairs) :
+            mean=[]
+            std=[]
+            n=[]
+            title+='[{:d},{:d}]'.format(pair[0],pair[1])
             a=self.reduce(pair[0],channel=channel)
             b=self.reduce(pair[1],channel=channel)
             diff=a.data-b.data
@@ -960,6 +965,7 @@ class Reducer() :
                     if len(j) > 100 :
                         mean.append((level+levels[i+1])/2.)
                         std.append(diff.flatten()[j].std())
+                        n.append(len(j))
                         print((level+levels[i+1])/2.,diff.flatten()[j].std(),len(j))
             else :
               if rows is None : rows=np.arange(0,a.shape[0],nbox)
@@ -973,12 +979,15 @@ class Reducer() :
                     print(r0,c0,box.median(avg),box.stdev(diff))
                     mean.append(box.median(avg))
                     std.append(box.stdev(diff))
-        mean=np.array(mean)
-        std=np.array(std)
-        plt.figure()
-        plt.plot(mean,std**2,'ro')
-        plt.figure()
-        plt.plot(mean,2*mean/std**2,'ro')
+                    n.append((cols[icol+1]-cols[icol])*(rows[irow+1]-rows[irow]))
+            mean=np.array(mean)
+            std=np.array(std)
+            n=np.array(n)
+            plots.plotp(ax[0],mean,std**2,yt='$\sigma^2$',size=30,color=colors[icolor])
+            plots.plotp(ax[1],mean,2*mean/std**2,yt='G = 2 C / $\sigma^2$',size=20,color=colors[icolor])
+            plots.plotp(ax[2],mean,np.log10(n),xt='counts (C)',yt='log(Npix)',size=20,color=colors[icolor])
+        fig.suptitle(title+' channel: {:d}'.format(channel))
+
         pdb.set_trace()
 
 
