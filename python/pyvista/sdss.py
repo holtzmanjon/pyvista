@@ -258,6 +258,7 @@ def db_exp(exp_no,cam,header,config=None,obs='apo',offra=0.,offdec=0.) :
     tab_exp['dateobs' ] = [header['DATE-OBS']]
     tab_exp['ra' ] = [header['RA']]
     tab_exp['dec' ] = [header['DEC']]
+    tab_exp['focus' ] = [header['FOCUS']]
     tab_exp['cherno_offset_ra' ] = [offra]
     tab_exp['cherno_offset_dec' ] = [offdec]
 
