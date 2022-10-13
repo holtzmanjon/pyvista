@@ -39,7 +39,7 @@ def visit(planfile,clobber=False,maxobj=None,threads=12) :
     for proc in procs : proc.join()
 
 def visit_channel(planfile=None,channel=0,clobber=False,threads=12,plot=True,
-                  display=None,maxobj=None,skysub=True,flux=True) :
+                  display=None,maxobj=None,skysub=True,flux=False) :
     """ Read raw image (eventually, 2D calibration and extract,
         using specified flat/trace
     """
@@ -94,11 +94,12 @@ def visit_channel(planfile=None,channel=0,clobber=False,threads=12,plot=True,
 
             # need plugfile info for sky subtract and flux calibration
             if int(plan['MJD']) > 59600 :
-                plug,header,sky,stan = sdss.getconfig(config_id=out.header['CONFID'],specid=1,obs=plan['OBSERVATORY'])
+                plug,header,sky,stan = sdss.getconfig(config_id=out.header['CONFID'],
+                                                      specid=1,obs=plan['OBSERVATORY'])
             else :
-                plug,header,sky,stan = sdss.getconfig(plugid=plan['SPEXP']['mapname'][objs[0]].astype(str),specid=1,obs=plan['OBSERVATORY'])
+                plug,header,sky,stan = sdss.getconfig(plugid=plan['SPEXP']['mapname'][objs[0]].astype(str),
+                                                      specid=1,obs=plan['OBSERVATORY'])
 
-            pdb.set_trace()
             if skysub: skysubtract(out,plug['fiberId'][sky])
             if flux : mkflux(out,plug,planfile,channel=channel,plot=plot)
 
@@ -121,9 +122,9 @@ def skysubtract(out,skyfibers,display=None) :
             # get sky spectrum sampled at wavelengths of this fiber by interpolation
             sky_spec = np.interp(out.wave[fiber-1],out.wave[skyfiber-1],out.data[skyfiber-1])
             sky_specs.append(sky_spec)
-        out.data[fiber-1] -= np.median(np.array(sky_specs),axis=0)
+        out.data[fiber-1] -= np.nanmedian(np.array(sky_specs),axis=0)
         if display is not None :
-            plt.plot(np.median(np.array(sky_specs),axis=0))
+            plt.plot(np.nanmedian(np.array(sky_specs),axis=0))
             plt.plot(out.data[fiber-1])
             plt.draw()
             pdb.set_trace()
@@ -164,7 +165,6 @@ def mktrace(planfile,channel=0,clobber=False,nfibers=500,threads=0,display=None,
         peaks,fiber=trace.findpeak(flat,diff=10,bundle=20,thresh=10,smooth=2)
 
         print('found {:d} peaks'.format(len(peaks)))
-        pdb.set_trace()
         trace.trace(flat,peaks[0:nfibers],index=fiber[0:nfibers],skip=skip,
                     display=display,gaussian=False,thresh=10)
         trace.write(outname) 
@@ -219,6 +219,7 @@ def mkwave(planfile,channel=0,threads=0,clobber=False,display=None,plot=False) :
         im=red.reduce(name,channel=channel,trim=True)
         arcec=trace.extract(im,threads=threads,nout=500,display=display)
         wav0=spectra.WaveCal('BOSS/BOSS_{:s}_waves.fits'.format(chan[channel]))
+        ngd=len(np.where(wav0.weights >0)[0])
         wavs=[]
         rows=[]
         for irow in range(250,500) :
@@ -227,7 +228,7 @@ def mkwave(planfile,channel=0,threads=0,clobber=False,display=None,plot=False) :
                 wav=copy.deepcopy(wav0)
                 wav.identify(arcec[irow],plot=plot,thresh=20,rad=5)
                 wavs.append(copy.deepcopy(wav))
-                if len(wav.weights) == len(wav0.weights) : wav0 = copy.deepcopy(wav)
+                if len(np.where(wav.weights>0)[0]) == ngd : wav0 = copy.deepcopy(wav)
                 rows.append(irow)
         wav0=spectra.WaveCal('BOSS/BOSS_{:s}_waves.fits'.format(chan[channel]))
         for irow in range(249,-1,-1) :
@@ -236,7 +237,7 @@ def mkwave(planfile,channel=0,threads=0,clobber=False,display=None,plot=False) :
                 wav=copy.deepcopy(wav0)
                 wav.identify(arcec[irow],plot=plot,thresh=20,rad=5,maxshift=2)
                 wavs.append(copy.deepcopy(wav))
-                if len(wav.weights) == len(wav0.weights) : wav0 = copy.deepcopy(wav)
+                if len(np.where(wav.weights>0)[0]) == ngd : wav0 = copy.deepcopy(wav)
                 rows.append(irow)
         wavs[0].index = rows[0]
         wavs[0].write(outname)
@@ -463,15 +464,14 @@ def html(planfile,maxobj=None,channel=0) :
 def mkyaml(mjd,obs='apo') :
          
     if obs == 'apo' :
-        red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTR_DATA_N']+'/'+str(mjd))
+        red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_N']+'/'+str(mjd))
     else :
         red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_S']+'/'+str(mjd))
 
-    files = red.log(cols=['DATE-OBS','FIELDID','FLAVOR','EXPTIME'])
-    files['FILE'] = np.char.replace(files['FILE'],'.gz','')
+    files = red.log(cols=['DATE-OBS','FIELDID','FLAVOR','EXPTIME'],channel='-b')
+    files['FILE'] = np.char.replace(files['FILE'].astype(str),'.gz','')
 
     fields = set(files['FIELDID'])
-    pdb.set_trace()
     for field in fields :
         fp=open('spPlan2d-{:s}-{:d}.par'.format(field,mjd),'w')
         fp.write('plateid {:s}\n'.format(field))
@@ -495,15 +495,19 @@ def mkyaml(mjd,obs='apo') :
         if len(flat) == 0 :
           flat = np.where(files['FLAVOR'] == 'flat')[0]
         if len(flat) > 0 : 
-            fp.write('SPEXP {:s} {:d} fps flat {:s} {{ {:s} }}\n'.format(
-                     field,mjd, files[flat[0]]['EXPTIME'],files[flat[0]]['FILE']))
+            fp.write('SPEXP {:s} {:d} fps flat {:s} {{ {:s} {:s} }}\n'.format(
+                     field,mjd, files[flat[0]]['EXPTIME'],
+                     files[flat[0]]['FILE'],files[flat[0]]['FILE'].replace('-b','-r')))
         arc = np.where((files['FIELDID'] == field) & (files['FLAVOR'] == 'arc'))[0]
         if len(arc) > 0 : 
-            fp.write('SPEXP {:s} {:d} fps arc {:s} {{ {:s} }}\n'.format(
-                      field,mjd, files[arc[0]]['EXPTIME'],files[arc[0]]['FILE']))
+            fp.write('SPEXP {:s} {:d} fps arc {:s} {{ {:s} {:s} }}\n'.format(
+                      field,mjd, files[arc[0]]['EXPTIME'],
+                      files[arc[0]]['FILE'],files[arc[0]]['FILE'].replace('-b','-r')))
         sci = np.where((files['FIELDID'] == field) & (files['FLAVOR'] == 'science'))[0]
         for s in sci :
-            fp.write('SPEXP {:s} {:d} fps science {:s} {{ {:s} }}\n'.format(field,mjd, files[s]['EXPTIME'],files[s]['FILE']))
+            fp.write('SPEXP {:s} {:d} fps science {:s} {{ {:s} {:s} }}\n'.format(
+                      field,mjd, files[s]['EXPTIME'],
+                      files[s]['FILE'],files[s]['FILE'].replace('-b','-r')))
         fp.close()
 
 
