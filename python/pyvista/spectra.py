@@ -429,7 +429,7 @@ class WaveCal() :
 
     def identify(self,spectrum,file=None,wav=None,wref=None,inter=False,
                  orders=None,verbose=False,rad=5,thresh=100, fit=True, maxshift=1.e10,
-                 disp=None,display=None,plot=None,pixplot=False,
+                 disp=None,display=None,plot=None,pixplot=False,domain=False,
                  xmin=None,xmax=None,lags=range(-300,300), nskip=None) :
         """ Given some estimate of wavelength solution and file with lines,
             identify peaks and centroid, via methods:
@@ -512,7 +512,7 @@ class WaveCal() :
                         print("  See spectrum and template spectrum (top), cross correlation(bottom)",display.fig)
                     # single shift for all pixels
                     self.pix0 = self.pix0+fitpeak+lags[0]
-                    wav=np.atleast_2d(self.wave(image=np.array(sz),domain=True))
+                    wav=np.atleast_2d(self.wave(image=np.array(sz),domain=domain))
                     #wav=np.atleast_2d(self.wave(image=sz))
                 else :
                     # different shift for each row
