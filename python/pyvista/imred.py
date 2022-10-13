@@ -964,7 +964,9 @@ class Reducer() :
                     j=np.where((avg.flatten() > level) & (avg.flatten() <= levels[i+1]))[0]
                     if len(j) > 100 :
                         mean.append((level+levels[i+1])/2.)
-                        std.append(diff.flatten()[j].std())
+                        std0 = diff.flatten()[j].std()
+                        gd = np.where(np.abs(diff.flatten()[j]) < 5*std0)[0]
+                        std.append(diff.flatten()[j[gd]].std())
                         n.append(len(j))
                         print((level+levels[i+1])/2.,diff.flatten()[j].std(),len(j))
             else :
