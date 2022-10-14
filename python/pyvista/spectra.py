@@ -1816,8 +1816,8 @@ def findpeak(x,thresh,diff=10000,bundle=10000) :
             #print(i,f)
             j.append(i)
             if len(j)>1 and j[-1]-j[-2] > diff and f%bundle != 0: 
-                #print(j[-1],j[-2],f)
-                f=f+1
+                #print(j[-1],j[-2],j[-1]-j[-2],f)
+                f=f+(j[-1]-j[-2])//diff
             fiber.append(f)
             f=f+1
           
