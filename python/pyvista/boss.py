@@ -26,12 +26,14 @@ def visit(planfile,clobber=False,maxobj=None,threads=12) :
     if not os.path.exists(planfile) :
         raise ValueError('no such file: {:s}'.format(planfile))
     plan=yanny.yanny(planfile)
-    dir=os.path.dirname(planfile)+'/'
     mjd = int(plan['MJD'])
+    if plan['OBSERVATORY'] == 'apo' : channels= [0,1]
+    else : channels = [2,3]
+
 
     # reduce b1 and r1 in parallel
     procs=[]
-    for channel in [0,1] :
+    for channel in channels :
         kw={'planfile' : planfile, 'channel' : channel, 'clobber' : clobber, 
                 'maxobj' : maxobj, 'threads' : threads, 'plot' : False}
         procs.append(mp.Process(target=visit_channel,kwargs=kw))
@@ -44,57 +46,69 @@ def visit_channel(planfile=None,channel=0,clobber=False,threads=12,plot=True,
         using specified flat/trace
     """
     plan=yanny.yanny(planfile)
-    outdir = os.path.dirname(name)+'/' if os.path.dirname(name) != '' else './'
+    outdir = os.path.dirname(planfile)+'/' if os.path.dirname(planfile) != '' else './'
 
     # are all files already created?
     objs=np.where(plan['SPEXP']['flavor'] == b'science')[0]
     done = True
     for obj in objs[0:maxobj] :
-        name=plan['SPEXP']['name'][obj][channel].astype(str)
-        if len(plan['SPEXP']['name'][obj]) > 2  and channel == 1 :
-            name=plan['SPEXP']['name'][obj][2].astype(str)
+        if len(plan['SPEXP']['name'][obj]) > 2  :
+            name=plan['SPEXP']['name'][obj][channel].astype(str)
+        else :
+            name=plan['SPEXP']['name'][obj][channel%2].astype(str)
         print(outdir+name.replace('sdR','sp1D'))
         if not os.path.exists(outdir+name.replace('sdR','sp1D')) or clobber :  done = False
     if done : return
 
     # set up Reducer
+    nfibers=500
+    bundle=20
+    diff=8
     if plan['OBSERVATORY'] == 'apo' : 
         red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_N']+'/'+plan['MJD'])
-        nfibers=500
-        bundle=20
-        diff=10
+        chan = ['b1','r1']
     else :
         red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_S']+'/'+plan['MJD'])
-        bundle=10000
-        diff=8
-        nfibers=527
+        chan = ['b2','r2']
+        if int(plan['MJD']) > 59864 :
+            bundle=10000
+            diff=8
+            nfibers=527
 
     # get Trace/PSF/flat1D
-    print('trace')
     iflat=np.where(plan['SPEXP']['flavor'] == b'flat')[0]
-    name=plan['SPEXP']['name'][iflat][0][channel].astype(str)
-    if len(plan['SPEXP']['name'][iflat][0]) > 2  and channel == 1 :
-        name=plan['SPEXP']['name'][iflat][0][2].astype(str)
+    if len(plan['SPEXP']['name'][iflat][0]) > 2 :
+        name=plan['SPEXP']['name'][iflat][0][channel].astype(str)
+    else :
+        name=plan['SPEXP']['name'][iflat][0][channel%2].astype(str)
     trace,flat1d=mktrace(red,name,channel=channel,clobber=clobber,display=display,threads=threads,
-                         bundle=bundle,diff=diff,nfibers=nfibers)
+                         bundle=bundle,diff=diff,nfibers=nfibers,outdir=outdir)
     # 1d flat to 2D
     #fim=np.tile(flat1d,(4224,1)).T
 
     # get wavelength calibration
     print('wave')
-    wave= mkwave(planfile,channel=channel,clobber=clobber,threads=threads,display=display)
+    iarc=np.where(plan['SPEXP']['flavor'] == b'arc')[0]
+    if len(plan['SPEXP']['name'][iarc][0]) > 2 :
+        name=plan['SPEXP']['name'][iarc][0][channel].astype(str)
+    else :
+        name=plan['SPEXP']['name'][iarc][0][channel%2].astype(str)
+    wave= mkwave(red,trace,name,channel=channel,clobber=clobber,threads=threads,display=display,outdir=outdir)
 
     # reduce and extract science frames
     objs=np.where(plan['SPEXP']['flavor'] == b'science')[0]
     for obj in objs[0:maxobj] :
-        name=plan['SPEXP']['name'][obj][channel].astype(str)
-        if len(plan['SPEXP']['name'][obj]) > 2  and channel == 1 :
-            name=plan['SPEXP']['name'][obj][2].astype(str)
+        if len(plan['SPEXP']['name'][obj]) > 2  :
+            name=plan['SPEXP']['name'][obj][channel].astype(str)
+        else :
+            name=plan['SPEXP']['name'][obj][channel%2].astype(str)
         if os.path.exists(outdir+name.replace('sdR','sp1D')) and not clobber : 
             out=Data.read(outdir+name.replace('sdR','sp1D'))
         else :
             im=red.reduce(name,channel=channel,trim=True)
-            out=trace.extract(im,threads=threads,nout=500,plot=display,fit=False)
+            import time
+            out=trace.extract(im,threads=threads,nout=500,plot=display,fit=False,new=True)
+
             #out_fit=trace.extract(im,threads=threads,nout=500,plot=display,fit=True)
             # 1d fiber-to-fiber flat
             out.data /= flat1d
@@ -154,42 +168,26 @@ def mktrace(red,name,channel=0,clobber=False,nfibers=500,threads=0,display=None,
         flat1d=Data.read(outname.replace('spTrace','spFlat1D'))
     else :
         print('creating Trace')
-        flat=red.reduce(name,trim=True)
+        flat=red.reduce(name,trim=True,channel=channel)
         trace=spectra.Trace(transpose=red.transpose,rad=3,lags=np.arange(-3,4),sc0=2048,rows=[10,4090])
-        peaks,fiber=trace.findpeak(flat,diff=diff,bundle=bundle,thresh=10,smooth=2)
+        peaks,fiber=trace.findpeak(flat,diff=diff,bundle=bundle,thresh=75,smooth=2)
 
         print('found {:d} peaks'.format(len(peaks)))
-        pdb.set_trace()
         trace.trace(flat,peaks[0:nfibers],index=fiber[0:nfibers],skip=skip,
-                    display=display,gaussian=False,thresh=10)
+                    display=display,gaussian=True,thresh=10)
         trace.write(outname) 
         flat1d=trace.extract(flat,threads=threads,nout=nfibers,display=display)
         flat1d.write(outname.replace('spTrace','spFlat1D'))
 
     return trace,flat1d
 
-def mkwave(planfile,channel=0,threads=0,clobber=False,display=None,plot=False) :
+def mkwave(red,trace,name,channel=0,threads=0,clobber=False,display=None,plot=False,outdir='./') :
     """ Create spWave files or read if they already exist
 
         Return 2D wavelength image
     """
 
-    plan=yanny.yanny(planfile)
-    outdir=os.path.dirname(planfile)+'/'
-    if plan['OBSERVATORY'] == 'apo' :
-        red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_N']+'/'+plan['MJD'])
-        chan = ['b1','r1']
-    else :
-        red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_S']+'/'+plan['MJD'])
-        chan = ['b2','r2']
-
-    # get trace
-    trace,flat1d=mktrace(planfile,channel=channel,clobber=clobber,display=display,threads=threads)
-
-    iarc=np.where(plan['SPEXP']['flavor'] == b'arc')[0]
-    name=plan['SPEXP']['name'][iarc][0][channel].astype(str)
-    if len(plan['SPEXP']['name'][iarc][0]) > 2  and channel == 1 :
-        name=plan['SPEXP']['name'][iarc][0][2].astype(str)
+    chan = ['b1','r1','b2','r2']
     outname=outdir+name.replace('sdR','spWave')
 
     if os.path.exists(outname) and not clobber : 
@@ -484,7 +482,7 @@ def mkyaml(mjd,obs='apo') :
         if len(flat) > 0 : 
             fp.write('SPEXP {:s} {:d} fps flat {:s} {{ {:s} {:s} }}\n'.format(
                      field,mjd, files[flat[0]]['EXPTIME'],
-                     files[flat[0]]['FILE'],files[flat[0]]['FILE'].replace('-b','-r')))
+                     files[flat[-1]]['FILE'],files[flat[-1]]['FILE'].replace('-b','-r')))
         arc = np.where((files['FIELDID'] == field) & (files['FLAVOR'] == 'arc'))[0]
         if len(arc) > 0 : 
             fp.write('SPEXP {:s} {:d} fps arc {:s} {{ {:s} {:s} }}\n'.format(
