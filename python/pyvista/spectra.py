@@ -2002,7 +2002,7 @@ def extract_col_new(pars) :
                 ypix.append(iy)
 
             spec[i,:] -= np.median(data[ypix,xpix],axis=0)
-            sig2[i,:] = np.median(sig2[i,:]**2+np.sum(err[ypix,xpix]**2,axis=0)/(len(xpix)-1)
+            sig2[i,:] = sig2[i,:]**2+np.sum(err[ypix,xpix]**2,axis=0)/(len(xpix)-1)
                 #bpix=np.append(bpix,data[icr+bk[0]:icr+bk[1],j])
                 #bvar=np.append(bvar,err[icr+bk[0]:icr+bk[1],j]**2)
             #spec[i,j] -= np.median(bpix)*(r2-r1)
