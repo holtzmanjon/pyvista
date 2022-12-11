@@ -131,7 +131,7 @@ class WaveCal() :
             tab.write(file,overwrite=True)
         return tab
 
-    def wave(self,pixels=None,image=None) :
+    def wave(self,pixels=None,image=None,domain=False) :
         """ Wavelength from pixel using wavelength solution model
 
         With pixels=[pixels,rows] keyword, return wavelengths for input set of pixels/rows
@@ -170,8 +170,16 @@ class WaveCal() :
                         out[row,:] = self.model(cols-self.pix0,rows)/order
                     else :
                         out[row,:] = self.model(cols-self.pix0)/order
+                        if domain :
+                            bd=np.where(((cols-self.pix0) < self.model.domain[0]-10) |
+                                    ((cols-self.pix0) > self.model.domain[1]+10) )[0]
+                            out[row,bd] = np.nan
             else :
                 out= self.model(cols-self.pix0)/self.orders[0]
+                if domain :
+                    bd=np.where(((cols-self.pix0) < self.model.domain[0]-10) |
+                                ((cols-self.pix0) > self.model.domain[1]+10) )[0]
+                    out[bd] = np.nan
             return out
 
     def add_wave(self, hd) :
@@ -421,7 +429,7 @@ class WaveCal() :
 
     def identify(self,spectrum,file=None,wav=None,wref=None,inter=False,
                  orders=None,verbose=False,rad=5,thresh=100, fit=True, maxshift=1.e10,
-                 disp=None,display=None,plot=None,pixplot=False,
+                 disp=None,display=None,plot=None,pixplot=False,domain=False,
                  xmin=None,xmax=None,lags=range(-300,300), nskip=None) :
         """ Given some estimate of wavelength solution and file with lines,
             identify peaks and centroid, via methods:
@@ -504,7 +512,7 @@ class WaveCal() :
                         print("  See spectrum and template spectrum (top), cross correlation(bottom)",display.fig)
                     # single shift for all pixels
                     self.pix0 = self.pix0+fitpeak+lags[0]
-                    wav=np.atleast_2d(self.wave(image=np.array(sz)))
+                    wav=np.atleast_2d(self.wave(image=np.array(sz),domain=domain))
                     #wav=np.atleast_2d(self.wave(image=sz))
                 else :
                     # different shift for each row
@@ -1035,7 +1043,7 @@ class Trace() :
 
                 # gaussian fit
                 if gaussian :
-                    gcoeff=gfit(data,cr,rad=rad,sig=2,back=0.)
+                    #gcoeff=gfit(data,cr,rad=rad,sig=2,back=0.)
                     try : 
                         gcoeff=gfit(data,cr,rad=rad,sig=2,back=0.)
                         #ax.plot(data)
@@ -1143,7 +1151,7 @@ class Trace() :
             srows.append(self.model[row](self.sc0)+self.pix0)
         self.trace(hd,srows,plot=plot,thresh=thresh,gaussian=gaussian,skip=10)
     
-    def findpeak(self,hd,width=100,thresh=5,plot=False,smooth=5) :
+    def findpeak(self,hd,width=100,thresh=5,plot=False,smooth=5,diff=10000,bundle=10000) :
         """ Find peaks in spatial profile for subsequent tracing
 
             Parameters
@@ -1173,14 +1181,14 @@ class Trace() :
         print('looking for peaks using {:d} pixels around {:d}, threshhold of {:f}'.
               format(2*width,self.sc0,thresh))
 
-        back =np.median(im.data[self.rows[0]:self.rows[1],
-                                self.sc0-width:self.sc0+width])
+        back =np.percentile(im.data[self.rows[0]:self.rows[1],
+                                self.sc0-width:self.sc0+width],10)
         sig =np.median(im.uncertainty.array[self.rows[0]:self.rows[1],
                                 self.sc0-width:self.sc0+width])/np.sqrt(2*width)
 
         data = np.median(im.data[self.rows[0]:self.rows[1],
-                                 self.sc0-width:self.sc0+width],axis=1)-back,
-        if smooth > 0 : data = gaussian_filter1d(data[0], smooth/2.354)
+                                 self.sc0-width:self.sc0+width],axis=1)-back
+        if smooth > 0 : data = gaussian_filter1d(data, smooth/2.354)
 
         if plot :
             plt.figure()
@@ -1191,7 +1199,7 @@ class Trace() :
             plt.xlabel('Spatial pixel')
             plt.ylabel('Median flux')
         
-        peaks,fiber = findpeak(data, thresh=thresh*sig)
+        peaks,fiber = findpeak(data, thresh=thresh*sig, diff=diff, bundle=bundle)
         print(peaks,fiber)
         return np.array(peaks)+self.rows[0], fiber
 
@@ -1309,7 +1317,7 @@ class Trace() :
         else : return new
 
 
-    def extract(self,im,rad=None,back=[],fit=False,
+    def extract(self,im,rad=None,back=[],fit=False,new=False,
                 display=None,plot=None,medfilt=None,nout=None,threads=0) :
         """ Extract spectrum given trace(s)
 
@@ -1367,6 +1375,8 @@ class Trace() :
         if threads == 0 : 
             skip=1
             npars=ncols
+            skip=ncols
+            npars=1
         else : 
             skip=ncols//threads
             npars=threads
@@ -1384,6 +1394,7 @@ class Trace() :
         if threads > 0 :
             pool = mp.Pool(threads)
             if fit : output = pool.map_async(extract_col_fit, pars).get()
+            elif new : output = pool.map_async(extract_col_new, pars).get()
             else : output = pool.map_async(extract_col, pars).get()
             pool.close()
             pool.join()
@@ -1398,6 +1409,7 @@ class Trace() :
             col=0
             for par in pars :
                 if fit : out=extract_col_fit(par)
+                elif new : out=extract_col_new(par)
                 else : out=extract_col(par)
                 spec[self.index,col:col+skip] = out[0]
                 sig[self.index,col:col+skip] = out[1]
@@ -1502,7 +1514,7 @@ class FluxCal() :
     ----------
     """
 
-    def __init__(self,degree=3) :
+    def __init__(self,degree=3,median=False) :
         self.nstars = 0
         self.waves = []
         self.weights = []
@@ -1514,6 +1526,9 @@ class FluxCal() :
         self.degree = degree
         self.median = False
         self.mean = True
+        if median : 
+            self.mean = False
+            self.median = True
         self.response_curve = None
 
     def extinct(self,hd,wave,file='flux/apo_extinct.dat') :
@@ -1757,7 +1772,7 @@ def gfit(data,x0,rad=10,sig=3,back=None) :
         bounds = ((yy.min(),peak-rad,0.3),(yy.max(),peak+rad,rad))
     else : 
         p0 = [data[peak],peak,sig,yy.min()]
-        bounds = ((yy.min(),peak-rad,0.3,0),(yy.max(),peak+rad,rad,yy.max()))
+        bounds = ((yy.min(),peak-rad,0.3,0),(yy.max()+1.e-3,peak+rad,rad,yy.max()))
     
     coeff, var_matrix = curve_fit(gauss, xx, yy, p0=p0,bounds=bounds)
     fit = gauss(xx,*coeff)
@@ -1784,7 +1799,7 @@ def gauss(x, *p):
 
     return A*np.exp(-(x-mu)**2/(2.*sigma**2))+back
 
-def findpeak(x,thresh,diff=10000,bundle=10000) :
+def findpeak(x,thresh,diff=10000,bundle=0) :
     """ Find peaks in vector x above input threshold
         attempts to associate an index with each depending on spacing
 
@@ -1802,16 +1817,23 @@ def findpeak(x,thresh,diff=10000,bundle=10000) :
     """
     j=[]
     fiber=[]
-    f=0
+    f=-1
     for i in range(len(x)) :
         if i>0 and i < len(x)-1 and x[i]>x[i-1] and x[i]>x[i+1] and x[i]>thresh :
-            #print(i,f)
             j.append(i)
-            if len(j)>1 and j[-1]-j[-2] > diff and f%bundle != 0: 
-                #print(j[-1],j[-2],f)
+            if len(j) > 1 :    
+                print(j[-1],j[-2],j[-1]-j[-2],f+1)
+
+            if len(j) > 1 : sep=j[-1]-j[-2]
+            if len(j)>1 and bundle> 0 and (f+1)%bundle != 0 and (f+1)%bundle != bundle-1 : 
+                #print(j[-1],j[-2],j[-1]-j[-2],f)
+                f=f+sep//diff  + 1
+            elif len(j)>1 and bundle > 0:
+                sep = (sep-13) if sep-13 > 0 else 0
+                f=f+sep//diff  + 1
+            else :
                 f=f+1
             fiber.append(f)
-            f=f+1
           
     return j,fiber
  
@@ -1889,7 +1911,6 @@ def extract_col_fit(pars) :
         spec[:,jcol] = x
     return spec,sig, mask
 
-
 def extract_col(pars) :
     """ Extract a single column, using boxcar extraction for multiple traces
     """
@@ -1915,7 +1936,7 @@ def extract_col(pars) :
                 spec[i,j]+=data[r2,j]*rfrac
                 sig[i,j]+=err[r2,j]**2*rfrac
                 sig[i,j]=np.sqrt(sig[i,j])
-                mask[i,j] = np.bitwise_or.reduce(bitmask[r1:r2+1,j]) 
+                mask[i,j] = np.bitwise_or.reduce(bitmask[r1:r2+1,j])
             if len(back) > 0 :
                 bpix = np.array([])
                 bvar = np.array([])
@@ -1924,10 +1945,74 @@ def extract_col(pars) :
                     bvar=np.append(bvar,err[icr+bk[0]:icr+bk[1],j]**2)
                 spec[i,j] -= np.median(bpix)*(r2-r1)
                 sig[i,j] = np.sqrt(sig[i,j]**2+np.sum(bvar)/(len(bvar)-1))
-          
-        except : 
+
+        except :
             print('      extraction failed',i,j,col)
             pixmask=bitmask.PixelBitMask()
             mask[i,j] = pixmask.badval('BAD_EXTRACTION')
 
     return spec,sig, mask
+
+
+def extract_col_new(pars) :
+    """ Extract a series of columns, using boxcar extraction for multiple traces
+    """
+    data,err,bitmask,cols,models,rad,pix0,back,sigmodels = pars
+    spec = np.zeros([len(models),len(cols)])
+    sig2 = np.zeros([len(models),len(cols)])
+    mask = np.zeros([len(models),len(cols)],dtype=np.uintc)
+    ny=data.shape[0]
+    ncol=data.shape[1]
+    y,x = np.mgrid[0:data.shape[0],0:data.shape[1]]
+    pix=np.zeros(data.shape)
+
+    for i,model in enumerate(models) :
+
+        # center of trace
+        ymid=model(cols)+pix0
+
+        # calculate distance of each pixel from trace center
+        ylo = np.int(np.min(np.floor(ymid-rad)))
+        yhi = np.int(np.max(np.ceil(ymid+rad)))
+        dist=y[ylo:yhi+1,:]-ymid
+
+        # determine contribution of each pixel to boxcar
+        contrib = np.zeros(dist.shape,float)
+        # full pixel contribution
+        iy,ix = np.where( (np.abs(dist)<rad-0.5) )
+        contrib[iy,ix] = 1.
+        # fractional pixel contribution
+        iy,ix = np.where( (np.abs(dist)>rad-0.5) & (np.abs(dist)<rad+0.5) )
+        contrib[iy,ix] = 1-(np.abs(dist[iy,ix])-(rad-0.5))
+ 
+        # add the contributions
+        spec[i,:] = np.sum( data[ylo:yhi+1,:]*contrib, axis=0)
+        sig2[i,:] = np.sum(err[ylo:yhi+1,:]**2*contrib, axis=0)
+        # for bitmask take bitwise_or of pixels that have full contribution
+        mask[i,:] = np.bitwise_or.reduce(bitmask[ylo:yhi+1,:]*contrib.astype(int),axis=0) 
+
+        # background
+        if len(back) > 0 :
+            dist = y - ymid
+
+            #bpix = np.array([])
+            #bvar = np.array([])
+            xpix = np.array([])
+            ypix = np.array([])
+            for bk in back :
+                iy,ix = np.where( (dist>bk[0]) & (dist<bk[1]) )
+                xpix.append(ix)
+                ypix.append(iy)
+
+            spec[i,:] -= np.median(data[ypix,xpix],axis=0)
+            sig2[i,:] = sig2[i,:]**2+np.sum(err[ypix,xpix]**2,axis=0)/(len(xpix)-1)
+                #bpix=np.append(bpix,data[icr+bk[0]:icr+bk[1],j])
+                #bvar=np.append(bvar,err[icr+bk[0]:icr+bk[1],j]**2)
+            #spec[i,j] -= np.median(bpix)*(r2-r1)
+            #sig[i,j] = np.sqrt(sig[i,j]**2+np.sum(bvar)/(len(bvar)-1))
+          
+           # print('      extraction failed',i,j,col)
+           # pixmask=bitmask.PixelBitMask()
+           # mask[i,j] = pixmask.badval('BAD_EXTRACTION')
+
+    return spec, np.sqrt(sig2), mask

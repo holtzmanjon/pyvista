@@ -39,12 +39,13 @@ def qlhtml(mjd5,clobber=False) :
     fp.write('</TABLE></BODY></HTML>\n')
     fp.close()
 
-def getconfig(config_id=None,plugid=None,specid=1) :
+def getconfig(config_id=None,plugid=None,specid=1,obs='apo') :
     """ read confSummary or plPlugMap file, return data
     """
     if config_id is not None :
-        plug,header=config(config_id,specid=specid,useconfF=True,useparent=False)
-        sky=np.where(plug['category'] == b'sky_boss')[0]
+        try : plug,header=config(config_id,specid=specid,useconfF=True,useparent=False,obs=obs)
+        except : plug,header=config(config_id,specid=specid,useconfF=False,useparent=False,obs=obs)
+        sky=np.where(np.char.find(plug['category'].astype(str),'sky') >= 0)[0]
         stan=np.where(np.char.find(plug['category'].astype(str),'standard') >= 0)[0]
         if specid == 1 :
             # substitude GAIA transformed mags for gri for gaia_g < 15
@@ -57,7 +58,10 @@ def getconfig(config_id=None,plugid=None,specid=1) :
             plug['mag'][j,2] = -1 * (-0.12879 + 0.24662 * x[j] - 0.027464 * x2[j] - 0.049465 * x3[j]) + gaia_G[j]
             plug['mag'][j,3] = -1 * (-0.29676 + 0.64728 * x[j] - 0.10141 * x2[j]) + gaia_G[j]
     elif plugid is not None :
-        plug,header=config(os.environ['MAPPER_DATA_N']+'/'+plugid.split('-')[1]+'/plPlugMapM-'+plugid+'.par',specid=specid,struct='PLUGMAPOBJ')
+        if obs == 'apo' :
+            plug,header=config(os.environ['MAPPER_DATA_N']+'/'+plugid.split('-')[1]+'/plPlugMapM-'+plugid+'.par',specid=specid,struct='PLUGMAPOBJ')
+        else :
+            plug,header=config(os.environ['MAPPER_DATA_S']+'/'+plugid.split('-')[1]+'/plPlugMapM-'+plugid+'.par',specid=specid,struct='PLUGMAPOBJ')
         sky=np.where(plug['objType'] == b'SKY')[0]
         stan=np.where(np.char.find(plug['objType'].astype(str),'STD') >= 0)[0]
         plug=Table(plug)
@@ -94,7 +98,7 @@ def getconfig(config_id=None,plugid=None,specid=1) :
     return np.array(plug),header,sky,stan
 
 
-def config(cid,specid=2,struct='FIBERMAP',useparent=True,useconfF=False) :
+def config(cid,specid=2,struct='FIBERMAP',useparent=True,useconfF=False,obs='apo') :
     """ Get FIBERMAP structure from configuration file for specified instrument
            including getting parent_configuration if needed (for scrambled configurations)
     """
@@ -103,12 +107,13 @@ def config(cid,specid=2,struct='FIBERMAP',useparent=True,useconfF=False) :
     if isinstance(cid,str):
         conf = yanny(cid)
     else :
-        conf = yanny(os.environ['SDSSCORE_DIR']+'/apo/summary_files/{:04d}XX/{:s}-{:d}.par'.format(cid//100,confname,cid))
+        print(os.environ['SDSSCORE_DIR']+'/{:s}/summary_files/{:04d}XX/{:s}-{:d}.par'.format(obs,cid//100,confname,cid))
+        conf = yanny(os.environ['SDSSCORE_DIR']+'/{:s}/summary_files/{:0>4d}XX/{:s}-{:d}.par'.format(obs,cid//100,confname,cid))
         if useparent :
             try :
                 parent = int(conf['parent_configuration'])
                 if parent > 0 :
-                    conf = yanny(os.environ['SDSSCORE_DIR']+'/apo/summary_files/{:04d}XX/{:s}-{:d}.par'.format(parent//100,confname,parent))
+                    conf = yanny(os.environ['SDSSCORE_DIR']+'/{:s}/summary_files/{:04d}XX/{:s}-{:d}.par'.format(obs,parent//100,confname,parent))
             except :  pass
 
     if conf == None or len(conf) == 0 :
@@ -244,7 +249,7 @@ def map(ims,keys,cid=None,thresh=100) :
     pdb.set_trace()
     plt.close()
         
-def db_exp(exp_no,cam,header,config=None) :
+def db_exp(exp_no,cam,header,config=None,obs='apo',offra=0.,offdec=0.) :
 
     tab_exp=Table()
     tab_exp['exp_no' ] = [exp_no]
@@ -253,11 +258,17 @@ def db_exp(exp_no,cam,header,config=None) :
     tab_exp['dateobs' ] = [header['DATE-OBS']]
     tab_exp['ra' ] = [header['RA']]
     tab_exp['dec' ] = [header['DEC']]
-    tab_exp['cherno_offset_ra' ] = [0.]
-    tab_exp['cherno_offset_dec' ] = [0.]
-    tab_exp['pa' ] = [header['ROTPOS']]
-    tab_exp['ipa' ] = [header['IPA']]
-    tab_exp['secz' ] = [1/np.cos((90-header['ALT'])*np.pi/180.)]
+    tab_exp['focus' ] = [header['FOCUS']]
+    tab_exp['cherno_offset_ra' ] = [offra]
+    tab_exp['cherno_offset_dec' ] = [offdec]
+
+    if obs == 'apo' :
+        tab_exp['pa' ] = [header['ROTPOS']]
+        tab_exp['secz' ] = [1/np.cos((90-header['ALT'])*np.pi/180.)]
+    else :
+        tab_exp['pa' ] = [90.064 - header['IPA']]
+        tab_exp['secz' ] = [header['ARMASS']]
+
     if 'CONFIGID' in header.keys() : tab_exp['config_id' ] = [header['CONFIGID']]
     elif 'CONFID' in header.keys() : tab_exp['config_id' ] = [header['CONFID']]
     elif 'PLATEID' in header.keys() : tab_exp['config_id' ] = [header['PLATEID']]
@@ -339,11 +350,12 @@ def db_spec(plug, header, confSummary = True) :
 
     return tab_spec
 
-def db_visit(mjd, field) :
+def db_visit(mjd, field, obs) :
 
     tab_visit=Table()
     tab_visit['mjd'] = [mjd]
     tab_visit['field_id'] =  [field]
+    tab_visit['observatory'] = [obs]
 
     return tab_visit
 
