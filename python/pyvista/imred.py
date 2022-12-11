@@ -236,6 +236,7 @@ class Reducer() :
               date.append(a['DATE-OBS'])
           except KeyError :
               print('file {:s} does not have DATE-OBS'.format(file))
+              date.append('')
         date=np.array(date)
         sort=np.argsort(date)
 
@@ -269,7 +270,7 @@ class Reducer() :
               row.append(str(a[col]))
               if htmlfile is not None:
                   fp.write('<TD>{:s}\n'.format(str(a[col])))
-            except: pass
+            except: row.append('')
           tab.add_row(row)
         if htmlfile is not None :
             fp.write('</TABLE>\n')
