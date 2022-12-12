@@ -864,6 +864,10 @@ class Trace() :
                 else :
                     raise ValueError('Only Polynomial1D currently implemented')
             try :
+                self.sigdegree = tab['sigdegree'][0]
+            except :
+                self.sigdegree = sigdegree
+            try :
                 sigcoeffs = tab['sigcoeffs'][0]
                 self.sigmodel = []
                 for row in sigcoeffs :
