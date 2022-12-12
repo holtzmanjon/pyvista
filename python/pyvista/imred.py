@@ -228,6 +228,9 @@ class Reducer() :
 
         """
         files=glob.glob(self.dir+'/*{:s}*.'.format(channel)+ext)
+        if len(files) == 0 :
+            print('no files found matching: ',
+                  self.dir+'/*{:s}*.'.format(channel)+ext)
 
         date=[]
         for file in files :
@@ -1116,8 +1119,9 @@ class Reducer() :
 
             # display final combined frame and individual frames relative to combined
             if display :
+                for i,f in enumerate(comb) :
+                    comb.header['OBJECT'] = 'Combined frame'
                 display.clear()
-                comb.header['OBJECT'] = 'Combined frame'
                 display.tv(comb,sn=True)
                 display.tv(comb)
                 if comb.mask is not None :
@@ -1162,7 +1166,8 @@ class Reducer() :
         """
         bias= self.combine(ims,display=display,div=False,scat=scat,trim=trim,
                             type=type,sigreject=sigreject)
-        bias.header['OBJECT'] = 'Combined bias'
+        for i,f in enumerate(bias) :
+            bias[i].header['OBJECT'] = 'Combined bias'
         return bias
 
     def mkdark(self,ims,bias=None,display=None,scat=None,trim=False,
@@ -1171,7 +1176,8 @@ class Reducer() :
         """
         dark= self.combine(ims,bias=bias,display=display,trim=trim,
                             div=False,scat=scat,type=type,sigreject=sigreject)
-        dark.header['OBJECT'] = 'Combined dark'
+        for i,f in enumerate(dark) :
+            dark[i].header['OBJECT'] = 'Combined dark'
         if clip != None:
             low = np.where(dark.data < clip*dark.uncertainty.array)
             dark.data[low] = 0.
@@ -1179,7 +1185,8 @@ class Reducer() :
         return dark
 
     def mkflat(self,ims,bias=None,dark=None,scat=None,display=None,trim=False,
-               type='median',sigreject=5,spec=False,width=101,littrow=False) :
+               type='median',sigreject=5,spec=False,width=101,littrow=False,
+               snmin=50) :
         """ Driver for superflat combination 
              (with superbias if specified, normalize to normbox
 
@@ -1213,13 +1220,15 @@ class Reducer() :
         """
         flat= self.combine(ims,bias=bias,dark=dark,normalize=True,trim=trim,
                  scat=scat,display=display,type=type,sigreject=sigreject)
-        flat.header['OBJECT'] = 'Combined flat'
+        for i,f in enumerate(flat) :
+            flat[i].header['OBJECT'] = 'Combined flat'
         if spec :
-            return self.mkspecflat(flat,width=width,display=display,littrow=littrow)
+            return self.mkspecflat(flat,width=width,display=display,
+                                   littrow=littrow,snmin=snmin)
         else :
             return flat
 
-    def mkspecflat(self,flats,width=101,display=None,littrow=False) :
+    def mkspecflat(self,flats,width=101,display=None,littrow=False,snmin=50) :
         """ Spectral flat takes out variation along wavelength direction
         """
 
@@ -1256,8 +1265,8 @@ class Reducer() :
                 tmp.data = fixed
 
             # limit region for spectral shape to high S/N area (slit width)
-            snmed = np.nanmedian(tmp.data/tmp.uncertainty.array,axis=1)
-            gdrows = np.where(snmed>50)[0]
+            snmed = np.nanpercentile(tmp.data/tmp.uncertainty.array,[90],axis=1)
+            gdrows = np.where(snmed[0]>snmin)[0]
             med = convolve(np.nanmedian(tmp[gdrows,:],axis=0),
                            boxcar,boundary='extend')
             if display is not None :
