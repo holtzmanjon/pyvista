@@ -864,6 +864,10 @@ class Trace() :
                 else :
                     raise ValueError('Only Polynomial1D currently implemented')
             try :
+                self.sigdegree = tab['sigdegree'][0]
+            except :
+                self.sigdegree = sigdegree
+            try :
                 sigcoeffs = tab['sigcoeffs'][0]
                 self.sigmodel = []
                 for row in sigcoeffs :
@@ -1790,6 +1794,9 @@ def gauss(x, *p):
         back = 0.
     elif len(p) == 4 : 
         A, mu, sigma, back = p
+    elif len(p) == 5 : 
+        A, mu, sigma, back0, backslope = p
+        back = back0 + x*backslope
     elif len(p) == 7 : 
         A, mu, sigma, B, Bmu, Bsigma, back = p
         return A*np.exp(-(x-mu)**2/(2.*sigma**2))+B*np.exp(-(x-Bmu)**2/2.*Bsigma**2)+back
