@@ -816,7 +816,7 @@ class Trace() :
     Parameters
     ----------
     file : str, optional
-        filename for FITS file with WaveCal attributes
+        filename for FITS file with Trace attributes
 
     """
 
