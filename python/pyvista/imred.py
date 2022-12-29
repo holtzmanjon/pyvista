@@ -1025,10 +1025,13 @@ class Reducer() :
         # create list of images, reading and overscan subtracting
         allcube = []
         for im in ims :
-            if not isinstance(im,dataclass.Data) :
-                data = self.reduce(im, **kwargs)
-            else :
+            if isinstance(im,dataclass.Data) :
                 data = im
+            elif isinstance(im,list) :
+                #multi-channel instrument
+                data = im
+            else :
+                data = self.reduce(im, **kwargs)
             allcube.append(data)
 
         # if just one frame, put in 2D list anyway so we can use same code, allcube[nframe][nchip]
