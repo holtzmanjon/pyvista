@@ -1,4 +1,5 @@
 import numpy as np
+import shutil
 import astropy
 from photutils import DAOStarFinder
 import code
@@ -108,16 +109,13 @@ class Reducer() :
             self.formstr=config['formstr']
             self.gain=config['gain']
             self.rn=config['rn']/np.sqrt(nfowler)
-            try : self.saturation=config['saturation']
-            except KeyError: self.saturation = None
-            try :self.scale=config['scale']
-            except KeyError: self.scale = None
+            for card in ['cols','ext','saturation','scale','crbox'] :
+                try : setattr(self,card,config[card])
+                except : setattr(self,card,None)
             try : self.namp=config['namp']
             except KeyError: self.namp = 1
             try :self.transpose=config['transpose']
             except KeyError: self.transpose = False
-            try : self.crbox=config['crbox']
-            except KeyError: self.crbox=None
             self.biastype=config['biastype']
             try : self.biasavg=config['biasavg']
             except KeyError: self.biasavg=11
@@ -209,8 +207,8 @@ class Reducer() :
                 box.show()
 
 
-    def log(self,htmlfile=None,ext='fit*',hdu=0,channel='',
-            cols=['DATE-OBS','OBJNAME','RA','DEC','EXPTIME']) :
+    def log(self,htmlfile=None,ext=None,hdu=0,channel='', 
+            cols=None, display=None) :
         """ Create chronological image log from file headers
 
             If any .csv file exists, add table to htmlfile with contents 
@@ -219,14 +217,28 @@ class Reducer() :
         ----------
         htmlfile : str, default=None
                    if specified, write HTML log to htmlfile
-        cols : array-like, str, default=['DATE-OBS','OBJECT','RA','DEC','EXPTIME']
+        ext : override default extension to search
+        cols : array-like, str, default=None (use self.cols or hardcoded list)
                cards from FITS header to include
+        display : if not None, give tv tool to display each image and make
+                png thumbnail
 
         Returns
         -------
         astropy table from FITS headers
 
         """
+        if cols is None :
+            if self.cols is not None :
+                cols = self.cols
+            else :
+                cols=['DATE-OBS','OBJNAME','RA','DEC','EXPTIME']
+        if ext is None :
+            if self.ext is not None :
+                ext = self.ext
+            else :
+                ext='fit*'
+
         files=glob.glob(self.dir+'/*{:s}*.'.format(channel)+ext)
         if len(files) == 0 :
             print('no files found matching: ',
@@ -259,8 +271,6 @@ class Reducer() :
                     fp.write('<TD>{:s}\n'.format(col))
             except KeyError:
                 print('no card {:s} in header'.format(col))
-        #tab=Table(names=('FILE','DATE-OBS','RA','DEC','EXPTIME'),
-        #          dtype=('S24','S24','S16','S16','f4'))
         tab=Table(names=names,dtype=dtypes)
 
         for i in sort :
@@ -273,8 +283,17 @@ class Reducer() :
               row.append(str(a[col]))
               if htmlfile is not None:
                   fp.write('<TD>{:s}\n'.format(str(a[col])))
-            except: row.append('')
+            except: 
+              row.append('')
+              if htmlfile is not None: fp.write('<TD>\n')
           tab.add_row(row)
+          if display is not None : 
+              if not os.path.exists(files[i]+'.png') :
+                  a=fits.open(files[i])[hdu].data
+                  display.tv(a)
+                  display.savefig(files[i]+'.png')
+              fp.write('<TD><IMG SRC={:s} WIDTH=400>\n'.format(
+                      os.path.basename(files[i]+'.png')))
         if htmlfile is not None :
             fp.write('</TABLE>\n')
 
@@ -847,7 +866,7 @@ class Reducer() :
                  ims[i].uncertainty.array[bd[0],bd[1]] = np.inf
 
     def platesolve(self,im,scale=0.46,seeing=2,display=None) :
-        """ try to get plate solution with imwcs
+        """ try to get plate solution with astrometry.net
         """
         if self.verbose : print('  plate solving with local astrometry.net....')
 
@@ -876,7 +895,14 @@ class Reducer() :
         dec=im.header['DEC'].replace(' ',':')
         rad=15*(float(ra.split(':')[0])+float(ra.split(':')[1])/60.+float(ra.split(':')[2])/3600.)
         decd=(float(dec.split(':')[0])+float(dec.split(':')[1])/60.+float(dec.split(':')[2])/3600.)
-        cmd=('/usr/local/astrometry/bin/solve-field'+
+        cmdname=shutil.which('solve-field')
+        if cmdname is None :
+            cmdname=shutil.which('/usr/local/astrometry/bin/solve-field')
+        if cmdname is None :
+            print('cannot find local astrometry.net solve-field routine')
+            pdb.set_trace()
+
+        cmd=(cmdname+
             ' --scale-units arcsecperpix --scale-low {:f} --scale-high {:f}'+
             ' -X xcentroid -Y ycentroid -w 4800 -e 3000 --overwrite'+
             ' --ra {:f} --dec {:f} --radius 3 {:s}xy.fits').format(
@@ -884,56 +910,10 @@ class Reducer() :
         print(cmd)
         ret = subprocess.call(cmd.split())
 
-
-        """
-        cmd='/usr/local/astrometry/bin/new-wcs -i {:s}.fits -w {:s}xy.wcs -o {:s}w.fits'.format(tmpfile[1],os.path.basename(tmpfile[1]),os.path.basename(tmpfile[1]))
-        ret = subprocess.call(cmd.split())
-        pdb.set_trace()
-
-        im.write(tmpfile[1]+'.fits')
-        if flip : 
-            arg=''
-            objs['xcentroid'] = im.data.shape[1]-1-objs['xcentroid']
-        else : arg=''
-        objs['xcentroid','ycentroid','mag'][gd].write(
-                    tmpfile[1]+'.txt',format='ascii.fast_commented_header')
-        cmd=("imcat -c ua2 {:s}.fits".format(tmpfile[1])).split()
-        ret = subprocess.check_output(cmd)
-        def parse(ret) :
-            tmp= ret.split(b'\n')
-            x=[]
-            y=[]
-            for t in tmp[0:-1] :
-              l=t.split()
-              x.append(float(l[6]))
-              y.append(float(l[7]))
-            return x,y
-        x,y=parse(ret)
-        for xx,yy in zip(x,y) :
-            display.tvcirc(xx,yy,rad=5,color='r')
-        cmd=('imwcs -vw {:s} -d {:s}.txt -c ua2 -j {:s} {:s} -p {:.2f} {:s}.fits'.
-                format(arg,tmpfile[1],ra,dec,scale,tmpfile[1])).split()
-        cmd=('imwcs -vw {:s} -h 200 -d {:s}.txt -c ua2 -j {:s} {:s} {:s}.fits'.
-                format(arg,tmpfile[1],ra,dec,tmpfile[1])).split()
-        ret = subprocess.call(cmd)
-        print(cmd)
-        header=fits.open(os.path.basename(tmpfile[1])+'w.fits')[0].header
-        if flip :
-            header['CD1_1'] *= -1
-            header['CD2_1'] *= -1
-        w=WCS(header)
-        im.wcs=w
-        pdb.set_trace() 
-        cmd=("imcat -c ua2 {:s}w.fits".format(os.path.basename(tmpfile[1]))).split()
-        ret = subprocess.check_output(cmd)
-        x,y=parse(ret)
-        for xx,yy in zip(x,y) :
-            display.tvcirc(xx,yy,rad=5,color='g')
-
-        """
         if display is not None :
             getinput("  See plate solve stars",display)
             display.tvclear()
+
         # get WCS
         try:
             header=fits.open(os.path.basename(tmpfile[1])+'xy.wcs')[0].header
@@ -999,7 +979,8 @@ class Reducer() :
 
 
     def display(self,display,id) :
-
+        """ Reduce and display image
+        """
         im = self.reduce(id)
         if type(im) is not list : ims=[im]
         else : ims = im
