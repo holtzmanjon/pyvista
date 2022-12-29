@@ -295,7 +295,7 @@ class Reducer() :
 
         return tab
 
-    def reduce(self,num,channel=None,crbox=None,bias=None,dark=None,flat=None,
+    def reduce(self,num,channel=None,crbox=None,crsig=5,bias=None,dark=None,flat=None,
                scat=None,badpix=None,solve=False,return_list=False,display=None,
                trim=True,seeing=2) :
         """ Reads data from disk, and performs reduction steps as determined from command 
@@ -343,7 +343,7 @@ class Reducer() :
         self.badpix_fix(im,val=badpix)
         if trim and display is not None: display.tvclear()
         im=self.trim(im,trimimage=trim)
-        im=self.crrej(im,crbox=crbox,display=display)
+        im=self.crrej(im,crbox=crbox,crsig=crsig,display=display)
         if solve : 
             im=self.platesolve(im,display=display,scale=self.scale,seeing=seeing)
         if return_list and type(im) is not list : im=[im]
@@ -761,33 +761,40 @@ class Reducer() :
         else :
             im.data -= grid_z
 
-    def crrej(self,im,crbox=None,nsig=5,display=None,
+    def crrej(self,im,crbox=None,crsig=5,display=None,
               objlim=5.,fsmode='median',inbkg=None) :
         """ Cosmic ray rejection using spatial median filter or lacosmic. 
 
             If crbox is given as a 2-element list, then a box of this shape is
             run over the image. At each location, the median in the box is determined.
-            For each pixel in the box, if the value is larger than nsig*uncertainty
+            For each pixel in the box, if the value is larger than crsig*uncertainty
             (where uncertainty is taken from the input.uncertainty.array), the pixel
-            is replaced by the median.  The pixel is also flagged in input.bitmask
+            is replaced by the median.  If crsig is a list, then multiple passes
+            are done with successive values of crsig (which should then be decreasing),
+            but only neighbors of previously flagged CRs are tested. 
+            Affedted pixels are flagged in input.bitmask
 
             If crbox='lacosmic', the LA Cosmic routine, as implemented in ccdproc
-            (using astroscrappy) is run on the image, with default options. 
-            Other keywords are ignored.
+            (using astroscrappy) is run on the image, with default options,
+            but objlim, fsmode, and inbkg can be specified.
 
             Parameters
             ----------
             crbox : list, int shape of box to use for median filters, or 'lacosmic'
-            nsig  : float, default 5, threshold for CR rejection if using spatial 
-                    median filter
+            crsig  : list/float, default 5, threshold for CR rejection if using spatial 
+                    median filter; if list, do multiple passes, with all passes after
+                    first only on neighbors of previously flagged CRs
+            objlim  : for LAcosmic, default=5
+            fsmod  : for LAcosmic, default='median'
+            inbkg  : for LAcosmic, default=None
             display : None for no display, pyvista TV object to display
         """
 
         if crbox is None: return im
         if type(im) is not list : ims=[im]
         else : ims = im
-        if type(nsig) is not list : nsigs=[nsig]
-        else : nsigs = nsig
+        if type(crsig) is not list : nsigs=[crsig]
+        else : nsigs = crsig
         out=[]
         for i,(im,gain,rn) in enumerate(zip(ims,self.gain,self.rn)) :
           for iter,nsig in enumerate(nsigs) : 
