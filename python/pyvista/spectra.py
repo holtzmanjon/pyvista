@@ -1164,7 +1164,8 @@ class Trace() :
             srows.append(self.model[row](self.sc0)+self.pix0)
         self.trace(hd,srows,plot=plot,thresh=thresh,gaussian=gaussian,skip=10)
     
-    def findpeak(self,hd,sc0=None,width=100,thresh=5,plot=False,smooth=5,diff=10000,bundle=10000) :
+    def findpeak(self,hd,sc0=None,width=100,thresh=50,plot=False,
+                 smooth=5,diff=10000,bundle=10000,verbose=False) :
         """ Find peaks in spatial profile for subsequent tracing
 
             Parameters
@@ -1177,7 +1178,7 @@ class Trace() :
             width : int, default=100
                  width of window around specfied wavelength to median 
                  to give spatial profile
-            thresh : float, default = 5
+            thresh : float, default = 50
                  threshold for finding objects, as a factor to be 
                  multiplied by the median uncertainty
             smooth : float, default = 5
@@ -1222,8 +1223,9 @@ class Trace() :
             plt.xlabel('Spatial pixel')
             plt.ylabel('Median flux')
         
-        peaks,fiber = findpeak(data, thresh=thresh*sig, diff=diff, bundle=bundle)
-        print(peaks,fiber)
+        peaks,fiber = findpeak(data, thresh=thresh*sig, diff=diff, bundle=bundle,verbose=verbose)
+        print('peaks: ',peaks)
+        print('aperture/fiber: ',fiber)
         return np.array(peaks)+self.rows[0], fiber
 
  
@@ -1827,7 +1829,7 @@ def gauss(x, *p):
 
     return A*np.exp(-(x-mu)**2/(2.*sigma**2))+back
 
-def findpeak(x,thresh,diff=10000,bundle=0) :
+def findpeak(x,thresh,diff=10000,bundle=0,verbose=False) :
     """ Find peaks in vector x above input threshold
         attempts to associate an index with each depending on spacing
 
@@ -1849,7 +1851,7 @@ def findpeak(x,thresh,diff=10000,bundle=0) :
     for i in range(len(x)) :
         if i>0 and i < len(x)-1 and x[i]>x[i-1] and x[i]>x[i+1] and x[i]>thresh :
             j.append(i)
-            if len(j) > 1 :    
+            if verbose and len(j) > 1 :
                 print(j[-1],j[-2],j[-1]-j[-2],f+1)
 
             if len(j) > 1 : sep=j[-1]-j[-2]
