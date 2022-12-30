@@ -1129,14 +1129,14 @@ class Reducer() :
                                             bins=np.linspace(0.5,1.5,100),histtype='step')
                         display.tv(allcube[i][chip].data/med,min=0.5,max=1.5,
                                    object='{} / master'.format(im))
-                        getinput("    see image: {} divided by master".format(im),display)
+                        getinput("    see image: {} divided by master".format(im.header['FILE']),display)
                     else :
                         delta=5*self.rn[chip]
                         display.plotax2.hist((allcube[i][chip].data-med)[gd[0],gd[1]],
                                             bins=np.linspace(-delta,delta,100),histtype='step')
                         display.tv(allcube[i][chip].data-med,min=-delta,max=delta,
                                    object='{} - master'.format(im))
-                        getinput("    see image: {} minus master".format(im),display)
+                        getinput("    see image: {} minus master".format(im.header['FILE']),display)
 
         # return the frame
         if len(out) == 1 :
