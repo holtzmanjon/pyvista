@@ -777,7 +777,7 @@ class WaveCal() :
 
         out=np.zeros([hd.data.shape[0],len(wav)])
         sig=np.zeros_like(out)
-        mask=np.zeros_like(out,dtype=np.uintc)
+        bitmask=np.zeros_like(out,dtype=hd.bitmask.dtype)
         w=self.wave(image=hd.data.shape)
         for i in range(len(out)) :
             sort=np.argsort(w[i,:])
@@ -788,8 +788,14 @@ class WaveCal() :
             out[i,:] += np.interp(wav,w[i,sort],hd.data[i,sort])
             sig[i,:] += np.sqrt(
                             np.interp(wav,w[i,sort],hd.uncertainty.array[i,sort]**2))
+            for bit in range(0,32) :
+                mask = (hd.bitmask[i,sort] & 2**bit)
+                if mask.max() > 0 :
+                    maskint = np.interp(wav,w[i,sort],mask)
+                    bitset = np.where(maskint>0)[0] 
+                    bitmask[i,bitset] |= 2**bit
 
-        return Data(out,uncertainty=StdDevUncertainty(sig),bitmask=mask,wave=wav)
+        return Data(out,uncertainty=StdDevUncertainty(sig),bitmask=bitmask,wave=wav)
 
 class Trace() :
     """ Class for spectral traces
@@ -907,6 +913,8 @@ class Trace() :
             self.transpose = True
         elif inst == 'ARCES' :
             self.lags = range(-10,10) 
+        else :
+            self.lags = range(-50,50) 
         if rows is not None : self.rows=rows
         if lags is not None : self.lags=lags
         if model is not None : self.model=model
@@ -1184,6 +1192,9 @@ class Trace() :
 
         print('looking for peaks using {:d} pixels around {:d}, threshhold of {:f}'.
               format(2*width,self.sc0,thresh))
+
+        nrows=im.data.shape[0]
+        if self.rows is None : self.rows=[0,nrows]
 
         back =np.percentile(im.data[self.rows[0]:self.rows[1],
                                 self.sc0-width:self.sc0+width],10)
@@ -1475,6 +1486,7 @@ class Trace() :
             plot.clear()
             plot.tv(hd)
         if rows != None : self.rows = rows
+        if self.rows is None : self.rows=[0,nrows]
 
         for model in self.model :
             if plot is not None :
