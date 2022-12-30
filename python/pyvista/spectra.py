@@ -1007,7 +1007,8 @@ class Trace() :
 
         nrow = hd.data.shape[0]
         ncol = hd.data.shape[1]
-        if sc0 is None : self.sc0 = int(ncol/2)
+        if sc0 is None : 
+            if self.sc0 is None : self.sc0 = ncol//2
         else : self.sc0 = sc0
         self.spectrum = hd.data[:,self.sc0]
         self.spectrum[self.spectrum<0] = 0.
@@ -1163,15 +1164,18 @@ class Trace() :
             srows.append(self.model[row](self.sc0)+self.pix0)
         self.trace(hd,srows,plot=plot,thresh=thresh,gaussian=gaussian,skip=10)
     
-    def findpeak(self,hd,width=100,thresh=5,plot=False,smooth=5,diff=10000,bundle=10000) :
+    def findpeak(self,hd,sc0=None,width=100,thresh=5,plot=False,smooth=5,diff=10000,bundle=10000) :
         """ Find peaks in spatial profile for subsequent tracing
 
             Parameters
             ----------
             hd : Data object
                  Input image
+            sc0 : int, default=None
+                 pixel location of wavelength to make spatial profile around
+                 if none, use sc0 defined in trace
             width : int, default=100
-                 width of window around central wavelength to median 
+                 width of window around specfied wavelength to median 
                  to give spatial profile
             thresh : float, default = 5
                  threshold for finding objects, as a factor to be 
@@ -1190,19 +1194,23 @@ class Trace() :
         else :
             im = copy.deepcopy(hd)
 
+        if sc0 is None : 
+            if self.sc0 is None: self.sc0 = im.data.shape[1]//2
+            sc0 = self.sc0
+
         print('looking for peaks using {:d} pixels around {:d}, threshhold of {:f}'.
-              format(2*width,self.sc0,thresh))
+              format(2*width,sc0,thresh))
 
         nrows=im.data.shape[0]
         if self.rows is None : self.rows=[0,nrows]
 
         back =np.percentile(im.data[self.rows[0]:self.rows[1],
-                                self.sc0-width:self.sc0+width],10)
+                                    sc0-width:sc0+width],10)
         sig =np.median(im.uncertainty.array[self.rows[0]:self.rows[1],
-                                self.sc0-width:self.sc0+width])/np.sqrt(2*width)
+                                    sc0-width:sc0+width])/np.sqrt(2*width)
 
         data = np.median(im.data[self.rows[0]:self.rows[1],
-                                 self.sc0-width:self.sc0+width],axis=1)-back
+                                 sc0-width:sc0+width],axis=1)-back
         if smooth > 0 : data = gaussian_filter1d(data, smooth/2.354)
 
         if plot :
@@ -1219,7 +1227,7 @@ class Trace() :
         return np.array(peaks)+self.rows[0], fiber
 
  
-    def find(self,hd,width=100,lags=None,plot=None,display=None,inter=False,rad=3) :
+    def find(self,hd,sc0=None,width=100,lags=None,plot=None,display=None,inter=False,rad=3) :
         """ Determine shift from existing trace to input frame
 
             Parameters
@@ -1254,7 +1262,10 @@ class Trace() :
             return 
       
         # get median around central column
-        spec=np.median(im.data[:,self.sc0-width:self.sc0+width],axis=1)
+        if sc0 is None : 
+            if self.sc0 is None: self.sc0 = im.data.shape[1]//2
+            sc0 = self.sc0
+        spec=np.median(im.data[:,sc0-width:sc0+width],axis=1)
 
         # if we have a window, zero array outside of window
         try:
@@ -1273,7 +1284,7 @@ class Trace() :
             plot.plotax1.text(0.05,0.95,'obj and ref cross-section',
                               transform=plot.plotax1.transAxes)
             plot.plotax1.plot(self.spectrum/self.spectrum.max())
-            plot.plotax1.plot(im.data[:,self.sc0]/im.data[:,self.sc0].max())
+            plot.plotax1.plot(im.data[:,sc0]/im.data[:,sc0].max())
             plot.plotax1.set_xlabel('row')
             plot.histclick=False
             plot.plotax2.cla()
@@ -1487,6 +1498,7 @@ class Trace() :
             plot.tv(hd)
         if rows != None : self.rows = rows
         if self.rows is None : self.rows=[0,nrows]
+        if self.sc0 is None : self.sc0 = ncols//2
 
         for model in self.model :
             if plot is not None :
