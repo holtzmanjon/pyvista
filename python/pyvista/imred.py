@@ -1,4 +1,5 @@
 import numpy as np
+import shutil
 import astropy
 from photutils import DAOStarFinder
 import code
@@ -14,11 +15,12 @@ from astropy.convolution import convolve, Box1DKernel, Box2DKernel, Box2DKernel
 from tools import html, plots
 import ccdproc
 import scipy.signal
+from scipy.optimize import curve_fit
 import yaml
 import subprocess
 import sys
 import tempfile
-from pyvista import stars, image, tv, bitmask, dataclass
+from pyvista import stars, image, tv, bitmask, dataclass, spectra
 try: from pyvista import apogee
 except : pass
 import pyvista.data as DATA
@@ -107,16 +109,13 @@ class Reducer() :
             self.formstr=config['formstr']
             self.gain=config['gain']
             self.rn=config['rn']/np.sqrt(nfowler)
-            try : self.saturation=config['saturation']
-            except KeyError: self.saturation = None
-            try :self.scale=config['scale']
-            except KeyError: self.scale = None
+            for card in ['cols','ext','saturation','scale','crbox'] :
+                try : setattr(self,card,config[card])
+                except : setattr(self,card,None)
             try : self.namp=config['namp']
             except KeyError: self.namp = 1
             try :self.transpose=config['transpose']
             except KeyError: self.transpose = False
-            try : self.crbox=config['crbox']
-            except KeyError: self.crbox=None
             self.biastype=config['biastype']
             try : self.biasavg=config['biasavg']
             except KeyError: self.biasavg=11
@@ -208,8 +207,8 @@ class Reducer() :
                 box.show()
 
 
-    def log(self,htmlfile=None,ext='fit*',hdu=0,channel='',
-            cols=['DATE-OBS','OBJNAME','RA','DEC','EXPTIME']) :
+    def log(self,htmlfile=None,ext=None,hdu=0,channel='', 
+            cols=None, display=None) :
         """ Create chronological image log from file headers
 
             If any .csv file exists, add table to htmlfile with contents 
@@ -218,15 +217,32 @@ class Reducer() :
         ----------
         htmlfile : str, default=None
                    if specified, write HTML log to htmlfile
-        cols : array-like, str, default=['DATE-OBS','OBJECT','RA','DEC','EXPTIME']
+        ext : override default extension to search
+        cols : array-like, str, default=None (use self.cols or hardcoded list)
                cards from FITS header to include
+        display : if not None, give tv tool to display each image and make
+                png thumbnail
 
         Returns
         -------
         astropy table from FITS headers
 
         """
+        if cols is None :
+            if self.cols is not None :
+                cols = self.cols
+            else :
+                cols=['DATE-OBS','OBJNAME','RA','DEC','EXPTIME']
+        if ext is None :
+            if self.ext is not None :
+                ext = self.ext
+            else :
+                ext='fit*'
+
         files=glob.glob(self.dir+'/*{:s}*.'.format(channel)+ext)
+        if len(files) == 0 :
+            print('no files found matching: ',
+                  self.dir+'/*{:s}*.'.format(channel)+ext)
 
         date=[]
         for file in files :
@@ -235,6 +251,7 @@ class Reducer() :
               date.append(a['DATE-OBS'])
           except KeyError :
               print('file {:s} does not have DATE-OBS'.format(file))
+              date.append('')
         date=np.array(date)
         sort=np.argsort(date)
 
@@ -254,8 +271,6 @@ class Reducer() :
                     fp.write('<TD>{:s}\n'.format(col))
             except KeyError:
                 print('no card {:s} in header'.format(col))
-        #tab=Table(names=('FILE','DATE-OBS','RA','DEC','EXPTIME'),
-        #          dtype=('S24','S24','S16','S16','f4'))
         tab=Table(names=names,dtype=dtypes)
 
         for i in sort :
@@ -268,8 +283,17 @@ class Reducer() :
               row.append(str(a[col]))
               if htmlfile is not None:
                   fp.write('<TD>{:s}\n'.format(str(a[col])))
-            except: pass
+            except: 
+              row.append('')
+              if htmlfile is not None: fp.write('<TD>\n')
           tab.add_row(row)
+          if display is not None : 
+              if not os.path.exists(files[i]+'.png') :
+                  a=fits.open(files[i])[hdu].data
+                  display.tv(a)
+                  display.savefig(files[i]+'.png')
+              fp.write('<TD><IMG SRC={:s} WIDTH=400>\n'.format(
+                      os.path.basename(files[i]+'.png')))
         if htmlfile is not None :
             fp.write('</TABLE>\n')
 
@@ -318,7 +342,7 @@ class Reducer() :
                 os.remove(filename)
                 writer.append_data(image)
 
-    def reduce(self,num,channel=None,crbox=None,bias=None,dark=None,flat=None,
+    def reduce(self,num,channel=None,crbox=None,crsig=5,bias=None,dark=None,flat=None,
                scat=None,badpix=None,solve=False,return_list=False,display=None,
                trim=True,seeing=2) :
         """ Reads data from disk, and performs reduction steps as determined from command 
@@ -366,7 +390,7 @@ class Reducer() :
         self.badpix_fix(im,val=badpix)
         if trim and display is not None: display.tvclear()
         im=self.trim(im,trimimage=trim)
-        im=self.crrej(im,crbox=crbox,display=display)
+        im=self.crrej(im,crbox=crbox,crsig=crsig,display=display)
         if solve : 
             im=self.platesolve(im,display=display,scale=self.scale,seeing=seeing)
         if return_list and type(im) is not list : im=[im]
@@ -784,33 +808,40 @@ class Reducer() :
         else :
             im.data -= grid_z
 
-    def crrej(self,im,crbox=None,nsig=5,display=None,
+    def crrej(self,im,crbox=None,crsig=5,display=None,
               objlim=5.,fsmode='median',inbkg=None) :
         """ Cosmic ray rejection using spatial median filter or lacosmic. 
 
             If crbox is given as a 2-element list, then a box of this shape is
             run over the image. At each location, the median in the box is determined.
-            For each pixel in the box, if the value is larger than nsig*uncertainty
+            For each pixel in the box, if the value is larger than crsig*uncertainty
             (where uncertainty is taken from the input.uncertainty.array), the pixel
-            is replaced by the median.  The pixel is also flagged in input.bitmask
+            is replaced by the median.  If crsig is a list, then multiple passes
+            are done with successive values of crsig (which should then be decreasing),
+            but only neighbors of previously flagged CRs are tested. 
+            Affedted pixels are flagged in input.bitmask
 
             If crbox='lacosmic', the LA Cosmic routine, as implemented in ccdproc
-            (using astroscrappy) is run on the image, with default options. 
-            Other keywords are ignored.
+            (using astroscrappy) is run on the image, with default options,
+            but objlim, fsmode, and inbkg can be specified.
 
             Parameters
             ----------
             crbox : list, int shape of box to use for median filters, or 'lacosmic'
-            nsig  : float, default 5, threshold for CR rejection if using spatial 
-                    median filter
+            crsig  : list/float, default 5, threshold for CR rejection if using spatial 
+                    median filter; if list, do multiple passes, with all passes after
+                    first only on neighbors of previously flagged CRs
+            objlim  : for LAcosmic, default=5
+            fsmod  : for LAcosmic, default='median'
+            inbkg  : for LAcosmic, default=None
             display : None for no display, pyvista TV object to display
         """
 
         if crbox is None: return im
         if type(im) is not list : ims=[im]
         else : ims = im
-        if type(nsig) is not list : nsigs=[nsig]
-        else : nsigs = nsig
+        if type(crsig) is not list : nsigs=[crsig]
+        else : nsigs = crsig
         out=[]
         for i,(im,gain,rn) in enumerate(zip(ims,self.gain,self.rn)) :
           for iter,nsig in enumerate(nsigs) : 
@@ -870,7 +901,7 @@ class Reducer() :
                  ims[i].uncertainty.array[bd[0],bd[1]] = np.inf
 
     def platesolve(self,im,scale=0.46,seeing=2,display=None) :
-        """ try to get plate solution with imwcs
+        """ try to get plate solution with astrometry.net
         """
         if self.verbose : print('  plate solving with local astrometry.net....')
 
@@ -899,7 +930,14 @@ class Reducer() :
         dec=im.header['DEC'].replace(' ',':')
         rad=15*(float(ra.split(':')[0])+float(ra.split(':')[1])/60.+float(ra.split(':')[2])/3600.)
         decd=(float(dec.split(':')[0])+float(dec.split(':')[1])/60.+float(dec.split(':')[2])/3600.)
-        cmd=('/usr/local/astrometry/bin/solve-field'+
+        cmdname=shutil.which('solve-field')
+        if cmdname is None :
+            cmdname=shutil.which('/usr/local/astrometry/bin/solve-field')
+        if cmdname is None :
+            print('cannot find local astrometry.net solve-field routine')
+            pdb.set_trace()
+
+        cmd=(cmdname+
             ' --scale-units arcsecperpix --scale-low {:f} --scale-high {:f}'+
             ' -X xcentroid -Y ycentroid -w 4800 -e 3000 --overwrite'+
             ' --ra {:f} --dec {:f} --radius 3 {:s}xy.fits').format(
@@ -907,56 +945,10 @@ class Reducer() :
         print(cmd)
         ret = subprocess.call(cmd.split())
 
-
-        """
-        cmd='/usr/local/astrometry/bin/new-wcs -i {:s}.fits -w {:s}xy.wcs -o {:s}w.fits'.format(tmpfile[1],os.path.basename(tmpfile[1]),os.path.basename(tmpfile[1]))
-        ret = subprocess.call(cmd.split())
-        pdb.set_trace()
-
-        im.write(tmpfile[1]+'.fits')
-        if flip : 
-            arg=''
-            objs['xcentroid'] = im.data.shape[1]-1-objs['xcentroid']
-        else : arg=''
-        objs['xcentroid','ycentroid','mag'][gd].write(
-                    tmpfile[1]+'.txt',format='ascii.fast_commented_header')
-        cmd=("imcat -c ua2 {:s}.fits".format(tmpfile[1])).split()
-        ret = subprocess.check_output(cmd)
-        def parse(ret) :
-            tmp= ret.split(b'\n')
-            x=[]
-            y=[]
-            for t in tmp[0:-1] :
-              l=t.split()
-              x.append(float(l[6]))
-              y.append(float(l[7]))
-            return x,y
-        x,y=parse(ret)
-        for xx,yy in zip(x,y) :
-            display.tvcirc(xx,yy,rad=5,color='r')
-        cmd=('imwcs -vw {:s} -d {:s}.txt -c ua2 -j {:s} {:s} -p {:.2f} {:s}.fits'.
-                format(arg,tmpfile[1],ra,dec,scale,tmpfile[1])).split()
-        cmd=('imwcs -vw {:s} -h 200 -d {:s}.txt -c ua2 -j {:s} {:s} {:s}.fits'.
-                format(arg,tmpfile[1],ra,dec,tmpfile[1])).split()
-        ret = subprocess.call(cmd)
-        print(cmd)
-        header=fits.open(os.path.basename(tmpfile[1])+'w.fits')[0].header
-        if flip :
-            header['CD1_1'] *= -1
-            header['CD2_1'] *= -1
-        w=WCS(header)
-        im.wcs=w
-        pdb.set_trace() 
-        cmd=("imcat -c ua2 {:s}w.fits".format(os.path.basename(tmpfile[1]))).split()
-        ret = subprocess.check_output(cmd)
-        x,y=parse(ret)
-        for xx,yy in zip(x,y) :
-            display.tvcirc(xx,yy,rad=5,color='g')
-
-        """
         if display is not None :
             getinput("  See plate solve stars",display)
             display.tvclear()
+
         # get WCS
         try:
             header=fits.open(os.path.basename(tmpfile[1])+'xy.wcs')[0].header
@@ -1022,7 +1014,8 @@ class Reducer() :
 
 
     def display(self,display,id) :
-
+        """ Reduce and display image
+        """
         im = self.reduce(id)
         if type(im) is not list : ims=[im]
         else : ims = im
@@ -1067,10 +1060,13 @@ class Reducer() :
         # create list of images, reading and overscan subtracting
         allcube = []
         for im in ims :
-            if not isinstance(im,dataclass.Data) :
-                data = self.reduce(im, **kwargs)
-            else :
+            if isinstance(im,dataclass.Data) :
                 data = im
+            elif isinstance(im,list) :
+                #multi-channel instrument
+                data = im
+            else :
+                data = self.reduce(im, **kwargs)
             allcube.append(data)
 
         # if just one frame, put in 2D list anyway so we can use same code, allcube[nframe][nchip]
@@ -1142,8 +1138,9 @@ class Reducer() :
 
             # display final combined frame and individual frames relative to combined
             if display :
+                for i,f in enumerate(comb) :
+                    comb.header['OBJECT'] = 'Combined frame'
                 display.clear()
-                comb.header['OBJECT'] = 'Combined frame'
                 display.tv(comb,sn=True)
                 display.tv(comb)
                 if comb.mask is not None :
@@ -1167,14 +1164,14 @@ class Reducer() :
                                             bins=np.linspace(0.5,1.5,100),histtype='step')
                         display.tv(allcube[i][chip].data/med,min=0.5,max=1.5,
                                    object='{} / master'.format(im))
-                        getinput("    see image: {} divided by master".format(im),display)
+                        getinput("    see image: {} divided by master".format(allcube[i][chip].header['FILE']),display)
                     else :
                         delta=5*self.rn[chip]
                         display.plotax2.hist((allcube[i][chip].data-med)[gd[0],gd[1]],
                                             bins=np.linspace(-delta,delta,100),histtype='step')
                         display.tv(allcube[i][chip].data-med,min=-delta,max=delta,
                                    object='{} - master'.format(im))
-                        getinput("    see image: {} minus master".format(im),display)
+                        getinput("    see image: {} minus master".format(allcube[i][chip].header['FILE']),display)
 
         # return the frame
         if len(out) == 1 :
@@ -1188,7 +1185,8 @@ class Reducer() :
         """
         bias= self.combine(ims,display=display,div=False,scat=scat,trim=trim,
                             type=type,sigreject=sigreject)
-        bias.header['OBJECT'] = 'Combined bias'
+        for i,f in enumerate(bias) :
+            bias[i].header['OBJECT'] = 'Combined bias'
         return bias
 
     def mkdark(self,ims,bias=None,display=None,scat=None,trim=False,
@@ -1197,7 +1195,8 @@ class Reducer() :
         """
         dark= self.combine(ims,bias=bias,display=display,trim=trim,
                             div=False,scat=scat,type=type,sigreject=sigreject)
-        dark.header['OBJECT'] = 'Combined dark'
+        for i,f in enumerate(dark) :
+            dark[i].header['OBJECT'] = 'Combined dark'
         if clip != None:
             low = np.where(dark.data < clip*dark.uncertainty.array)
             dark.data[low] = 0.
@@ -1205,7 +1204,8 @@ class Reducer() :
         return dark
 
     def mkflat(self,ims,bias=None,dark=None,scat=None,display=None,trim=False,
-               type='median',sigreject=5,spec=False,width=101) :
+               type='median',sigreject=5,spec=False,width=101,littrow=False,
+               snmin=50) :
         """ Driver for superflat combination 
              (with superbias if specified, normalize to normbox
 
@@ -1226,6 +1226,10 @@ class Reducer() :
             spec : bool, default=False
                   if True, creates "spectral" flat by taking out wavelength
                   shape
+            littrow : bool, default=False
+                  if True, attempts to fit and remove Littrow ghost from flat,
+                  LITTROW_GHOST bit must be set in bitmask first to identify ghost location
+                  only relevant if spec==True
             width : int, default=101
                   window width for removing spectral shape for spec=True
 
@@ -1235,13 +1239,15 @@ class Reducer() :
         """
         flat= self.combine(ims,bias=bias,dark=dark,normalize=True,trim=trim,
                  scat=scat,display=display,type=type,sigreject=sigreject)
-        flat.header['OBJECT'] = 'Combined flat'
+        for i,f in enumerate(flat) :
+            flat[i].header['OBJECT'] = 'Combined flat'
         if spec :
-            return self.mkspecflat(flat,width=width,display=display)
+            return self.mkspecflat(flat,width=width,display=display,
+                                   littrow=littrow,snmin=snmin)
         else :
             return flat
 
-    def mkspecflat(self,flats,width=101,display=None) :
+    def mkspecflat(self,flats,width=101,display=None,littrow=False,snmin=50) :
         """ Spectral flat takes out variation along wavelength direction
         """
 
@@ -1255,9 +1261,31 @@ class Reducer() :
             else :
                 tmp = copy.deepcopy(flat)
             nrows=tmp.data.shape[0]
+            # subtract Littrow ghost
+            if littrow :
+                print('   fitting/subtracting Littrow ghost')
+                pixmask=bitmask.PixelBitMask()
+                nmed2=10
+                fixed = copy.deepcopy(tmp.data)
+                for i in np.arange(nmed2,tmp.shape[0]-nmed2) :
+                    try :
+                        pix=np.where((tmp.bitmask[i]&pixmask.getval('LITTROW_GHOST')) > 0)[0]
+                        yy=np.median(tmp.data[i-nmed2:i+nmed2,pix.min()-10:pix.max()+10],axis=0)
+                        xx=np.arange(yy.size)
+                        p0 = [.05,(pix.max()-pix.min())/2+10,(pix.max()-pix.min())/4.,1.,0.]
+                        coeffs,var = curve_fit(spectra.gauss,xx,yy,p0)
+                        xx=np.arange(tmp.data.shape[1])
+                        if coeffs[3] > 0.5 :
+                            coeffs[3] = 0.
+                            coeffs[4] = 0.
+                            coeffs[1] += pix.min()-10
+                            fixed[i] -= spectra.gauss(xx,*coeffs)
+                    except: pass
+                tmp.data = fixed
+
             # limit region for spectral shape to high S/N area (slit width)
-            snmed = np.nanmedian(tmp.data/tmp.uncertainty.array,axis=1)
-            gdrows = np.where(snmed>50)[0]
+            snmed = np.nanpercentile(tmp.data/tmp.uncertainty.array,[90],axis=1)
+            gdrows = np.where(snmed[0]>snmin)[0]
             med = convolve(np.nanmedian(tmp[gdrows,:],axis=0),
                            boxcar,boundary='extend')
             if display is not None :

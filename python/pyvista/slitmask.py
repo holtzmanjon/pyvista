@@ -1,10 +1,13 @@
 import copy
 import pdb
 import numpy as np
-from pyvista import simulate, tv, stars
+from pyvista import simulate, tv, stars, spectra
 from skimage.transform import SimilarityTransform, EuclideanTransform
 from sklearn.cluster import KMeans, MeanShift
 from astropy.table import Table
+from scipy.ndimage import gaussian_filter
+from scipy.optimize import curve_fit
+from numpy.polynomial import Polynomial
 
 scale=0.258
 
@@ -211,3 +214,97 @@ def test(n=5,rot=0.05,dx=1,dy=-1,display=None) :
         stars.mark(display,locstars,color='g',exit=True)
 
 
+def findslits(data,smooth=3,thresh=1500,display=None,cent=None) :
+    """ Find slits in a multi-slit flat field image
+
+    """
+
+    # find initial set of edges from center of image
+    if cent == None :
+        cent = int(data.shape[0] / 2.)
+    med = np.median(data[cent-25:cent+25],axis=0)
+    deriv = gaussian_filter(med[1:] - med[0:-1],smooth)
+    left_edges,tmp = spectra.findpeak(deriv,thresh)
+    right_edges,tmp = spectra.findpeak(-deriv,thresh)
+    if display != None :
+        for peak in left_edges :
+            display.ax.plot([peak,peak],[cent,cent],'bo')
+        for peak in right_edges :
+            display.ax.plot([peak,peak],[cent,cent],'ro')
+
+    if len(left_edges) != len(right_edges) :
+        print("didn't find matching number of left and right edges!")
+    pdb.set_trace()
+
+    all_left=[]
+    all_right=[]
+    allrows=[]
+
+    # work from center to end
+    left = copy.copy(left_edges) 
+    right = copy.copy(right_edges) 
+    for irow in np.arange(cent,data.shape[0]-50,50) :
+        left=fitpeak(data,irow,left,smooth=smooth,medwidth=25,width=5)
+        all_left.append(left)
+        right=fitpeak(data,irow,right,smooth=smooth,medwidth=25,width=5,desc=True)
+        all_right.append(right)
+        allrows.append(irow)
+
+    # work from center to beginning
+    left = copy.copy(left_edges) 
+    right = copy.copy(right_edges) 
+    for irow in np.arange(cent-50,50,-50) :
+        left=fitpeak(data,irow,left,smooth=smooth,medwidth=25,width=5)
+        all_left.append(left)
+        right=fitpeak(data,irow,right,smooth=smooth,medwidth=25,width=5,desc=True)
+        all_right.append(right)
+        allrows.append(irow)
+
+    # fit the edges
+    allrows = np.array(allrows)
+    all_left = np.array(all_left)
+    all_right = np.array(all_right)
+    all_left_fit = []
+    all_right_fit = []
+    for ipeak in range(len(left_edges)) :
+        poly = Polynomial.fit(allrows,all_left[:,ipeak],deg=2)
+        if display != None :
+            xx = np.arange(data.shape[0])
+            display.ax.plot(poly(xx),xx,color='b')
+        all_left_fit.append(poly)
+
+    for ipeak in range(len(right_edges)) :
+        poly = Polynomial.fit(allrows,all_right[:,ipeak],deg=2)
+        if display != None :
+            xx = np.arange(data.shape[0])
+            display.ax.plot(poly(xx),xx,color='r')
+        all_right_fit.append(poly)
+
+    return all_left_fit,all_right_fit
+
+def fitpeak(data,irow,peaks,smooth=3,width=3,medwidth=25,desc=False) :
+    """ Find slit edges given input set of locations
+    """
+    med = np.median(data[irow-medwidth:irow+medwidth],axis=0)
+    deriv = gaussian_filter(med[1:] - med[0:-1],smooth)
+    if desc : deriv *= -1
+    newpeaks=[]
+    for peak in peaks :
+        ipeak = int(peak)
+        p0 = [deriv[ipeak-width:ipeak+width].max(),
+              deriv[ipeak-width:ipeak+width].argmax()+ipeak-width,1.,0.]
+        xx = np.arange(ipeak-width,ipeak+width+1)
+        yy = deriv[ipeak-width:ipeak+width+1]
+        try :
+            coeffs,var = curve_fit(spectra.gauss,xx,yy,p0=p0)
+            print(irow,peak,coeffs[1])
+            newpeaks.append(coeffs[1])
+        except :
+            print(irow,peak)
+            pdb.set_trace()
+            newpeaks.append(peak)
+    peaks = np.array(newpeaks)
+
+    return peaks
+
+       

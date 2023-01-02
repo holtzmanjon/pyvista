@@ -580,7 +580,7 @@ def process(file,red,tab,bias=None,dark=None,flat=None,display=None, solve=True,
 
     return phot
 
-def dostar(red,obj,date,filts=['SR+D25'],seeing=12,dark=None,flats=[None],
+def dostar(red,obj,date,filts=['SR+D25'],seeing=12,dark=None,flats=[None],solve=True,
            rad=np.arange(5,45,5), skyrad=[50,60],clobber=False,threads=32,display=None) :
 
     if dark is None : print('No dark frame')
@@ -596,7 +596,7 @@ def dostar(red,obj,date,filts=['SR+D25'],seeing=12,dark=None,flats=[None],
         files.sort()
         if tab == None :
             print('no existing star table ....')
-            out = red.reduce(files[0],dark=dark,flat=flat,solve=True,seeing=seeing)
+            out = red.reduce(files[0],dark=dark,flat=flat,solve=solve,seeing=seeing)
             t=tv.TV()
             t.tv(out)
             print('mark desired stars...')
@@ -606,7 +606,7 @@ def dostar(red,obj,date,filts=['SR+D25'],seeing=12,dark=None,flats=[None],
       
         sav='{:s}.{:s}.{:s}'.format(obj,date,filt) 
         if not os.path.exists(sav+'.fits') or clobber :
-            out = process_all(files,red,tab,flat=flat,dark=dark,seeing=seeing,
+            out = process_all(files,red,tab,flat=flat,dark=dark,seeing=seeing,solve=solve,
                               rad=rad,skyrad=skyrad,threads=threads,display=display)
             out.write(sav+'.fits',overwrite=True)
         else :

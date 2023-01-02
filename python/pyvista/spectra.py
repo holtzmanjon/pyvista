@@ -777,7 +777,7 @@ class WaveCal() :
 
         out=np.zeros([hd.data.shape[0],len(wav)])
         sig=np.zeros_like(out)
-        mask=np.zeros_like(out,dtype=np.uintc)
+        bitmask=np.zeros_like(out,dtype=hd.bitmask.dtype)
         w=self.wave(image=hd.data.shape)
         for i in range(len(out)) :
             sort=np.argsort(w[i,:])
@@ -788,8 +788,14 @@ class WaveCal() :
             out[i,:] += np.interp(wav,w[i,sort],hd.data[i,sort])
             sig[i,:] += np.sqrt(
                             np.interp(wav,w[i,sort],hd.uncertainty.array[i,sort]**2))
+            for bit in range(0,32) :
+                mask = (hd.bitmask[i,sort] & 2**bit)
+                if mask.max() > 0 :
+                    maskint = np.interp(wav,w[i,sort],mask)
+                    bitset = np.where(maskint>0)[0] 
+                    bitmask[i,bitset] |= 2**bit
 
-        return Data(out,uncertainty=StdDevUncertainty(sig),bitmask=mask,wave=wav)
+        return Data(out,uncertainty=StdDevUncertainty(sig),bitmask=bitmask,wave=wav)
 
 class Trace() :
     """ Class for spectral traces
@@ -816,7 +822,7 @@ class Trace() :
     Parameters
     ----------
     file : str, optional
-        filename for FITS file with WaveCal attributes
+        filename for FITS file with Trace attributes
 
     """
 
@@ -864,6 +870,10 @@ class Trace() :
                 else :
                     raise ValueError('Only Polynomial1D currently implemented')
             try :
+                self.sigdegree = tab['sigdegree'][0]
+            except :
+                self.sigdegree = sigdegree
+            try :
                 sigcoeffs = tab['sigcoeffs'][0]
                 self.sigmodel = []
                 for row in sigcoeffs :
@@ -903,6 +913,8 @@ class Trace() :
             self.transpose = True
         elif inst == 'ARCES' :
             self.lags = range(-10,10) 
+        else :
+            self.lags = range(-50,50) 
         if rows is not None : self.rows=rows
         if lags is not None : self.lags=lags
         if model is not None : self.model=model
@@ -995,7 +1007,8 @@ class Trace() :
 
         nrow = hd.data.shape[0]
         ncol = hd.data.shape[1]
-        if sc0 is None : self.sc0 = int(ncol/2)
+        if sc0 is None : 
+            if self.sc0 is None : self.sc0 = ncol//2
         else : self.sc0 = sc0
         self.spectrum = hd.data[:,self.sc0]
         self.spectrum[self.spectrum<0] = 0.
@@ -1151,17 +1164,21 @@ class Trace() :
             srows.append(self.model[row](self.sc0)+self.pix0)
         self.trace(hd,srows,plot=plot,thresh=thresh,gaussian=gaussian,skip=10)
     
-    def findpeak(self,hd,width=100,thresh=5,plot=False,smooth=5,diff=10000,bundle=10000) :
+    def findpeak(self,hd,sc0=None,width=100,thresh=50,plot=False,
+                 smooth=5,diff=10000,bundle=10000,verbose=False) :
         """ Find peaks in spatial profile for subsequent tracing
 
             Parameters
             ----------
             hd : Data object
                  Input image
+            sc0 : int, default=None
+                 pixel location of wavelength to make spatial profile around
+                 if none, use sc0 defined in trace
             width : int, default=100
-                 width of window around central wavelength to median 
+                 width of window around specfied wavelength to median 
                  to give spatial profile
-            thresh : float, default = 5
+            thresh : float, default = 50
                  threshold for finding objects, as a factor to be 
                  multiplied by the median uncertainty
             smooth : float, default = 5
@@ -1178,16 +1195,23 @@ class Trace() :
         else :
             im = copy.deepcopy(hd)
 
+        if sc0 is None : 
+            if self.sc0 is None: self.sc0 = im.data.shape[1]//2
+            sc0 = self.sc0
+
         print('looking for peaks using {:d} pixels around {:d}, threshhold of {:f}'.
-              format(2*width,self.sc0,thresh))
+              format(2*width,sc0,thresh))
+
+        nrows=im.data.shape[0]
+        if self.rows is None : self.rows=[0,nrows]
 
         back =np.percentile(im.data[self.rows[0]:self.rows[1],
-                                self.sc0-width:self.sc0+width],10)
+                                    sc0-width:sc0+width],10)
         sig =np.median(im.uncertainty.array[self.rows[0]:self.rows[1],
-                                self.sc0-width:self.sc0+width])/np.sqrt(2*width)
+                                    sc0-width:sc0+width])/np.sqrt(2*width)
 
         data = np.median(im.data[self.rows[0]:self.rows[1],
-                                 self.sc0-width:self.sc0+width],axis=1)-back
+                                 sc0-width:sc0+width],axis=1)-back
         if smooth > 0 : data = gaussian_filter1d(data, smooth/2.354)
 
         if plot :
@@ -1199,12 +1223,13 @@ class Trace() :
             plt.xlabel('Spatial pixel')
             plt.ylabel('Median flux')
         
-        peaks,fiber = findpeak(data, thresh=thresh*sig, diff=diff, bundle=bundle)
-        print(peaks,fiber)
+        peaks,fiber = findpeak(data, thresh=thresh*sig, diff=diff, bundle=bundle,verbose=verbose)
+        print('peaks: ',peaks)
+        print('aperture/fiber: ',fiber)
         return np.array(peaks)+self.rows[0], fiber
 
  
-    def find(self,hd,width=100,lags=None,plot=None,display=None,inter=False,rad=3) :
+    def find(self,hd,sc0=None,width=100,lags=None,plot=None,display=None,inter=False,rad=3) :
         """ Determine shift from existing trace to input frame
 
             Parameters
@@ -1239,7 +1264,10 @@ class Trace() :
             return 
       
         # get median around central column
-        spec=np.median(im.data[:,self.sc0-width:self.sc0+width],axis=1)
+        if sc0 is None : 
+            if self.sc0 is None: self.sc0 = im.data.shape[1]//2
+            sc0 = self.sc0
+        spec=np.median(im.data[:,sc0-width:sc0+width],axis=1)
 
         # if we have a window, zero array outside of window
         try:
@@ -1258,7 +1286,7 @@ class Trace() :
             plot.plotax1.text(0.05,0.95,'obj and ref cross-section',
                               transform=plot.plotax1.transAxes)
             plot.plotax1.plot(self.spectrum/self.spectrum.max())
-            plot.plotax1.plot(im.data[:,self.sc0]/im.data[:,self.sc0].max())
+            plot.plotax1.plot(im.data[:,sc0]/im.data[:,sc0].max())
             plot.plotax1.set_xlabel('row')
             plot.histclick=False
             plot.plotax2.cla()
@@ -1471,6 +1499,8 @@ class Trace() :
             plot.clear()
             plot.tv(hd)
         if rows != None : self.rows = rows
+        if self.rows is None : self.rows=[0,nrows]
+        if self.sc0 is None : self.sc0 = ncols//2
 
         for model in self.model :
             if plot is not None :
@@ -1790,13 +1820,16 @@ def gauss(x, *p):
         back = 0.
     elif len(p) == 4 : 
         A, mu, sigma, back = p
+    elif len(p) == 5 : 
+        A, mu, sigma, back0, backslope = p
+        back = back0 + x*backslope
     elif len(p) == 7 : 
         A, mu, sigma, B, Bmu, Bsigma, back = p
         return A*np.exp(-(x-mu)**2/(2.*sigma**2))+B*np.exp(-(x-Bmu)**2/2.*Bsigma**2)+back
 
     return A*np.exp(-(x-mu)**2/(2.*sigma**2))+back
 
-def findpeak(x,thresh,diff=10000,bundle=0) :
+def findpeak(x,thresh,diff=10000,bundle=0,verbose=False) :
     """ Find peaks in vector x above input threshold
         attempts to associate an index with each depending on spacing
 
@@ -1818,7 +1851,7 @@ def findpeak(x,thresh,diff=10000,bundle=0) :
     for i in range(len(x)) :
         if i>0 and i < len(x)-1 and x[i]>x[i-1] and x[i]>x[i+1] and x[i]>thresh :
             j.append(i)
-            if len(j) > 1 :    
+            if verbose and len(j) > 1 :
                 print(j[-1],j[-2],j[-1]-j[-2],f+1)
 
             if len(j) > 1 : sep=j[-1]-j[-2]
