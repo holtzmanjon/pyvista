@@ -290,6 +290,34 @@ class Reducer() :
 
         return tab
 
+    def movie(self,ims,display=None,out='movie.gif',channel=0) :
+        """
+           Create animated gif of images
+           Parameters
+               ims : list of image numbers.
+               display : pyvista TV object
+               out : output file name
+        """
+        if display == None :
+            raise ValueError('you must specify a pyvista TV object with display=')
+
+        files = []
+        for im in ims :
+            a=self.rd(im,channel=channel)
+            display.tv(a)
+            y,x=a.data.shape
+            display.clear()
+            display.tvtext(x//2,y//2,'{:d} {:f}'.format(im,a.header['EXPTIME']),color='r')
+            display.savefig('tmpimage{:d}.png'.format(im))
+            files.append('tmpimage{:d}.png'.format(im))
+
+        import imageio
+        with imageio.get_writer(out,mode='I') as writer :
+            for filename in files :
+                image = imageio.imread(filename)
+                os.remove(filename)
+                writer.append_data(image)
+
     def reduce(self,num,channel=None,crbox=None,bias=None,dark=None,flat=None,
                scat=None,badpix=None,solve=False,return_list=False,display=None,
                trim=True,seeing=2) :
