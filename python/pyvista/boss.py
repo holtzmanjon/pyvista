@@ -41,7 +41,7 @@ def visit(planfile,clobber=False,maxobj=None,threads=12) :
     for proc in procs : proc.join()
 
 def visit_channel(planfile=None,channel=0,clobber=False,threads=12,plot=True,
-                  display=None,maxobj=None,skysub=True,flux=False) :
+                  display=None,maxobj=None,skysub=True,flux=True) :
     """ Read raw image (eventually, 2D calibration and extract,
         using specified flat/trace
     """
@@ -93,7 +93,7 @@ def visit_channel(planfile=None,channel=0,clobber=False,threads=12,plot=True,
         name=plan['SPEXP']['name'][iarc][0][channel].astype(str)
     else :
         name=plan['SPEXP']['name'][iarc][0][channel%2].astype(str)
-    wave= mkwave(red,trace,name,channel=channel,clobber=clobber,threads=threads,display=display,outdir=outdir)
+    wave= mkwave(red,trace,name,channel=channel,clobber=clobber,threads=threads,display=display,outdir=outdir,plot=False)
 
     # reduce and extract science frames
     objs=np.where(plan['SPEXP']['flavor'] == b'science')[0]
@@ -107,12 +107,12 @@ def visit_channel(planfile=None,channel=0,clobber=False,threads=12,plot=True,
         else :
             im=red.reduce(name,channel=channel,trim=True)
             import time
-            out=trace.extract(im,threads=threads,nout=500,plot=display,fit=False,new=True)
+            out=trace.extract(im,threads=threads,nout=nfibers,plot=display,fit=False,new=True)
 
-            #out_fit=trace.extract(im,threads=threads,nout=500,plot=display,fit=True)
+            #out_fit=trace.extract(im,threads=threads,nout=nfibers,plot=display,fit=True)
             # 1d fiber-to-fiber flat
-            out.data /= flat1d
-            out.uncertainty.array /= flat1d
+            out.data /= (flat1d.data/np.median(flat1d.data,axis=0))
+            out.uncertainty.array /= (flat1d.data/np.median(flat1d.data,axis=0))
 
             #add wavelength
             out.wave = wave
@@ -169,12 +169,12 @@ def mktrace(red,name,channel=0,clobber=False,nfibers=500,threads=0,display=None,
     else :
         print('creating Trace')
         flat=red.reduce(name,trim=True,channel=channel)
-        trace=spectra.Trace(transpose=red.transpose,rad=3,lags=np.arange(-3,4),sc0=2048,rows=[10,4090])
+        trace=spectra.Trace(transpose=red.transpose,rad=3,lags=np.arange(-3,4),sc0=2048,rows=[10,4090],degree=4)
         peaks,fiber=trace.findpeak(flat,diff=diff,bundle=bundle,thresh=75,smooth=2)
 
         print('found {:d} peaks'.format(len(peaks)))
         trace.trace(flat,peaks[0:nfibers],index=fiber[0:nfibers],skip=skip,
-                    display=display,gaussian=True,thresh=10)
+                    display=display,gaussian=False,thresh=10)
         trace.write(outname) 
         flat1d=trace.extract(flat,threads=threads,nout=nfibers,display=display)
         flat1d.write(outname.replace('spTrace','spFlat1D'))
@@ -190,6 +190,7 @@ def mkwave(red,trace,name,channel=0,threads=0,clobber=False,display=None,plot=Fa
     chan = ['b1','r1','b2','r2']
     outname=outdir+name.replace('sdR','spWave')
 
+    nfibers=trace.index.max()+1
     if os.path.exists(outname) and not clobber : 
         wavs=[]
         rows=[]
@@ -202,16 +203,22 @@ def mkwave(red,trace,name,channel=0,threads=0,clobber=False,display=None,plot=Fa
     else :
         print('creating WaveCal')
         im=red.reduce(name,channel=channel,trim=True)
-        arcec=trace.extract(im,threads=threads,nout=500,display=display)
+        arcec=trace.extract(im,threads=threads,nout=nfibers,display=display,new=True)
         wav0=spectra.WaveCal('BOSS/BOSS_{:s}_waves.fits'.format(chan[channel]))
         ngd=len(np.where(wav0.weights >0)[0])
         wavs=[]
         rows=[]
-        for irow in range(250,500) :
+        for irow in range(250,nfibers) :
             if irow in trace.index :
                 print(irow)
                 wav=copy.deepcopy(wav0)
-                wav.identify(arcec[irow],plot=plot,thresh=20,rad=5)
+                if irow % 5 == 0 : plot=True
+                else : plot=False
+                wav.identify(arcec[irow],plot=plot,thresh=20,rad=5,maxshift=10)
+                if plot :
+                    plt.close(wav.fig)
+                    delattr(wav,'ax')
+                    delattr(wav,'fig')
                 wavs.append(copy.deepcopy(wav))
                 if len(np.where(wav.weights>0)[0]) == ngd : wav0 = copy.deepcopy(wav)
                 rows.append(irow)
@@ -220,7 +227,13 @@ def mkwave(red,trace,name,channel=0,threads=0,clobber=False,display=None,plot=Fa
             if irow in trace.index :
                 print(irow)
                 wav=copy.deepcopy(wav0)
-                wav.identify(arcec[irow],plot=plot,thresh=20,rad=5,maxshift=2)
+                if irow % 5 == 0 : plot=True
+                else : plot=False
+                wav.identify(arcec[irow],plot=plot,thresh=20,rad=5,maxshift=10)
+                if plot :
+                    plt.close(wav.fig)
+                    delattr(wav,'ax')
+                    delattr(wav,'fig')
                 wavs.append(copy.deepcopy(wav))
                 if len(np.where(wav.weights>0)[0]) == ngd : wav0 = copy.deepcopy(wav)
                 rows.append(irow)
@@ -231,7 +244,7 @@ def mkwave(red,trace,name,channel=0,threads=0,clobber=False,display=None,plot=Fa
             wav.write(outname,append=True)
     rows = np.array(rows)
     # populate wavelength image, remember that BOSS is transposed, so axis 0 in 2D is wavelength
-    wave = np.empty((500,im.data.shape[0]))
+    wave = np.empty((nfibers,im.data.shape[0]))
     wave[:,:] = np.nan
     for j,row in enumerate(wave) :
         irow = np.where(rows == j)[0]
@@ -266,7 +279,7 @@ def mkflux(out,plug,planfile,medfilt=15,plot=True,channel=0) :
     w = np.linspace(3360,10200,343)
 
     # set wavelength ranges for blue and red channels
-    if channel == 0 :
+    if channel == 0 or channel == 2 :
         wav=np.where((w>3400)&(w<7000))[0]
         wws = [4000,5000,6000] 
     else :
@@ -318,7 +331,9 @@ def combine(planfile,wnew=10.**(np.arange(3.5589,4.0151,1.e-4)),maxobj=None) :
     # get target information
     objs=np.where(plan['SPEXP']['flavor'] == b'science')[0]
     if int(plan['MJD']) > 59600 :
-        plug,header,sky,stan = sdss.getconfig(config_id=plan['SPEXP']['mapname'][objs[0]].astype(int),specid=1)
+        pdb.set_trace()
+        plug,header,sky,stan = \
+            sdss.getconfig(config_id=plan['SPEXP']['mapname'][objs[0]].astype(int),specid=1,obs=plan['OBSERVATORY'])
     else :
         plug,header,sky,stan = sdss.getconfig(plugid=plan['SPEXP']['mapname'][objs[0]].astype(str),specid=1)
 
@@ -335,7 +350,7 @@ def combine(planfile,wnew=10.**(np.arange(3.5589,4.0151,1.e-4)),maxobj=None) :
         comb = np.zeros([out[0].shape[0],len(wnew)])
         comberr = np.zeros([out[0].shape[0],len(wnew)])
         for irow in range(len(out[0].data)) :
-            gd = np.where((out[0].wave[irow] > wnew[0]) & (out[0].wave[irow]<6200.) )[0]
+            gd = np.where((out[0].wave[irow] > wnew[0]) & (out[0].wave[irow]<6200.) & np.isfinite(out[0].data[irow]))[0]
             if len(gd) == 0 : continue
             try :
               dspline = scipy.interpolate.CubicSpline(out[0].wave[irow,gd],out[0].data[irow,gd])
@@ -346,7 +361,7 @@ def combine(planfile,wnew=10.**(np.arange(3.5589,4.0151,1.e-4)),maxobj=None) :
             bdata[np.where(wnew>6200)[0]] = 0.
             bvar[np.where(wnew>6200)[0]] = 1.e10
 
-            gd = np.where((out[0].wave[irow] < wnew[-1]) & (out[1].wave[irow] > 6100.) )[0]
+            gd = np.where((out[1].wave[irow] < wnew[-1]) & (out[1].wave[irow] > 6100.) & np.isfinite(out[1].data[irow]))[0]
             try :
               dspline = scipy.interpolate.CubicSpline(out[1].wave[irow,gd],out[1].data[irow,gd])
               vspline = scipy.interpolate.CubicSpline(out[1].wave[irow,gd],out[1].uncertainty.array[irow,gd]**2)
@@ -375,7 +390,8 @@ def html(planfile,maxobj=None,channel=0) :
     objs=np.where(plan['SPEXP']['flavor'] == b'science')[0]
 
     if int(plan['MJD']) > 59600 :
-        plug,header,sky,stan = sdss.getconfig(config_id=plan['SPEXP']['mapname'][objs[0]].astype(int),specid=1)
+        plug,header,sky,stan = \
+            sdss.getconfig(config_id=plan['SPEXP']['mapname'][objs[0]].astype(int),specid=1,obs=plan['OBSERVATORY'])
     else :
         plug,header,sky,stan = sdss.getconfig(plugid=plan['SPEXP']['mapname'][objs[0]].astype(str),specid=1)
 
@@ -425,8 +441,9 @@ def html(planfile,maxobj=None,channel=0) :
             gd=np.where(np.isfinite(comb.data[fiber-1]))[0]
             if len(gd) > 100 :
                 plots.plotl(ax,comb.wave,comb.data[fiber-1])
-                ymax = median_filter(comb.data[fiber-1],100).max()
-                ax.set_ylim(0,1.5*ymax)
+                ymax = np.nanmax(median_filter(comb.data[fiber-1],100))
+                try: ax.set_ylim(0,1.5*ymax)
+                except: pass
             png = name.replace('sdR','spComb').replace('-r1','').replace('.fit','-{:03d}.png'.format(fiber))
             fig.savefig(dir+'/plots/'+png)
             plt.close()
@@ -437,8 +454,9 @@ def html(planfile,maxobj=None,channel=0) :
                 gd=np.where(np.isfinite(out[channel].data[fiber-1]))[0]
                 if len(gd) > 100 :
                     plots.plotl(ax,out[channel].wave[fiber-1],out[channel].data[fiber-1],color=colors[channel])
-                    ymax = median_filter(out[channel].data[fiber-1],100).max()
-                    ax.set_ylim(0,1.5*ymax)
+                    ymax = np.nanmax(median_filter(out[channel].data[fiber-1],100))
+                    try: ax.set_ylim(0,1.5*ymax)
+                    except: pass
             png = name.replace('sdR','spPlate').replace('-r1','').replace('.fit','-{:03d}.png'.format(fiber))
             fig.savefig(dir+'/plots/'+png)
             plt.close()
@@ -453,7 +471,7 @@ def mkyaml(mjd,obs='apo') :
     else :
         red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_S']+'/'+str(mjd))
 
-    files = red.log(cols=['DATE-OBS','FIELDID','FLAVOR','EXPTIME'],channel='-b')
+    files = red.log(cols=['DATE-OBS','FIELDID','FLAVOR','EXPTIME','HARTMANN','CONFID'],channel='-b')
     files['FILE'] = np.char.replace(files['FILE'].astype(str),'.gz','')
 
     fields = set(files['FIELDID'])
@@ -480,18 +498,18 @@ def mkyaml(mjd,obs='apo') :
         if len(flat) == 0 :
           flat = np.where(files['FLAVOR'] == 'flat')[0]
         if len(flat) > 0 : 
-            fp.write('SPEXP {:s} {:d} fps flat {:s} {{ {:s} {:s} }}\n'.format(
-                     field,mjd, files[flat[0]]['EXPTIME'],
+            fp.write('SPEXP {:s} {:d} {:s} flat {:s} {{ {:s} {:s} }}\n'.format(
+                     field,mjd, files[flat[0]]['CONFID'], files[flat[-1]]['EXPTIME'],
                      files[flat[-1]]['FILE'],files[flat[-1]]['FILE'].replace('-b','-r')))
-        arc = np.where((files['FIELDID'] == field) & (files['FLAVOR'] == 'arc'))[0]
+        arc = np.where((files['FIELDID'] == field) & (files['FLAVOR'] == 'arc') & (files['HARTMANN'] == 'Out') )[0]
         if len(arc) > 0 : 
-            fp.write('SPEXP {:s} {:d} fps arc {:s} {{ {:s} {:s} }}\n'.format(
-                      field,mjd, files[arc[0]]['EXPTIME'],
+            fp.write('SPEXP {:s} {:d} {:s} arc {:s} {{ {:s} {:s} }}\n'.format(
+                      field,mjd, files[arc[0]]['CONFID'], files[arc[0]]['EXPTIME'],
                       files[arc[0]]['FILE'],files[arc[0]]['FILE'].replace('-b','-r')))
         sci = np.where((files['FIELDID'] == field) & (files['FLAVOR'] == 'science'))[0]
         for s in sci :
-            fp.write('SPEXP {:s} {:d} fps science {:s} {{ {:s} {:s} }}\n'.format(
-                      field,mjd, files[s]['EXPTIME'],
+            fp.write('SPEXP {:s} {:d} {:s} science {:s} {{ {:s} {:s} }}\n'.format(
+                      field,mjd, files[s]['CONFID'], files[s]['EXPTIME'],
                       files[s]['FILE'],files[s]['FILE'].replace('-b','-r')))
         fp.close()
 
