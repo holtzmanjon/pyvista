@@ -34,7 +34,7 @@ class TV:
         # create new figure,set title, margins, and facecolor
         tv = plt.figure(figsize=figsize)
         self.fig = tv
-        tv.canvas.set_window_title('Image display window')
+        tv.canvas.manager.set_window_title('Image display window')
         tv.set_facecolor('darkred')
         rect = 0., 0.05, 0.7, 0.95
         ax = tv.add_axes(rect)
