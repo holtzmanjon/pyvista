@@ -83,7 +83,17 @@ def get(ra,dec,posn_match=30,vers='dr3',verbose=True,cols=None) :
                JOIN TAP_UPLOAD.coords as coords 
                ON coords.source_id = xp.source_id""".format(xp),
                uploads={'coords' : tab})
-        return posn_gaia, xp_gaia
+
+        retrieval_type = 'XP_CONTINUOUS'          # Options are: 'EPOCH_PHOTOMETRY', 'MCMC_GSPPHOT', 'MCMC_MSC', 'XP_SAMPLED', 'XP_CONTINUOUS', 'RVS', 'ALL'
+        data_structure = 'COMBINED'
+        data_release   = 'Gaia DR3'     # Options are: 'Gaia DR3' (default), 'Gaia DR2'
+
+        datalink = Gaia.load_data(ids=posn_gaia['source_id'], data_release = data_release, retrieval_type=retrieval_type, 
+                                  data_structure = data_structure, verbose = False, output_file = None)
+        dl_keys  = [inp for inp in datalink.keys()]
+        dl_keys.sort()
+
+        return posn_gaia, xp_gaia,datalink['XP_CONTINUOUS_COMBINED.xml'][0]   #.to_table()
 
 def getdata(data,vers='dr2',posn_match=30,verbose=False) :
     """ Given input structure, get GAIA information from 2MASS matches
