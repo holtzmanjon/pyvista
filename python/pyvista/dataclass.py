@@ -53,6 +53,20 @@ class Data(CCDData) :
         else :
             self.wave = None
 
+        # Add response attribute
+        if 'response' in kwd :
+            self.response = kwd['response']
+            kwd.pop('response')
+        else :
+            self.response = None
+
+        # Add sky attribute
+        if 'sky' in kwd :
+            self.sky = kwd['sky']
+            kwd.pop('sky')
+        else :
+            self.sky = None
+
         ccddata._config_ccd_requires_unit = False
         super().__init__(*args, **kwd)
 
@@ -76,9 +90,29 @@ class Data(CCDData) :
         """
         self.bitmask = bitmask
 
+    def add_response(self,response) :
+        """ Add a response attribute to Data object
+
+            Parameters
+            ----------
+            response : float, array-like
+                   Response array to add
+        """
+        self.response = response
+
+    def add_sky(self,sky) :
+        """ Add a sky attribute to Data object
+
+            Parameters
+            ----------
+            sky : flat, array-like
+                   Sky array to add
+        """
+        self.sky = sky
+
     def to_hdu(self, hdu_bitmask='BITMASK', hdu_uncertainty='UNCERT',
-               hdu_wave='WAVE', wcs_relax=True,
-               key_uncertainty_type='UTYPE', as_image_hdu=True):
+               hdu_wave='WAVE', hdu_response='RESPONSE', hdu_sky='SKY', 
+               wcs_relax=True, key_uncertainty_type='UTYPE', as_image_hdu=True):
         """Creates an HDUList object from a CCDData object.
 
         Parameters
@@ -208,6 +242,14 @@ class Data(CCDData) :
             print('appending wave')
             hdus.append(fits.ImageHDU(self.wave,name=hdu_wave))
 
+        if hdu_response and self.response is not None :
+            print('appending response')
+            hdus.append(fits.ImageHDU(self.response,name=hdu_response))
+
+        if hdu_sky and self.sky is not None :
+            print('appending sky')
+            hdus.append(fits.ImageHDU(self.sky,name=hdu_sky))
+
         hdulist = fits.HDUList(hdus)
 
         return hdulist
@@ -269,6 +311,7 @@ class Data(CCDData) :
 
 def fits_data_reader(filename, hdu=0, unit=None, hdu_uncertainty='UNCERT',
                         hdu_bitmask='BITMASK', hdu_wave='WAVE',
+                        hdu_response='RESPONSE',hdu_sky='SKY',
                         key_uncertainty_type='UTYPE', **kwd):
     """
     Generate a Data object from a FITS file. Modified from astropy fits_ccddata_reader
@@ -354,6 +397,18 @@ def fits_data_reader(filename, hdu=0, unit=None, hdu_uncertainty='UNCERT',
         else:
             wave = None
 
+        if hdu_response is not None and hdu_response in hdus:
+            # Wavelength is saved as float
+            response = hdus[hdu_response].data.astype(np.float32)
+        else:
+            response = None
+
+        if hdu_sky is not None and hdu_sky in hdus:
+            # Wavelength is saved as float
+            sky = hdus[hdu_sky].data.astype(np.float32)
+        else:
+            sky = None
+
         # search for the first instance with data if
         # the primary header is empty.
         if hdu == 0 and hdus[hdu].data is None:
@@ -403,11 +458,13 @@ def fits_data_reader(filename, hdu=0, unit=None, hdu_uncertainty='UNCERT',
         use_unit = unit or fits_unit_string
         hdr, wcs = ccddata._generate_wcs_and_update_header(hdr)
         data = Data(hdus[hdu].data, meta=hdr, unit=use_unit,
-                    bitmask=bitmask, uncertainty=uncertainty, wave=wave, wcs=wcs)
+                    bitmask=bitmask, uncertainty=uncertainty, wave=wave, wcs=wcs,
+                    response=response, sky=sky)
 
     return data
 
 registry.register_reader('fits', Data, fits_data_reader,force=False)
+registry.register_reader('fit', Data, fits_data_reader,force=False)
 
 def transpose(im) :
     """ Transpose a Data object
