@@ -268,6 +268,7 @@ def db_exp(exp_no,cam,header,config=None,obs='apo',offra=0.,offdec=0.) :
     else :
         tab_exp['pa' ] = [90.064 - header['IPA']]
         tab_exp['secz' ] = [header['ARMASS']]
+    tab_exp['ipa' ] = [header['IPA']]
 
     if 'CONFIGID' in header.keys() : tab_exp['config_id' ] = [header['CONFIGID']]
     elif 'CONFID' in header.keys() : tab_exp['config_id' ] = [header['CONFID']]
@@ -319,6 +320,8 @@ def db_spec(plug, header, confSummary = True) :
 
         tab_spec['xfocal'] = plug['xFocal']
         tab_spec['yfocal'] = plug['yFocal']
+        tab_spec['xwok'] = plug['xwok']
+        tab_spec['ywok'] = plug['ywok']
         try :
             tab_spec['xFVC'] = plug['xFVC']
             tab_spec['yFVC'] = plug['yFVC']
@@ -331,13 +334,26 @@ def db_spec(plug, header, confSummary = True) :
         tab_spec['rp_mag'] = plug['rp_mag']
         tab_spec['hmag'] = plug['h_mag']
         tab_spec['mag'] = plug['mag']
-        tab_spec['mag_g'] = np.nan
-        tab_spec['mag_r'] = np.nan
-        tab_spec['mag_i'] = np.nan
+        x = plug['bp_mag']-plug['rp_mag']
+        x2 = x * x
+        x3 = x * x * x
+        gaia_G = plug['gaia_g_mag']
+        gaia_sdss_g = -1 * (0.13518 - 0.46245 * x - 0.25171 * x2 + 0.021349 * x3) + gaia_G
+        gaia_sdss_r = -1 * (-0.12879 + 0.24662 * x - 0.027464 * x2 - 0.049465 * x3) + gaia_G
+        gaia_sdss_i = -1 * (-0.29676 + 0.64728 * x - 0.10141 * x2) + gaia_G
+
+        # here we use SDSS mags (not 2" mags!) unless G<15
+        tab_spec['mag_g'] = plug['mag'][:,1]
+        tab_spec['mag_r'] = plug['mag'][:,2]
+        tab_spec['mag_i'] = plug['mag'][:,3]
+        j=np.where(gaia_G < 15)[0]
+        tab_spec['mag_g'][j] = gaia_sdss_g[j]
+        tab_spec['mag_r'][j] = gaia_sdss_r[j]
+        tab_spec['mag_i'][j] = gaia_sdss_i[j]
     else :
         for key in ['catalogid','assigned','on_target','valid'] : tab_spec[key]=-1
         for key in ['cadence','program'] : tab_spec[key]=''
-        for key in ['racat','deccat','offset_ra','offset_dec', 'xFVC','yFVC',
+        for key in ['racat','deccat','offset_ra','offset_dec', 'xFVC','yFVC','xwok','ywok',
                     'alpha','beta','mag_g','mag_r','mag_i','bp_mag','rp_mag' ] :
                 tab_spec[key] = np.nan
         tab_spec['category'] = plug['objType'].astype(str)
