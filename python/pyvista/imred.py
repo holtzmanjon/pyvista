@@ -809,7 +809,7 @@ class Reducer() :
             im.data -= grid_z
 
     def crrej(self,im,crbox=None,crsig=5,display=None,
-              objlim=5.,fsmode='median',inbkg=None) :
+              objlim=5.,sigfrac=0.3,fsmode='median',inbkg=None) :
         """ Cosmic ray rejection using spatial median filter or lacosmic. 
 
             If crbox is given as a 2-element list, then a box of this shape is
@@ -856,7 +856,7 @@ class Reducer() :
                 if isinstance(gain,list) : g=1.
                 else : g=gain
                 outim= ccdproc.cosmicray_lacosmic(im,gain_apply=False,
-                         objlim=objlim,fsmode=fsmode,inbkg=inbkg,
+                         sigclip=crsig,sigfrac=sigfrac,objlim=objlim,fsmode=fsmode,inbkg=inbkg,
                          gain=g*u.dimensionless_unscaled,
                          readnoise=rn*u.dimensionless_unscaled)
                 outim.add_bitmask(im.bitmask)
@@ -971,7 +971,7 @@ class Reducer() :
             mean=[]
             std=[]
             n=[]
-            title+='[{:d},{:d}]'.format(pair[0],pair[1])
+            title+='[{:s},{:s}]'.format(str(pair[0]),str(pair[1]))
             a=self.reduce(pair[0],channel=channel)
             b=self.reduce(pair[1],channel=channel)
             diff=a.data-b.data

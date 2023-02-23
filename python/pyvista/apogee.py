@@ -88,7 +88,7 @@ def visit(planfile,tracefile=None,clobber=False,db=None,schema='obs2',maxobj=Non
     # reduce channels in parallel
     chan=['a','b','c' ]
     procs=[]
-    for channel in [1] :
+    for channel in [0,1,2] :
         kw={'planfile' : planfile, 'channel' : channel, 'clobber' : clobber, 'maxobj' : maxobj, 'threads' : threads}
         procs.append(mp.Process(target=visit_channel,kwargs=kw))
     for proc in procs : proc.start()
@@ -139,7 +139,7 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=300,threads=24,m
         if channel==0 : thresh=40000
         else : thresh=40000
         #peaks,fiber=spectra.findpeak(ff,diff=10,bundle=10000,thresh=thresh)
-        peaks,fiber=trace.findpeak(flat,diff=10,bundle=10000,thresh=50,smooth=2)
+        peaks,fiber=trace.findpeak(flat,diff=11,bundle=10000,thresh=100,smooth=2)
         print('found {:d} peaks'.format(len(peaks)))
         trace.trace(flat,peaks[0:nfibers],index=fiber[0:nfibers],skip=4)
         trace.write(dir+name)
@@ -151,7 +151,7 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=300,threads=24,m
         flux=Data.read(dir+name)
     else :
         im=red.reduce(int(plan['fluxid']),channel=channel,dark=dark)
-        flux=trace.extract(im,threads=threads,nout=300)
+        flux=trace.extract(im,threads=threads,nout=300,new=True)
         flux.write(dir+name,overwrite=True)
     f=np.median(flux.data[:,500:1500],axis=1)
     f/=np.median(f)
@@ -203,7 +203,7 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=300,threads=24,m
             out=Data.read(dir+name)
         else :
             im=red.reduce(exp_no,channel=channel,dark=dark,display=display)
-            out=trace.extract(im,threads=threads,nout=300,display=display)
+            out=trace.extract(im,threads=threads,nout=300,display=display,new=True)
             out.data /= fim
             out.uncertainty.array /= fim
             out.write(dir+name,overwrite=True)
@@ -217,7 +217,7 @@ def mkyaml(mjd,obs='apo') :
     else :
         red=imred.Reducer('APOGEE',dir=os.environ['APOGEE_DATA_S']+'/'+str(mjd))
 
-    files = red.log(cols=['DATE-OBS','FIELD_ID','EXPTYPE','CONFIGID'],ext='apz',hdu=1,channel='-b-')
+    files = red.log(cols=['DATE-OBS','FIELDID','EXPTYPE','CONFIGID'],ext='apz',hdu=1,channel='-b-')
     pdb.set_trace()
 
     #apogee_drp_ver: daily
