@@ -3,14 +3,89 @@ import matplotlib.pyplot as plt
 
 import pdb
 import astroplan
-from astroplan import Observer
+from astroplan import Observer, time_grid_from_range
 from astroplan import FixedTarget
 from astroplan.plots import plot_airmass
 from astroplan.plots import plot_parallactic
 from astropy.coordinates import SkyCoord
 from astropy.time import Time
 from astropy.coordinates import get_moon, get_sun
+from astropy import coordinates as coord
 from astropy import units
+
+def calendar(obs='apo',tz='US/Mountain',year=2023,plot=False) :
+
+
+    # set the site
+    site=Observer.at_site(obs,timezone=tz)
+
+    print('{:<20s} {:s}  {:s} {:s}'.format('DATE','LST(midnight)','MOONILLUM', 'MOON position'))
+
+
+    time1 = Time('{:4d}-{:02d}-01 12:00:00'.format(year,1), scale='utc',
+                location=(site.location.lon,site.location.lat),precision=0)
+    time2 = Time('{:4d}-{:02d}-01 12:00:00'.format(year+1,1), scale='utc',
+                location=(site.location.lon,site.location.lat),precision=0)
+    time_range = Time([time1,time2])
+    time_resolution = 1.0*units.day
+    times = time_grid_from_range(time_range, time_resolution=time_resolution)
+    lsts=times.sidereal_time('mean',longitude=site.location.lon).hms
+    illums=astroplan.moon_illumination(times)
+    moons = get_moon(times)
+
+    for time,h,m,illum,moon in zip(times,lsts[0],lsts[1],illums,moons) :
+        if moon.dec < 0 : sign='-'
+        else : sign = ' '
+        print('{:<12s} {:02d}:{:02d}      {:.2f}      {:02d}:{:02d} {:s}{:02d}:{:02d}'.format(
+               time.iso.split()[0],int(h),int(m),illum,
+               int(moon.ra.hms.h),  int(moon.ra.hms.m), sign,int(abs(moon.dec.dms.d)),int(abs(moon.dec.dms.m))))
+
+    if plot :
+        plt.plot(times.value,lsts[0]+lsts[1]/60.+lsts[2]/3600.)
+        plt.xlabel('JD')
+        plt.ylabel('LST (midnight)')
+
+    return
+
+    # Measure the altitude of the Sun at each time
+    sun_alt = site.altaz(times, coord.get_sun(times)).alt
+
+    # Sunrise = altitude was below horizon, now is above horizon:
+    horizon = 5*units.deg
+    approx_sunrises = np.argwhere((sun_alt[:-1] < horizon) & (sun_alt[1:] >= horizon)) + 1
+
+    # Sunset = altitude was above horizon, now is below horizon: 
+    approx_sunsets = np.argwhere((sun_alt[:-1] > horizon) & (sun_alt[1:] <= horizon)) + 1 
+    
+    times=[]
+    for month in range(1,13) :
+        time = Time('{:4d}-{:02d}-01 12:00:00'.format(year,month), scale='utc',
+                location=(site.location.lon,site.location.lat),precision=0)
+        times.append(time)
+
+    for time in times :
+        #sunrise =site.sun_rise_time(time)
+        #sunset =site.sun_set_time(time)
+        ##civil = site.twilight_evening_civil(time)
+        ##nautical = site.twilight_evening_nautical(time)
+        #astronomical_eve = site.twilight_evening_astronomical(time)
+        #astronomical_morn = site.twilight_morning_astronomical(time)
+        ##for t in [sunset,sunrise,astronomical_eve,astronomical_morn] :
+        ##    t.format='isot'
+        ##    t.precision=0
+        lst=time.sidereal_time('mean').hms
+        date = time.iso.split()[0]
+        #moon=get_moon(time)
+        #print('{:<20s} {:02d}:{:02d}  {:02d}:{:02d}    {:02d}:{:02d}  {:02d}:{:02d}   {:02d}:{:02d}   {:.2f}  {:s}  {:s}'.format(
+        #       date,
+        #       site.astropy_time_to_datetime(sunset).hour,site.astropy_time_to_datetime(sunset).minute,
+        #       site.astropy_time_to_datetime(sunrise).hour,site.astropy_time_to_datetime(sunrise).minute,
+        #       site.astropy_time_to_datetime(astronomical_eve).hour,site.astropy_time_to_datetime(astronomical_eve).minute,
+        #       site.astropy_time_to_datetime(astronomical_morn).hour,site.astropy_time_to_datetime(astronomical_morn).minute,
+        #       int(round(lst[0])),int(round(lst[1])),
+        #       astroplan.moon_illumination(time),
+        #       str(moon.ra.to_string(units.hour)), str(moon.dec)))
+
 
 def table(ra=0., dec=0., obs='apo', date=None,name='object',plot=False,tz='US/Mountain') :
 
