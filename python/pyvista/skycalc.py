@@ -198,8 +198,6 @@ def object(ra=0., dec=0., obs='apo', date=None,name='object',plot=False,tz='US/M
     ha=site.target_hour_angle(times,obj)
     ha.wrap_angle=180 *units.deg
 
-    pdb.set_trace()
-
     out=Table()
     out['date'] = local
     out['time'] = times
