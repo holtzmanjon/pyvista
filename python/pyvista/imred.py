@@ -662,9 +662,10 @@ class Reducer() :
              #out.append(ccdproc.subtract_dark(im,dark,exposure_time='EXPTIME',exposure_unit=u.s))
              corr = copy.deepcopy(im)
              exptime = corr.header['EXPTIME']
-             corr.data -= dark.data*exptime
+             dark_exptime = dark.header['EXPTIME']
+             corr.data -= dark.data/dark_exptime*exptime
              corr.uncertainty.array = np.sqrt(corr.uncertainty.array**2+
-                                              exptime**2*dark.uncertainty.array**2)
+                          exptime**2*(dark.uncertainty.array/dark_exptime)**2)
              out.append(corr)
          if len(out) == 1 : return out[0]
          else : return out
@@ -900,17 +901,18 @@ class Reducer() :
                  ims[i].data[bd[0],bd[1]] = val
                  ims[i].uncertainty.array[bd[0],bd[1]] = np.inf
 
-    def platesolve(self,im,scale=0.46,seeing=2,display=None) :
+    def platesolve(self,im,scale=0.46,seeing=2,display=None,thresh=10) :
         """ try to get plate solution with astrometry.net
         """
         if self.verbose : print('  plate solving with local astrometry.net....')
 
         # find stars
         mad=np.nanmedian(np.abs(im-np.nanmedian(im)))
-        daofind=DAOStarFinder(fwhm=seeing/scale,threshold=10*mad)
+        daofind=DAOStarFinder(fwhm=seeing/scale,threshold=thresh*mad)
         objs=daofind(im.data-np.nanmedian(im.data))
         if len(objs) == 0 :
             raise RuntimeError('no stars detected. Maybe try setting seeing?')
+        else : print('found ',len(objs),' objects ')
 
         try: objs.sort(['mag'])
         except: pdb.set_trace()

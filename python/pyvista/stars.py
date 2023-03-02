@@ -20,7 +20,9 @@ from photutils.detection import DAOStarFinder
 from tools import plots,html
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
-
+from astroquery.sdss import SDSS
+from astropy import coordinates as coord
+import astropy.units as u
 
 @support_nddata
 def find(data,fwhm=4,thresh=4000) :
@@ -155,6 +157,23 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False,
         istar+=1
 
     return stars
+
+def sdss_label(t,im,label='psfmag_g',maxmag=19, rad=0.25,xoff=0,yoff=-10) :
+   """ inital stab for getting SDSS coords and labelling image
+   """
+   pos = coord.SkyCoord('{:s} {:s}'.format(
+          im.header['RA'].replace(' ',':'),im.header['DEC'].replace(' ',':')),
+          unit=(u.hour,u.degree))
+   sdss = SDSS.query_region(pos,radius=rad*u.degree,
+             photoobj_fields=['ra','dec','psfmag_g','psfmag_r','psfmag_i','type'])
+   x,y = im.wcs.wcs_world2pix(sdss['ra'],sdss['dec'],0)
+   sdss['x'] = x+xoff
+   sdss['y'] = y+yoff
+   sdss['id'] = sdss[label].astype('|S4')
+   t.tv(im)
+   gd = np.where((sdss[label] < maxmag) & (sdss[label]>0) & (sdss['type'] == 6) )[0]
+
+   mark(t,sdss[gd],rad=0,id=True,color='b')
 
 @support_nddata
 def add_coord(data,stars,wcs=None) :
