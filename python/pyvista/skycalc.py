@@ -14,9 +14,21 @@ from astropy import coordinates as coord
 from astropy import units
 from astropy.table import Table
 from datetime import datetime
+from astropy.visualization import time_support
 
-def calendar(obs='apo',tz='US/Mountain',year=2023,plot=False) :
+def calendar(obs='apo',tz='US/Mountain',year=2023,plot=False,sun_dt=10.) :
     """ Get LST at midnight and moon phase and position for every night of a calendar year"
+
+        Parameters
+        ----------
+        obs : str, default='apo'
+                   observatory to compute for
+        tz : str, default='US/Mountain'
+                   timezone
+        year : float, default=2023
+                   year to calculate for
+        plot : bool, default=False
+                   if True, plot LST midnight for year
     """
 
     # set the site
@@ -31,18 +43,17 @@ def calendar(obs='apo',tz='US/Mountain',year=2023,plot=False) :
 
     print('calculating approximate sunrise/sunset, make take a bit ...')
     # Measure the altitude of the Sun at each time
-    time_resolution = 10.0*units.minute
+    time_resolution = sun_dt*units.minute
     suntimes = time_grid_from_range(time_range, time_resolution=time_resolution)
     sun_alt = site.altaz(suntimes, coord.get_sun(suntimes)).alt
+
     # Sunrise = altitude was below horizon, now is above horizon:
     horizon = 0*units.deg
-    #approx_sunrises = np.argwhere((sun_alt[:-1] < horizon) & (sun_alt[1:] >= horizon)) + 1
     sun1 = np.where((sun_alt[:-1] < horizon) & (sun_alt[1:] >= horizon))[0] 
     sun2 = np.where((sun_alt[:-1] < horizon) & (sun_alt[1:] >= horizon))[0] + 1
     sunrises = suntimes[sun1] + (0-sun_alt[sun1])/(sun_alt[sun2]-sun_alt[sun1])*(suntimes[sun2]-suntimes[sun1])
 
     # Sunset = altitude was above horizon, now is below horizon: 
-    #approx_sunsets = np.argwhere((sun_alt[:-1] > horizon) & (sun_alt[1:] <= horizon)) + 1 
     sun1 = np.where((sun_alt[:-1] > horizon) & (sun_alt[1:] <= horizon))[0] 
     sun2 = np.where((sun_alt[:-1] > horizon) & (sun_alt[1:] <= horizon))[0] + 1
     sunsets = suntimes[sun1] + (0-sun_alt[sun1])/(sun_alt[sun2]-sun_alt[sun1])*(suntimes[sun2]-suntimes[sun1])
@@ -50,15 +61,18 @@ def calendar(obs='apo',tz='US/Mountain',year=2023,plot=False) :
     # now sample at 1 day resolution
     time_resolution = 1.0*units.day
     times = time_grid_from_range(time_range, time_resolution=time_resolution)
+
     # get LSTs and Moon information
     lsts=times.sidereal_time('mean',longitude=site.location.lon).hms
     illums=astroplan.moon_illumination(times)
     moons = get_moon(times)
 
     # store output in table
+    pdb.set_trace()
     local=site.astropy_time_to_datetime(times)
     out=Table()
-    out['date'] = local
+    out['date'] = times.isot # local
+    out['local'] = local.strftime('%H:%M')
     out['time_sunrise'] = site.astropy_time_to_datetime(sunrises)
     out['time_sunset'] = site.astropy_time_to_datetime(sunsets)
     out['sunrise'] = '00:00'
@@ -94,9 +108,35 @@ def calendar(obs='apo',tz='US/Mountain',year=2023,plot=False) :
     out.remove_column('moon_decm')
 
     if plot :
-        plt.plot(times.value,lsts[0]+lsts[1]/60.+lsts[2]/3600.)
-        plt.xlabel('JD')
-        plt.ylabel('LST (midnight)')
+        time_support()
+
+        plt.plot(times.datetime,lsts[0]+lsts[1]/60.+lsts[2]/3600.,label='LST midnight')
+        val = []
+        for time in sunsets :
+            dt=site.astropy_time_to_datetime(time)
+            val.append(dt.hour+dt.minute/60.+dt.second/3600.)
+        plt.plot(times.datetime,val,label='Sunset')
+        val = []
+        for time in sunrises :
+            dt=site.astropy_time_to_datetime(time)
+            val.append(dt.hour+dt.minute/60.+dt.second/3600.)
+        plt.plot(times.datetime,val,label='Sunrise')
+        plt.xlabel('Date')
+        plt.ylabel('Time')
+        plt.legend()
+
+        # create the secondary axis showing mjd at the top
+        def plot2mjd(t):
+            '''Convert from matplotlib plot date to mjd'''
+            return Time(t, format="plot_date").mjd
+
+
+        def mjd2plot(mjd):
+            '''Convert from mjd to matplotlib plot'''
+            return Time(mjd, format="mjd").plot_date
+
+        mjd_ax = plt.gca().secondary_xaxis('top', functions=(plot2mjd, mjd2plot))
+        mjd_ax.set_xlabel('MJD')
 
     return out
 
