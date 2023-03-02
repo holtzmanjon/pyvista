@@ -15,6 +15,7 @@ a routine for returning parallactic angle
 
 Module functions
 ++++++++++++++++
+
 .. automodule:: pyvista.skycalc
    :members:
 

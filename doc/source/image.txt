@@ -4,6 +4,7 @@ IMAGE module
 image is the pyvista module that implements basic image arithmetic, VISTA-style
 
 image functions:
+================
 
 .. automodule:: pyvista.image
    :members:

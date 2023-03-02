@@ -122,6 +122,7 @@ Configuration files are made using the YAML format, e.g.:
 
 imred functions
 ===============
+
 .. automodule:: pyvista.imred
    :members:
    :member-order: bysource

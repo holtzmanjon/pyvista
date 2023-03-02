@@ -39,6 +39,7 @@ is provided below.
 
 reduce functions
 ================
+
 .. automodule:: pyvista.reduce
    :members:
    :member-order: bysource

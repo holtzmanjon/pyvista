@@ -40,8 +40,6 @@ Observation object is instatiated.
 
 Module functions
 ++++++++++++++++
+
 .. automodule:: pyvista.etc
    :members:
-
-
-
