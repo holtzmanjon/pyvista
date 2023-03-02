@@ -10,3 +10,4 @@ importlib_resources
 pyautogui
 pyyaml
 astroplan
+astroquery
