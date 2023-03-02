@@ -35,6 +35,7 @@ Contents:
    installation 
    tv
    imred
+   data
    spectra
    reduce
    stars
