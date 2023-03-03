@@ -14,6 +14,7 @@ from astropy.modeling import models, fitting
 from astropy.convolution import convolve, Box1DKernel, Box2DKernel, Box2DKernel
 from tools import html, plots
 import ccdproc
+import astroscrappy
 import scipy.signal
 from scipy.optimize import curve_fit
 import yaml
@@ -860,6 +861,10 @@ class Reducer() :
                          sigclip=crsig,sigfrac=sigfrac,objlim=objlim,fsmode=fsmode,inbkg=inbkg,
                          gain=g*u.dimensionless_unscaled,
                          readnoise=rn*u.dimensionless_unscaled)
+                outim =astroscrappy.detect_cosmics(im, sigclip=sigclip, sigfrac=sigfrac, objlim=objlim,
+                          gain=g, readnoise=rn, satlevel=self.saturation, 
+                          fsmode=fsmode) 
+ 
                 outim.add_bitmask(im.bitmask)
                 outim.add_wave(im.wave)
             else :
