@@ -13,7 +13,6 @@ from astropy.wcs import WCS
 from astropy.modeling import models, fitting
 from astropy.convolution import convolve, Box1DKernel, Box2DKernel, Box2DKernel
 from tools import html, plots
-import ccdproc
 import astroscrappy
 import scipy.signal
 from scipy.optimize import curve_fit
@@ -87,7 +86,7 @@ class Reducer() :
         self.transpose=None
         self.scale=1
         self.biastype=-1
-        self.saturation=None
+        self.saturation=2**32
 
         # we will allow for instruments to have multiple channels, so everything goes in lists
         self.channels=['']
@@ -110,9 +109,11 @@ class Reducer() :
             self.formstr=config['formstr']
             self.gain=config['gain']
             self.rn=config['rn']/np.sqrt(nfowler)
-            for card in ['cols','ext','saturation','scale','crbox'] :
+            for card in ['cols','ext','scale','crbox'] :
                 try : setattr(self,card,config[card])
                 except : setattr(self,card,None)
+            try : self.namp=config['saturationn']
+            except KeyError: self.saturation = 2**32
             try : self.namp=config['namp']
             except KeyError: self.namp = 1
             try :self.transpose=config['transpose']
@@ -636,7 +637,6 @@ class Reducer() :
          out=[]
          for im,bias in zip(ims,superbiases) :
              if self.verbose : print('  subtracting bias...')
-             #out.append(ccdproc.subtract_bias(im,bias))
              corr = copy.deepcopy(im)
              corr.data -= bias.data
              corr.uncertainty.array = np.sqrt(corr.uncertainty.array**2+
@@ -660,7 +660,6 @@ class Reducer() :
          out=[]
          for im,dark in zip(ims,superdarks) :
              if self.verbose : print('  subtracting dark...')
-             #out.append(ccdproc.subtract_dark(im,dark,exposure_time='EXPTIME',exposure_unit=u.s))
              corr = copy.deepcopy(im)
              exptime = corr.header['EXPTIME']
              dark_exptime = dark.header['EXPTIME']
@@ -686,7 +685,6 @@ class Reducer() :
              if self.verbose : print('  flat fielding...')
              if display is not None : 
                  display.tv(im)
-             #corr = ccdproc.flat_correct(im,flat)
              corr = copy.deepcopy(im)
              corr.data /= flat.data
              corr.uncertainty.array /= flat.data
@@ -823,8 +821,8 @@ class Reducer() :
             but only neighbors of previously flagged CRs are tested. 
             Affedted pixels are flagged in input.bitmask
 
-            If crbox='lacosmic', the LA Cosmic routine, as implemented in ccdproc
-            (using astroscrappy) is run on the image, with default options,
+            If crbox='lacosmic', the LA Cosmic routine, as implemented in 
+            astroscrappy is run on the image, with default options,
             but objlim, fsmode, and inbkg can be specified.
 
             Parameters
@@ -854,19 +852,16 @@ class Reducer() :
                 display.tv(im,min=min,max=max)
             if crbox == 'lacosmic':
                 if self.verbose : 
-                    print('  zapping CRs with ccdproc.cosmicray_lacosmic')
+                    print('  zapping CRs with astroscrappy detect_cosmics')
                 if isinstance(gain,list) : g=1.
                 else : g=gain
-                outim= ccdproc.cosmicray_lacosmic(im,gain_apply=False,
-                         sigclip=crsig,sigfrac=sigfrac,objlim=objlim,fsmode=fsmode,inbkg=inbkg,
-                         gain=g*u.dimensionless_unscaled,
-                         readnoise=rn*u.dimensionless_unscaled)
-                outim =astroscrappy.detect_cosmics(im, sigclip=sigclip, sigfrac=sigfrac, objlim=objlim,
+
+                outim =copy.deepcopy(im)
+                crmask,outim.data =astroscrappy.detect_cosmics(im.data, 
+                          sigclip=crsig, sigfrac=sigfrac, objlim=objlim,
                           gain=g, readnoise=rn, satlevel=self.saturation, 
                           fsmode=fsmode) 
  
-                outim.add_bitmask(im.bitmask)
-                outim.add_wave(im.wave)
             else :
                 if self.verbose : 
                     print('  Iteration {:d}, zapping CRs with filter [{:d},{:d}]...'.format(iter, *crbox))
