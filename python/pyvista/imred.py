@@ -211,19 +211,25 @@ class Reducer() :
 
     def log(self,htmlfile=None,ext=None,hdu=0,channel='', 
             cols=None, display=None) :
-        """ Create chronological image log from file headers
+        """ Create chronological image log from file headers in default
+            directory.
 
-            If any .csv file exists, add table to htmlfile with contents 
+            If any .csv file exists in the directory, its contents are
+            added as a table to htmlfile
 
         Parameters
         ----------
         htmlfile : str, default=None
                    if specified, write HTML log to htmlfile
         ext : override default extension to search
-        cols : array-like, str, default=None (use self.cols or hardcoded list)
-               cards from FITS header to include
-        display : if not None, give tv tool to display each image and make
-                png thumbnail
+        cols : array-like, str, specifies which FITS header cards to output,
+               default=None, which will use cards
+               as defined in the Reducer object, if they have been set
+               by configuration file, or, otherwise will use
+               ['DATE-OBS','OBJNAME','RA','DEC','EXPTIME']
+        display : if not None, specifies tv tool in which to 
+               display each image and make png thumbnail, to include
+               in htmlfile
 
         Returns
         -------
