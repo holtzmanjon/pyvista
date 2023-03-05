@@ -94,6 +94,8 @@ class Reducer() :
         else : self.gain = [gain]
         if type(rn) is list : self.rn=rn
         else : self.rn = [rn]
+        if type(saturation) is list : self.saturation
+        else : self.saturation = [saturation]
         if type(formstr) is list : self.formstr=formstr
         else : self.formstr=[formstr]
        
@@ -112,8 +114,10 @@ class Reducer() :
             for card in ['cols','ext','scale','crbox'] :
                 try : setattr(self,card,config[card])
                 except : setattr(self,card,None)
-            try : self.namp=config['saturationn']
-            except KeyError: self.saturation = 2**32
+            try : self.saturation=config['saturation']
+            except KeyError: 
+                self.saturation = []
+                for chan in self.channels: self.saturation.append(2**32)
             try : self.namp=config['namp']
             except KeyError: self.namp = 1
             try :self.transpose=config['transpose']
