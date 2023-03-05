@@ -73,7 +73,7 @@ class Reducer() :
 
     """
     def __init__(self,inst=None,conf='',dir='./',root='*',formstr='{04d}',
-                 gain=1,rn=0.,verbose=True,nfowler=1) :
+                 gain=1,rn=0.,saturation=2**32,verbose=True,nfowler=1) :
         """  Initialize reducer with information about how to reduce
         """
         self.dir=dir
@@ -86,7 +86,6 @@ class Reducer() :
         self.transpose=None
         self.scale=1
         self.biastype=-1
-        self.saturation=2**32
 
         # we will allow for instruments to have multiple channels, so everything goes in lists
         self.channels=['']
@@ -94,6 +93,8 @@ class Reducer() :
         else : self.gain = [gain]
         if type(rn) is list : self.rn=rn
         else : self.rn = [rn]
+        if type(saturation) is list : self.saturation=saturation
+        else : self.saturation = [saturation]
         if type(formstr) is list : self.formstr=formstr
         else : self.formstr=[formstr]
        
@@ -112,8 +113,10 @@ class Reducer() :
             for card in ['cols','ext','scale','crbox'] :
                 try : setattr(self,card,config[card])
                 except : setattr(self,card,None)
-            try : self.namp=config['saturationn']
-            except KeyError: self.saturation = 2**32
+            try : self.saturation=config['saturation']
+            except KeyError: 
+                self.saturation = []
+                for chan in self.channels: self.saturation.append(2**32)
             try : self.namp=config['namp']
             except KeyError: self.namp = 1
             try :self.transpose=config['transpose']
