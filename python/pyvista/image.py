@@ -601,9 +601,7 @@ def xcorr(a,b,lags,medfilt=0,rad=3) :
             fit=np.polyfit(range(-rad,rad+1),shift[row,peak-rad:peak+rad+1],2)
             fitpeak[row]=peak+-fit[1]/(2*fit[0])
         except TypeError :
-            print(peak)
-            print(shift.shape)
-            print(shift[row,peak-rad:peak+rad+1])
+            print('xcorr peak fit failed, row: ', row,' using peak')
             fitpeak[row]=peak
 
     return fitpeak,np.squeeze(np.array(shift))
