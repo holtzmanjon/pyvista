@@ -328,10 +328,12 @@ class Reducer() :
     def movie(self,ims,display=None,out='movie.gif',channel=0) :
         """
            Create animated gif of images
-           Parameters
-               ims : list of image numbers.
-               display : pyvista TV object
-               out : output file name
+
+        Parameters
+        ----------
+        ims : list of image numbers.
+        display : pyvista TV object
+        out : output file name
         """
         if display == None :
             raise ValueError('you must specify a pyvista TV object with display=')
@@ -361,37 +363,37 @@ class Reducer() :
         """ Reads data from disk, and performs reduction steps as determined from command 
             line parameters
 
-            Parameters
-            ----------
-            id : int or str
-                 Number or string specifying file to read. If a number, 
-                 the filename will be constructed based on dir and formstr 
-                 attributed of Reducer object. Without any additional 
-                 command-line arguments, data will be read, overscan 
-                 subtracted, and uncertainty array populated based
-                 on gain and readout noise in Reducer attributes
-            display : TV object, default=None
-                 if specified, pyvista TV object to display data in as 
-                 arious reduction steps are taken
-            channel : int, default= None
-                 if specified, channel to reduce if instrument is 
-                 multi-channel (multi-file), otherwise all channels 
-                 will be read/reduced
-            bias : Data object, default= None
-                 if specified, superbias frame to subtract
-            dark : Data object, default= None
-                 if specified, superdark frame to subtract
-            flat : Data object, default= None
-                 if specified, superflat frame to divide by
-            crbox : list or str, default=None
-                 if specified, parameter to pass to CR rejection routine, 
-                 either 2-element list giving shape of box for median 
-                 filter, or 'lacosmic'
-            scat :
-            badpix :
-            trim :
-            solve :
-            seeing :
+        Parameters
+        ----------
+        id : int or str
+             Number or string specifying file to read. If a number, 
+             the filename will be constructed based on dir and formstr 
+             attributed of Reducer object. Without any additional 
+             command-line arguments, data will be read, overscan 
+             subtracted, and uncertainty array populated based
+             on gain and readout noise in Reducer attributes
+        display : TV object, default=None
+             if specified, pyvista TV object to display data in as 
+             various reduction steps are taken
+        channel : int, default= None
+             if specified, channel to reduce if instrument is 
+             multi-channel (multi-file), otherwise all channels 
+             will be read/reduced
+        bias : Data object, default= None
+             if specified, superbias frame to subtract
+        dark : Data object, default= None
+             if specified, superdark frame to subtract
+        flat : Data object, default= None
+             if specified, superflat frame to divide by
+        crbox : list or str, default=None
+             if specified, parameter to pass to CR rejection routine, 
+             either 2-element list giving shape of box for median 
+             filter, or 'lacosmic'
+        scat :
+        badpix :
+        trim :
+        solve :
+        seeing :
 
         """
         im=self.rd(num,dark=dark,channel=channel)
@@ -415,11 +417,11 @@ class Reducer() :
 
         Parameters
         ----------
-            num (str or int) : name or number of image to read
+        num (str or int) : name or number of image to read
 
         Returns 
         -------
-            image (Data ) : Data object, but noise will be incorrect without overscan subtraction
+        image (Data ) : Data object, but noise will be incorrect without overscan subtraction
         """
         out=[]
         # loop over different channels (if any)
@@ -731,27 +733,27 @@ class Reducer() :
     def scatter(self,inim,scat=None,display=None,smooth=3,smooth2d=31,transpose=False) :
         """ Removal of scattered light (for multi-order/object spectrograph)
 
-            Remove scattered light by looking for valleys in cross-sections across traces
-            and fitting a 2D surface to the low points. Cross-sections are smoothed before
-            finding the valleys, and interpolated surface is also smoothed. Some attempt
-            is made to reject outliers before fitting the final surface, which is subtracted
-            from the image.
- 
-            Parameters
-            ----------
-            im : Data object
-                 input image to correct
-            transpose : bool, default=False
-                 set to true if spectra run along columns
-            scat : integer, default=None
-                 get scattered light measurements every scat pixels. If None, no correction
-            display : TV object, default=None
-                 if set, show the scattered light measurements
-            smooth : integer, default=3
-                 boxcar width for smoothing profile perpendicular to traces before looking
-                 for valleys
-            smooth2d : integer, default=31
-                 boxcar width for smoothing interpolated scattered light surface
+        Remove scattered light by looking for valleys in cross-sections across traces
+        and fitting a 2D surface to the low points. Cross-sections are smoothed before
+        finding the valleys, and interpolated surface is also smoothed. Some attempt
+        is made to reject outliers before fitting the final surface, which is subtracted
+        from the image.
+
+        Parameters
+        ----------
+        im : Data object
+             input image to correct
+        transpose : bool, default=False
+             set to true if spectra run along columns
+        scat : integer, default=None
+             get scattered light measurements every scat pixels. If None, no correction
+        display : TV object, default=None
+             if set, show the scattered light measurements
+        smooth : integer, default=3
+             boxcar width for smoothing profile perpendicular to traces before looking
+             for valleys
+        smooth2d : integer, default=31
+             boxcar width for smoothing interpolated scattered light surface
         """
         if scat is None : return
         if transpose :
@@ -824,29 +826,29 @@ class Reducer() :
               objlim=5.,sigfrac=0.3,fsmode='median',inbkg=None) :
         """ Cosmic ray rejection using spatial median filter or lacosmic. 
 
-            If crbox is given as a 2-element list, then a box of this shape is
-            run over the image. At each location, the median in the box is determined.
-            For each pixel in the box, if the value is larger than crsig*uncertainty
-            (where uncertainty is taken from the input.uncertainty.array), the pixel
-            is replaced by the median.  If crsig is a list, then multiple passes
-            are done with successive values of crsig (which should then be decreasing),
-            but only neighbors of previously flagged CRs are tested. 
-            Affedted pixels are flagged in input.bitmask
+        If crbox is given as a 2-element list, then a box of this shape is
+        run over the image. At each location, the median in the box is determined.
+        For each pixel in the box, if the value is larger than crsig*uncertainty
+        (where uncertainty is taken from the input.uncertainty.array), the pixel
+        is replaced by the median.  If crsig is a list, then multiple passes
+        are done with successive values of crsig (which should then be decreasing),
+        but only neighbors of previously flagged CRs are tested. 
+        Affected pixels are flagged in input.bitmask
 
-            If crbox='lacosmic', the LA Cosmic routine, as implemented in 
-            astroscrappy is run on the image, with default options,
-            but objlim, fsmode, and inbkg can be specified.
+        If crbox='lacosmic', the LA Cosmic routine, as implemented in 
+        astroscrappy is run on the image, with default options,
+        but objlim, fsmode, and inbkg can be specified.
 
-            Parameters
-            ----------
-            crbox : list, int shape of box to use for median filters, or 'lacosmic'
-            crsig  : list/float, default 5, threshold for CR rejection if using spatial 
-                    median filter; if list, do multiple passes, with all passes after
-                    first only on neighbors of previously flagged CRs
-            objlim  : for LAcosmic, default=5
-            fsmod  : for LAcosmic, default='median'
-            inbkg  : for LAcosmic, default=None
-            display : None for no display, pyvista TV object to display
+        Parameters
+        ----------
+        crbox : list, int shape of box to use for median filters, or 'lacosmic'
+        crsig  : list/float, default 5, threshold for CR rejection if using spatial 
+                median filter; if list, do multiple passes, with all passes after
+                first only on neighbors of previously flagged CRs
+        objlim  : for LAcosmic, default=5
+        fsmod  : for LAcosmic, default='median'
+        inbkg  : for LAcosmic, default=None
+        display : None for no display, pyvista TV object to display
         """
 
         if crbox is None: return im
@@ -1223,30 +1225,30 @@ class Reducer() :
         """ Driver for superflat combination 
              (with superbias if specified, normalize to normbox
 
-            Parameters
-            ----------
-            ims : list of frames to combine
-            display : TV object, default= None
-                      if specified, displays flat and individual frames/flat for inspection
-            bias : Data object, default=None
-                  if specified, superbias to subtract before combining flats
-            dark : Data object, default=None
-                  if specified, superdark to subtract before combining flats
-            scat : 
-            type : str, default='median'
-                  combine method
-            sigreject : float
-                  rejection threshold for combine type='reject'
-            spec : bool, default=False
-                  if True, creates "spectral" flat by taking out wavelength
-                  shape
-            littrow : bool, default=False
-                  if True, attempts to fit and remove Littrow ghost from flat,
-                  LITTROW_GHOST bit must be set in bitmask first to identify 
-                  ghost location
-                  only relevant if spec==True
-            width : int, default=101
-                  window width for removing spectral shape for spec=True
+        Parameters
+        ----------
+        ims : list of frames to combine
+        display : TV object, default= None
+                  if specified, displays flat and individual frames/flat for inspection
+        bias : Data object, default=None
+              if specified, superbias to subtract before combining flats
+        dark : Data object, default=None
+              if specified, superdark to subtract before combining flats
+        scat : 
+        type : str, default='median'
+              combine method
+        sigreject : float
+              rejection threshold for combine type='reject'
+        spec : bool, default=False
+              if True, creates "spectral" flat by taking out wavelength
+              shape
+        littrow : bool, default=False
+              if True, attempts to fit and remove Littrow ghost from flat,
+              LITTROW_GHOST bit must be set in bitmask first to identify 
+              ghost location
+              only relevant if spec==True
+        width : int, default=101
+              window width for removing spectral shape for spec=True
 
         Returns
         -------
