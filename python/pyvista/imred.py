@@ -327,7 +327,7 @@ class Reducer() :
 
     def movie(self,ims,display=None,out='movie.gif',channel=0) :
         """
-           Create animated gif of images
+        Create animated gif of images
 
         Parameters
         ----------
@@ -360,8 +360,7 @@ class Reducer() :
                bias=None,dark=None,flat=None,
                scat=None,badpix=None,solve=False,return_list=False,display=None,
                trim=True,seeing=2) :
-        """ Reads data from disk, and performs reduction steps as determined from command 
-            line parameters
+        """ Reads data from disk, and performs reduction steps as determined from command line parameters
 
         Parameters
         ----------
@@ -1222,8 +1221,7 @@ class Reducer() :
     def mkflat(self,ims,bias=None,dark=None,scat=None,display=None,trim=False,
                type='median',sigreject=5,spec=False,width=101,littrow=False,
                snmin=50) :
-        """ Driver for superflat combination 
-             (with superbias if specified, normalize to normbox
+        """ Driver for superflat combination, with superbias if specified, normalize to normbox
 
         Parameters
         ----------
