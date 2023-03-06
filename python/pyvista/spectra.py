@@ -597,6 +597,10 @@ class WaveCal() :
                 self.ax = ax
 
         if self.ax is not None : ax[0].cla()
+        peaks=[]
+        rows=[]
+        gdpeaks=[]
+        gdrows=[]
         for row in range(0,nrow,nskip) :
             if verbose :print('  identifying lines in row: ', row,end='\r')
             if self.ax is not None :
@@ -617,7 +621,8 @@ class WaveCal() :
                   peak=(spectrum.data[row,peak-rad:peak+rad+1]).argmax()+peak-rad
                   if ( (peak < xmin+rad) or (peak > xmax-rad)) : continue
                   if isinstance(display,pyvista.tv.TV) :
-                      display.ax.scatter(peak,row,marker='o',color='r',s=2)
+                      peaks.append(peak)
+                      rows.append(row)
                   # S/N threshold
                   if (spectrum.data[row,peak-rad:peak+rad+1]/
                       spectrum.uncertainty.array[row,peak-rad:peak+rad+1]).max() > thresh:
@@ -639,7 +644,8 @@ class WaveCal() :
                         continue
                     if verbose : print(line,peak,*coeff)
                     if display is not None and  isinstance(display,pyvista.tv.TV) :
-                        display.ax.scatter(cent,row,marker='o',color='g',s=2)
+                        gdpeaks.append(cent)
+                        gdrows.append(row)
                     if plot is not None and plot != False :
                         if pixplot :
                             ax[0].plot([cent,cent],ax[0].get_ylim(),color='r')
@@ -659,6 +665,9 @@ class WaveCal() :
                         print('bad: ',cent,peak0)
                         wt=0.
                     weight.append(wt)
+        if isinstance(display,pyvista.tv.TV) :
+            display.ax.scatter(peaks,rows,marker='o',color='r',s=2)
+            display.ax.scatter(gdpeaks,gdrows,marker='o',color='g',s=2)
         if self.ax is not None : 
             self.fig.tight_layout()
             print('  See identified lines.')
@@ -1345,7 +1354,7 @@ class Trace() :
         else : return new
 
 
-    def extract(self,im,rad=None,back=[],fit=False,new=False,
+    def extract(self,im,rad=None,back=[],fit=False,old=False,
                 display=None,plot=None,medfilt=None,nout=None,threads=0) :
         """ Extract spectrum given trace(s)
 
@@ -1417,12 +1426,12 @@ class Trace() :
                          np.arange(col*skip,ec),
                          self.model,rad,self.pix0,back,self.sigmodel))
 
-        print('  extracting ... (may take some time,\n '+
-              '                  consider threads= if multithreading is available')
+        print('  extracting ... ')
+
         if threads > 0 :
             pool = mp.Pool(threads)
             if fit : output = pool.map_async(extract_col_fit, pars).get()
-            elif new : output = pool.map_async(extract_col_new, pars).get()
+            elif old : output = pool.map_async(extract_col_old, pars).get()
             else : output = pool.map_async(extract_col, pars).get()
             pool.close()
             pool.join()
@@ -1437,7 +1446,9 @@ class Trace() :
             col=0
             for par in pars :
                 if fit : out=extract_col_fit(par)
-                elif new : out=extract_col_new(par)
+                elif old : 
+                  print('  may take some time, consider threads=')
+                  out=extract_col_old(par)
                 else : out=extract_col(par)
                 spec[self.index,col:col+skip] = out[0]
                 sig[self.index,col:col+skip] = out[1]
@@ -1593,12 +1604,14 @@ class FluxCal() :
             ----------
             hd : Data object with standard star spectrum
                  Input image
-            file : str
+            file : str, optional
                  File with calibrated fluxes, with columns 
                  ['wave','flux','bin'], must be readable by astropy.io.ascii
                  with format='ascii'
             stdflux : astropy Table, optional
-                 Table with calibrated fluxes
+                 Table with calibrated fluxes in columns 'wave','flux','bin'
+            extinct : boo, default=Ture
+                 Use mean extinction curve to correct for atmospheric extinction
         """
         # any bad pixels?
         if pixelmask is not None :
@@ -1718,7 +1731,6 @@ class FluxCal() :
             for i in range(3) : 
                 yr=ax[i].get_ylim()
                 ax[i].set_ylim(yr[0]+5, yr[0])
-            if legend : ax[0].legend(fontsize='xx-small')
         if self.degree >= 0 :
             design=np.vstack(des)
             rhs=np.hstack(rhs)
@@ -1750,7 +1762,8 @@ class FluxCal() :
             if plot :
                 for istar,wav in enumerate(self.waves) :
                     ax[2].plot(wav,-2.5*np.log10(obs/10.**(-0.4*self.response_curve)))
-                ax[0].plot(wav,self.response_curve,lw=5,color='k')
+                ax[0].plot(wav,self.response_curve,lw=5,color='k',label='response curve')
+                if legend : ax[0].legend(fontsize='xx-small')
                 plt.draw()
 
         if plot and hard is not None : 
@@ -1941,7 +1954,7 @@ def extract_col_fit(pars) :
         spec[:,jcol] = x
     return spec,sig, mask
 
-def extract_col(pars) :
+def extract_col_old(pars) :
     """ Extract a single column, using boxcar extraction for multiple traces
     """
     data,err,bitmask,cols,models,rad,pix0,back,sigmodels = pars
@@ -1984,7 +1997,7 @@ def extract_col(pars) :
     return spec,sig, mask
 
 
-def extract_col_new(pars) :
+def extract_col(pars) :
     """ Extract a series of columns, using boxcar extraction for multiple traces
     """
     data,err,bitmask,cols,models,rad,pix0,back,sigmodels = pars
@@ -2017,32 +2030,26 @@ def extract_col_new(pars) :
  
         # add the contributions
         spec[i,:] = np.sum( data[ylo:yhi+1,:]*contrib, axis=0)
-        sig2[i,:] = np.sum(err[ylo:yhi+1,:]**2*contrib, axis=0)
+        sig2[i,:] = np.sum(err[ylo:yhi+1,:]**2*contrib**2, axis=0)
         # for bitmask take bitwise_or of pixels that have full contribution
-        mask[i,:] = np.bitwise_or.reduce(bitmask[ylo:yhi+1,:]*contrib.astype(int),axis=0) 
+        mask[i,:] = np.bitwise_or.reduce(
+                       bitmask[ylo:yhi+1,:]*contrib.astype(int),axis=0) 
 
         # background
+        background = np.empty_like(data)
+        background[:] = np.nan
+        background_err = copy.copy(background)
         if len(back) > 0 :
             dist = y - ymid
 
-            #bpix = np.array([])
-            #bvar = np.array([])
-            xpix = np.array([])
-            ypix = np.array([])
+            nback=0
             for bk in back :
                 iy,ix = np.where( (dist>bk[0]) & (dist<bk[1]) )
-                xpix.append(ix)
-                ypix.append(iy)
+                background[iy,ix] = data[iy,ix]
+                background_err[iy,ix] = err[iy,ix]**2
+                nback+=np.abs(bk[1]-bk[0])
 
-            spec[i,:] -= np.median(data[ypix,xpix],axis=0)
-            sig2[i,:] = sig2[i,:]**2+np.sum(err[ypix,xpix]**2,axis=0)/(len(xpix)-1)
-                #bpix=np.append(bpix,data[icr+bk[0]:icr+bk[1],j])
-                #bvar=np.append(bvar,err[icr+bk[0]:icr+bk[1],j]**2)
-            #spec[i,j] -= np.median(bpix)*(r2-r1)
-            #sig[i,j] = np.sqrt(sig[i,j]**2+np.sum(bvar)/(len(bvar)-1))
-          
-           # print('      extraction failed',i,j,col)
-           # pixmask=bitmask.PixelBitMask()
-           # mask[i,j] = pixmask.badval('BAD_EXTRACTION')
+            spec[i,:] -= np.nanmedian(background,axis=0)*2*rad
+            sig2[i,:] += np.nansum(background_err,axis=0)/nback*(2*rad)
 
     return spec, np.sqrt(sig2), mask
