@@ -73,19 +73,19 @@ class Data(CCDData) :
     def add_wave(self,wave) :
         """ Add a wavelength attribute to Data object
 
-            Parameters
-            ----------
-            wave : float, array-like
-                   Wavelength array to add
+        Parameters
+        ----------
+        wave : float, array-like
+               Wavelength array to add
         """
         self.wave = wave
 
     def add_bitmask(self,bitmask) :
         """ Add a bitmask attribute to Data object
 
-            Parameters
-            ----------
-            bitmask : int, array-like
+        Parameters
+        ----------
+        bitmask : int, array-like
                    Bitmask array to add
         """
         self.bitmask = bitmask
@@ -93,9 +93,9 @@ class Data(CCDData) :
     def add_response(self,response) :
         """ Add a response attribute to Data object
 
-            Parameters
-            ----------
-            response : float, array-like
+        Parameters
+        ----------
+        response : float, array-like
                    Response array to add
         """
         self.response = response
@@ -103,10 +103,10 @@ class Data(CCDData) :
     def add_sky(self,sky) :
         """ Add a sky attribute to Data object
 
-            Parameters
-            ----------
-            sky : flat, array-like
-                   Sky array to add
+        Parameters
+        ----------
+        sky : flat, array-like
+               Sky array to add
         """
         self.sky = sky
 
