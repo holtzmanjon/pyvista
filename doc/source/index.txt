@@ -15,7 +15,7 @@ has options that may be useful pedagogically.
 
 The initial algorithms are relatively simple, but might be extended over
 time by interested users. pyvista does use routines from other packages
-including astropy, ccdproc, and photutils.
+including astropy, astroplan, and photutils.
 
 The project is hosted on github, and will be available via pip as stability
 is achieved. See the Installation page for how to download and set up.
@@ -24,8 +24,9 @@ The name pyvista was adopted because it shares some history and a tiny bit of
 look-and-feel with the VISTA package developed during the 1980s at the
 University of California by Richard Stover, Tod Lauer, Don Terndrup,
 and others. However, the code is completely independent. The original VISTA
-was written in Fortran for a VAX/VMS system.  It was ported to Unix/X11 by Jon Holtzman,
-with X11 display routines largely developed by John Tonry. 
+was written in Fortran for a VAX/VMS system.  It was ported to Unix/X11 by Jon 
+Holtzman, with X11 display routines largely developed by John Tonry, and distributed
+as xvista. But pyvista has no code in common with previous versions!
 
 Contents:
 

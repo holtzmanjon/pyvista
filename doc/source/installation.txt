@@ -3,7 +3,7 @@ Installation
 
 Coming soon (!) : pip install astro-pyvista
 
-Istallation from github
+Installation from github
 
 first clone (or fork, if you are interested in contributing)
 the project from gihub:
@@ -14,26 +14,32 @@ the project from gihub:
 
 Installation into Python distribution
 -------------------------------------
+
+While pyvista does not depend on special versions of other packages, to 
+avoid package conflicts, using a Python virtual environment (conda env or pyenv)
+is encouraged!
+
 Once downloaded, you can install with the usual
 
 .. code-block:: csh
 
    python setup.py install
 
-for development, i.e., if you will be pulling from the github repository, use
+However, if you want to be able to report issues, make requests and easily
+get new implementations for development, we recommend an installation that will
+allow you to update from the github repository and have changes immediately
+available, which can be achieved by using:
 
 .. code-block:: csh
 
    python setup.py develop
-
 
 Note that pyvista has several dependencies for different packages
    - numpy
    - scipy
    - astropy
    - bz2
-   - autopy (for tv: optional but valuable, for keystroke controlled moves in the display)
-   - ccdproc (required for imred)
+   - pyautogui (for tv: optional but valuable, for keystroke controlled moves in the display)
    - photutils (required for stars)
 
 The setup.py should install these for you.

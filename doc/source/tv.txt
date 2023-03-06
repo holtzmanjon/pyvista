@@ -66,7 +66,7 @@ where image is one of the input data types. By default, the image is
 displayed using greyscale (colormap "Greys_r") with an automatically
 determined stretch; however, the display scaling can be set explicitly
 using the min= and max= keywords, and the cmap= keyword can be used
-to specify a different colormap. If the input data type is an astropy
+to specify a different colormap. If the input data type is an pyvista Data/astropy
 NDData/CCDData object, then the sn= keyword can be used to display the
 S/N image (data extension divided by uncertainty dimension).
 
