@@ -353,7 +353,9 @@ class Reducer() :
                 os.remove(filename)
                 writer.append_data(image)
 
-    def reduce(self,num,channel=None,crbox=None,crsig=5,bias=None,dark=None,flat=None,
+    def reduce(self,num,channel=None,
+               crbox=None,crsig=5,objlim=5,sigfrac=0.3,
+               bias=None,dark=None,flat=None,
                scat=None,badpix=None,solve=False,return_list=False,display=None,
                trim=True,seeing=2) :
         """ Reads data from disk, and performs reduction steps as determined from command 
@@ -396,7 +398,8 @@ class Reducer() :
         self.overscan(im,display=display,channel=channel)
         im=self.bias(im,superbias=bias)
         im=self.dark(im,superdark=dark)
-        im=self.crrej(im,crbox=crbox,crsig=crsig,display=display)
+        im=self.crrej(im,crbox=crbox,crsig=crsig,objlim=objlim,sigfrac=sigfrac,
+                      display=display)
         self.scatter(im,scat=scat,display=display)
         im=self.flat(im,superflat=flat,display=display)
         self.badpix_fix(im,val=badpix)
