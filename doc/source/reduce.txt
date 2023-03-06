@@ -1,6 +1,10 @@
 REDUCE module
 *************
 
+* reduce module is still under development. In any case, users may find
+it better to put together their own reduction sequences that allow them 
+to fully understand what they are doing to their data!*
+
 reduce is a module that implements basic data reduction for imaging
 and spectroscopic data. It works by reading a configuration file that
 contains blocks of information needed to reduce a set of data for
