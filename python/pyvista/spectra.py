@@ -1550,12 +1550,19 @@ class FluxCal() :
 
     Parameters
     ----------
+    degree : int, default=3
+             Order of polynomial for response curve, -1 for median/mean
+    median : bool, default=False
+             if degree<0, use median response curve rather than mean
+    extinct  : Table/str, default='flux/apo_extinct.dat'
+             mean extinction curve to use, can be input as astropy Table with
+             columns ['wave','mag'], or a filename from which these can be read
 
     Attributes
     ----------
     """
 
-    def __init__(self,degree=3,median=False) :
+    def __init__(self,degree=3,median=False,extinct='flux/apo_extinct.dat') :
         self.nstars = 0
         self.waves = []
         self.weights = []
@@ -1571,8 +1578,17 @@ class FluxCal() :
             self.mean = False
             self.median = True
         self.response_curve = None
+        if type(extinct) is astropy.table.table.Table :
+            self.meanextinct = extinct
+        elif str(extinct)[0] == '.' or str(extinct)[0] == '/' :
+            self.meanextinct=Table.read(extinct,format='ascii')
+        elif extinct is not None :
+            self.meanextinct=Table.read(files(pyvista.data).joinpath(extinct),
+                   names=['wave','mag'],format='ascii')
+        else :
+            raise ValueError('must specify either file= or stdflux=')
 
-    def extinct(self,hd,wave,file='flux/apo_extinct.dat') :
+    def extinct(self,hd,wave) :
         """ Correct input image for atmospheric extinction
 
             Parameters 
@@ -1584,13 +1600,9 @@ class FluxCal() :
             file : str, default='flux/apo_extinct.dat'
                  Two column file (['wave','mag']) with extinction curve
         """
-        if str(file)[0] == '.' or str(file)[0] == '/' :
-            tab=Table.read(file,format='ascii')
-        else :
-            tab=Table.read(files(pyvista.data).joinpath(file),format='ascii')
         x = skycalc.airmass(hd.header)
 
-        ext = np.interp(wave,tab['wave'],tab['mag'])
+        ext = np.interp(wave,self.meanextinct['wave'],self.meanextinct['mag'])
         corr = 10**(-0.4*ext*x)
         out=copy.deepcopy(hd)
         out.data /=corr
