@@ -1,7 +1,7 @@
 REDUCE module
 *************
 
-* reduce module is still under development. In any case, users may find
+*reduce module is still under development. In any case, users may find
 it better to put together their own reduction sequences that allow them 
 to fully understand what they are doing to their data!*
 
