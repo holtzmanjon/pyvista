@@ -13,9 +13,8 @@ save : save internal list to file
 get : load internal list from file
 
 stars functions:
+================
 
 .. automodule:: pyvista.stars
-
    :members:
    :member-order: bysource
-
