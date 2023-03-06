@@ -8,7 +8,6 @@ from pydl.pydlutils import yanny
 from pyvista import imred, spectra, sdss, gaia
 from pyvista.dataclass import Data
 from tools import match,plots
-from ccdproc import CCDData
 from scipy.ndimage import median_filter
 import multiprocessing as mp
 from astropy.table import Table
