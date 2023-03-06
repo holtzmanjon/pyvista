@@ -396,12 +396,12 @@ class Reducer() :
         self.overscan(im,display=display,channel=channel)
         im=self.bias(im,superbias=bias)
         im=self.dark(im,superdark=dark)
+        im=self.crrej(im,crbox=crbox,crsig=crsig,display=display)
         self.scatter(im,scat=scat,display=display)
         im=self.flat(im,superflat=flat,display=display)
         self.badpix_fix(im,val=badpix)
         if trim and display is not None: display.tvclear()
         im=self.trim(im,trimimage=trim)
-        im=self.crrej(im,crbox=crbox,crsig=crsig,display=display)
         if solve : 
             im=self.platesolve(im,display=display,scale=self.scale,seeing=seeing)
         if return_list and type(im) is not list : im=[im]
@@ -579,7 +579,7 @@ class Reducer() :
 
             if display is not None :
                 display.tv(im)
-                getinput("  See bias box and cross section. ",display)
+                getinput("  See bias box (solid outlines applied to dashed regions of the same color), and cross section. ",display)
 
             # Add uncertainty (redo from scratch after overscan)
             data=copy.copy(im.data)
@@ -699,7 +699,7 @@ class Reducer() :
              corr.uncertainty.array /= flat.data
              out.append(corr)
              if display is not None : 
-                 display.tv(corr)
+                 display.tv(corr,same=True)
                  #plot central crossections
                  display.plotax2.cla()
                  dim=corr.data.shape
@@ -852,7 +852,7 @@ class Reducer() :
         if type(crsig) is not list : nsigs=[crsig]
         else : nsigs = crsig
         out=[]
-        for i,(im,gain,rn) in enumerate(zip(ims,self.gain,self.rn)) :
+        for i,(im,gain,rn,sat) in enumerate(zip(ims,self.gain,self.rn,self.saturation)) :
           for iter,nsig in enumerate(nsigs) : 
             if display is not None : 
                 display.clear()
@@ -868,7 +868,7 @@ class Reducer() :
                 outim =copy.deepcopy(im)
                 crmask,outim.data =astroscrappy.detect_cosmics(im.data, 
                           sigclip=crsig, sigfrac=sigfrac, objlim=objlim,
-                          gain=g, readnoise=rn, satlevel=self.saturation, 
+                          gain=g, readnoise=rn, satlevel=sat,
                           fsmode=fsmode) 
  
             else :
@@ -1225,9 +1225,9 @@ class Reducer() :
             ims : list of frames to combine
             display : TV object, default= None
                       if specified, displays flat and individual frames/flat for inspection
-            bias : CCDData object, default=None
+            bias : Data object, default=None
                   if specified, superbias to subtract before combining flats
-            dark : CCDData object, default=None
+            dark : Data object, default=None
                   if specified, superdark to subtract before combining flats
             scat : 
             type : str, default='median'
@@ -1239,14 +1239,15 @@ class Reducer() :
                   shape
             littrow : bool, default=False
                   if True, attempts to fit and remove Littrow ghost from flat,
-                  LITTROW_GHOST bit must be set in bitmask first to identify ghost location
+                  LITTROW_GHOST bit must be set in bitmask first to identify 
+                  ghost location
                   only relevant if spec==True
             width : int, default=101
                   window width for removing spectral shape for spec=True
 
         Returns
         -------
-            CCDData object with combined flat
+            Data object with combined flat
         """
         flat= self.combine(ims,bias=bias,dark=dark,normalize=True,trim=trim,
                  scat=scat,display=display,type=type,sigreject=sigreject)
