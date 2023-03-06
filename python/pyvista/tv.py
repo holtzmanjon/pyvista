@@ -480,19 +480,20 @@ class TV:
         else : self.ax.set_ylim(np.min(ylim),np.max(ylim))
         plt.draw()
 
-    def tv(self,img,min=None,max=None,cmap=None,sn=False,object=None) :
+    def tv(self,img,min=None,max=None,same=False,cmap=None,sn=False,object=None) :
         """
         main display routine: displays image with optional scaling
 
         Args:
-          img: a numpy array OR a fits HDU
+          img: pyvista Data object, numpy array, or fits HDU
           min=, max= : optional scaling arguments
-          min=, max= : optional scaling arguments
+          same= : bool, if True use display scaling from previous image
+          cmap= : specify different color map
         """
         # load data array depending on input type
         if sn :
             try : data = img.data / img.uncertainty.array
-            except: raise ValueError('with sn, input must be CCDData type')
+            except: raise ValueError('with sn, input must be Data type')
         elif isinstance(img, (np.ndarray)) :
             data = img
         elif isinstance(img.data, (np.ndarray)) :
@@ -509,8 +510,14 @@ class TV:
         plt.axes(self.ax)
         #self.clear()
 
-        # make last image not visible so we don't see anything if new image is smaller
-        if self.axlist[self.current] is not None: self.axlist[self.current].set_visible(False)
+        # make last image not visible so we don't see anything 
+        #   if new image is smaller
+        if self.axlist[self.current] is not None: 
+            self.axlist[self.current].set_visible(False)
+        if same :
+            min = self.scale[0]
+            max = self.scale[1]
+
         # load new image data onto rolling stack
         current= (self.current+1) % 4
         self.images += 1
