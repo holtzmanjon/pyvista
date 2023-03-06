@@ -41,7 +41,7 @@ can be used to identify pixels flagged as saturated.
 
 can be used to identify pixels flagged as bad (any of the bad bits set).
 
-To see the PixelBitMask definitions, you can use:
+To see the PixelBitMask definitions, you can instantite a bitmask object and use the print() method, e.g.:
 
 .. code-block:: csh
 

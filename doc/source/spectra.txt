@@ -7,8 +7,9 @@ wavelength calibration, and flux calibration.
 The routines allow for both longslit data, multiobject data, echelle data, and a
 combination (multiple orders with longslit, or multiple slitlets).
 
-Data are read and processed using NDData structures, which carry along both 
-the image data and an associated uncertainty array.
+Data are read and processed using pyvista Data structures, which carry along both 
+the image data and an associated uncertainty array, and allow wavelength,
+response, and sky attributes to be added.
 
 The routines are implemented with three basic classes, the Trace object,
 the WaveCal object, and the FluxCal.  In more detail:
@@ -18,10 +19,10 @@ Trace
 
 The Trace object is used to store functional forms and locations of spectral
 traces. It supports multiple traces per image, e.g., in a long-slit 
-spectrograph, a multiobject spectrograph (fiber or slitlets), a multiorder 
+spectrograph, a multiobject spectrograph (fiber or slitlets), or a multiorder 
 spectrograph.
 
-Trace objects can be defined from one images and used on other images, 
+Trace objects can be defined from one image and used on other images, 
 allowing for small global shifts of the traces in the spatial direction. 
 They can be saved and read from disk as FITS files.
 
@@ -30,6 +31,10 @@ rows= (to specify window, i.e. length of slit),
 lags= (to specify how far search can extend for translation of trace),
 degree= (to specify degree of polynomial for fit to trace), and
 rad= (to specify a radius in pixels to use for centroiding a trace).
+Internally, pyvista spectral routines will assume that wavelength runs
+horizontally, i.e. across columns, so if your spectrograph has vertical
+spectra, set transpose=True in the Trace object.
+
 Alternatively, you can load a saved Trace object from disk by
 instantiating using the file= keyword (use file='?' to see a listing
 of files distributed with the package).
@@ -48,7 +53,7 @@ To make a trace manually use the trace(spectrum,row) method, where row is the st
 guess for the spatial postion at the center of the spectrum (or sc0). 
 You can use the findpeak() method to find object(s) automatically and
 pass the returned value(s) to trace(). Alternatively, you can use find() which
-will cross-correlated a saved trace crossection and identify a location from the
+will cross-correlate a saved trace crossection and identify a location from the
 highest peak; if you specify inter=True with find(), then the image will be displayed
 (display= must also be specified to give the TV object to use), and you can mark the
 location interactively.  If row is a list (i.e. for multiple objects or orders), then 
@@ -88,8 +93,7 @@ show the location of the extraction and background windows (if any).
 You will need to hit the space bar in the display window to continue.
 
 Attributes
-   - type : type of astropy model to use for trace shape (currently, just 
-Polynomial1D)
+   - type : type of astropy model to use for trace shape (currently, just Polynomial1D)
    - model : array of astropy models for each trace
    - degree : polynomial degree for model fit
    - rad : radius in pixels to use for calculating centroid
@@ -101,7 +105,7 @@ Polynomial1D)
    - rows : range of slit length
    - index : identification for each trace
 
-Methods:
+Methods (for details, see docstrings below)
   - find()
   - findpeak()
   - retrace()
@@ -141,11 +145,13 @@ saved in the WaveCal structure.
 
 Lines are identified by looking for peaks within rad pixels of initial guess
 that have S/N exceeded the threshold given by thresh= keyword (default 100).
+Pixel centers of the lines are determined by a Gaussian fit to the line; the
+derived line widths are saved in a fwhm attribute along with the line centers.
 
 After line identification, fit() is automatically called, unless fit=False.
 During the fit, if plot=True, the user can remove discrepant lines (use 'n'
 to remove line nearest to cursor in wavelength, 'l' to remove all lines to
-left, 'r' to remove all lines to right; removal is done by setting the weights
+left, 'r' to remove all lines to right); removal is done by setting the weights
 of these lines to zero in the WaveCal structure. After removing lines to get a 
 better initial solution, it may be desirable to re-enable these lines to 
 see if they can be more correctly identified given a better initial wavelength
@@ -155,7 +161,7 @@ An example, given an extracted spectrum spec, might proceed as follows:
 
 .. code-block:: python
 
-   wav=spectra.WaveCal(files='KOSMOS/KOSMOS_blue_waves.fits')
+   wav=spectra.WaveCal('KOSMOS/KOSMOS_blue_waves.fits')
    wav.identify(spec,plot=True)
    # if you removed a bunch of lines, especally at short and long wavelength ends,
    #   you can try to recover them using your revised solution:
@@ -167,8 +173,9 @@ If there is no previous WaveCal, a new WaveCal can be instantiated, specifing
 the type and degree of the model. Lines are identified given some estimate
 of the wavelength solution, either from an input wavelength array (wav= keyword)
 or from a [wave,pix] pair plus a dispersion (wref= and disp=) keyword, as 
-described above. This solution will be used to try to find lines: a centroid 
-around the input position of width given by the rad= keyword is computed. 
+described above. This solution will be used to try to find lines as
+specified in an input reference line file (file=) : a centroid around
+the input position of width given by the rad= keyword is computed.
 
 One you have an acceptable wavelength solution, it can be used to create
 a wavelength array and transferred to the wave attribute of an object using
@@ -176,7 +183,7 @@ the add_wave() method.
 
 The WaveCal object also includes a skyline() method, which can be used to
 adjust the wavelength solution for an object based on sky emission lines. 
-The object should already have a wavelength solution, e.g. from arcs attached.
+The object should already have a wavelength solution, e.g. from arcs, attached.
 The skyline() routine will use this to look for skylines and then redo the
 wavelength solution, but only allowing for the 0th order term to change, 
 i.e. a constant wavelength shift. If multiple sky lines across a broad
