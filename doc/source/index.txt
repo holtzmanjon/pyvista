@@ -41,9 +41,10 @@ Contents:
    reduce
    stars
    image
+   skycalc
    etc
    simulate
-   skycalc
+   slitmask
 
 
 Indices and tables
