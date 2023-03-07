@@ -1,5 +1,5 @@
-slitmask module
-************
+SLITMASK module
+***************
 
 *slitmask is only in earliest stages of development*
 
@@ -16,7 +16,7 @@ Even more in development, findslits() attempts to find the slitlets in a
 spectroscopic image.
 
 slitmask functions:
-================
+===================
 
 .. automodule:: pyvista.slitmask
    :members:
