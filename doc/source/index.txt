@@ -28,6 +28,13 @@ was written in Fortran for a VAX/VMS system.  It was ported to Unix/X11 by Jon
 Holtzman, with X11 display routines largely developed by John Tonry, and distributed
 as xvista. But pyvista has no code in common with previous versions!
 
+Help:
+
+Some documentation can be found at https://pyvista.readthedocs.org
+
+Some examples in the form of Jupyter notebooks, can be found in the doc/notebooks
+directory, see https://github.com/holtzmanjon/pyvista/tree/main/doc/notebooks
+
 Contents:
 
 .. toctree::
