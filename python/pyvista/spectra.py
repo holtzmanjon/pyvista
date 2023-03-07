@@ -267,7 +267,7 @@ class WaveCal() :
         """
         return self.model.c1.value/(self.model._domain[1]-self.model._domain[0])*2.
 
-    def fit(self,degree=None,reject=3) :
+    def fit(self,degree=None,reject=3,inter=True) :
         """ do a wavelength fit 
 
             If a figure has been set in identify, will show fit graphically and
@@ -327,7 +327,8 @@ class WaveCal() :
                 try: self.fig.canvas.draw_idle()
                 except: pass
                 print('  See 2D wavecal fit. Enter space in plot window to continue')
-                get=plots.mark(self.fig)
+                if inter :
+                    get=plots.mark(self.fig)
 
         else :
           # 1D fit, loop over all rows in which lines have been identified
@@ -392,8 +393,11 @@ class WaveCal() :
                     plt.draw()
 
                     # get input from user on lines to remove
-                    i = getinput('  input from plot window...', 
+                    if inter :
+                        i = getinput('  input from plot window...', 
                                  self.fig,index=True)
+                    else :
+                        i = ''
                     if i == '' :
                         done = True
                     elif i[2] == 'l' :
@@ -430,6 +434,7 @@ class WaveCal() :
     def identify(self,spectrum,file=None,wav=None,wref=None,inter=False,
                  orders=None,verbose=False,rad=5,thresh=100, fit=True, maxshift=1.e10,
                  disp=None,display=None,plot=None,pixplot=False,domain=False,
+                 plotinter=True,
                  xmin=None,xmax=None,lags=range(-300,300), nskip=None) :
         """ Given some estimate of wavelength solution and file with lines,
             identify peaks and centroid, via methods:
@@ -680,7 +685,7 @@ class WaveCal() :
         self.spectrum = spectrum.data
 
         if fit: 
-            self.fit()
+            self.fit(inter=plotinter)
             spectrum.add_wave(self.wave(image=spectrum.data.shape))
         print('')
 
@@ -712,7 +717,8 @@ class WaveCal() :
             if not linear or i>0 :
                 self.model.fixed['c{:d}'.format(i+1)] = True
 
-        self.identify(hd,wav=hd.wave,file=file,plot=plot,thresh=thresh,inter=inter)
+        self.identify(hd,wav=hd.wave,file=file,plot=plot,thresh=thresh,
+                      plotinter=inter)
 
     def scomb(self,hd,wav,average=True,usemask=True) :
         """ Resample onto input wavelength grid
@@ -930,6 +936,7 @@ class Trace() :
         else : self.model=None
         self.sigmodel=None
         if sc0 is not None : self.sc0=sc0
+        else : self.sc0 = None
 
     def write(self,file,append=False) :
         """ Write trace information to FITS file
