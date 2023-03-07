@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='astro-pyvista',
-    version='0.2.0',    
+    version='0.2.1',    
     description='Astronomical image processing',
     url='https://github.com/holtzmanjon/pyvista',
     author='Jon Holtzman',
