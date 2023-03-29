@@ -16,6 +16,7 @@ from astropy.time import Time
 from pyvista import mmm, tv, spectra
 from astropy.stats import sigma_clipped_stats
 from photutils import CircularAperture, CircularAnnulus,aperture_photometry
+from photutils import ApertureStats
 from photutils.detection import DAOStarFinder
 from tools import plots,html
 import matplotlib.pyplot as plt
@@ -220,6 +221,10 @@ def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,display=None,
     except: pass
     stars.add_column(emptycol,name='skysig')
     stars['skysig'].info.format = '.2f'
+    try : stars.remove_column('peak')
+    except: pass
+    stars.add_column(emptycol,name='peak')
+    stars['peak'].info.format = '.1f'
     cnts=[]
     cntserr=[]
 
@@ -264,6 +269,8 @@ def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,display=None,
         # photutils aperture photometry handles pixels on the edges
         apertures = [ CircularAperture((star['x'],star['y']),r) for r in rad ]
         aptab = aperture_photometry(data,apertures,error=uncertainty_data)
+        # run ApertureStats on first aperture to get peak
+        apstats = ApertureStats(data,apertures[0],error=uncertainty_data)
 
         # loop over apertures
         for irad,r in enumerate(rad) :
@@ -305,6 +312,7 @@ def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,display=None,
                 display.tvcirc(star['x'],star['y'],r,color='b')
         stars[istar]['sky'] = sky
         stars[istar]['skysig'] = skysig
+        stars[istar]['peak'] = apstats.max
            
     return stars
 
