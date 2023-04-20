@@ -256,6 +256,7 @@ class Reducer() :
                   self.dir+'/*{:s}*.'.format(channel)+ext)
 
         date=[]
+        objs=[]
         for file in files :
           a=fits.open(file)[hdu].header
           try :
@@ -263,11 +264,16 @@ class Reducer() :
           except KeyError :
               print('file {:s} does not have DATE-OBS'.format(file))
               date.append('')
+          for col in cols :
+              if 'OBJ' in col : objs.append(a[col])
         date=np.array(date)
         sort=np.argsort(date)
 
         if htmlfile is not None :
             fp=html.head(htmlfile+'.html')
+            fp.write('Objects observed: ')
+            for obj in set(objs) : fp.write('{:s} '.format(obj))
+            fp.write('\n<p>\n')
             fp.write('new objects in light blue, new filter in light green') 
             fp.write('<TABLE BORDER=2>\n')
             if display is not None :
