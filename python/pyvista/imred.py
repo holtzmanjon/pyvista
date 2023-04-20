@@ -301,6 +301,7 @@ class Reducer() :
 
         oldobj = ''
         oldfilt = ''
+        style = ''
         for i in sort :
           a=fits.open(files[i])[hdu].header
           # if we have OBJECT card, we can color rows for new object
