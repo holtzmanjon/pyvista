@@ -212,7 +212,7 @@ class Reducer() :
                 box.show()
 
 
-    def log(self,htmlfile=None,ext=None,hdu=0,channel='', 
+    def log(self,files=None,htmlfile=None,ext=None,hdu=0,channel='', 
             cols=None, display=None) :
         """ Create chronological image log from file headers in default
             directory.
@@ -250,7 +250,14 @@ class Reducer() :
             else :
                 ext='fit*'
 
-        files=glob.glob(self.dir+'/*{:s}*.'.format(channel)+ext)
+        # get list of files from default formstr or as requested by keyword
+        if files == None :
+            files=glob.glob(self.dir+'/*{:s}*.'.format(channel)+ext)
+        elif  num.find('/') >= 0 :
+            files=glob.glob('{:s}'.format(files))
+        else :
+            files=glob.glob(self.dir+'/{:s}'.format(files))
+
         if len(files) == 0 :
             print('no files found matching: ',
                   self.dir+'/*{:s}*.'.format(channel)+ext)
