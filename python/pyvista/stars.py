@@ -16,6 +16,7 @@ from astropy.time import Time
 from pyvista import mmm, tv, spectra
 from astropy.stats import sigma_clipped_stats
 from photutils import CircularAperture, CircularAnnulus,aperture_photometry
+from photutils import ApertureStats
 from photutils.detection import DAOStarFinder
 from tools import plots,html
 import matplotlib.pyplot as plt
@@ -75,7 +76,7 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False,
     except: dateobs=None
     cards=['EXPTIME','FILTER','AIRMASS']
     types=['f4','S','f4']
-    if stars == None :
+    if stars is None :
         stars = Table(names=('id','x', 'y'), dtype=('i4','f4', 'f4'))
         stars['x'].info.format = '.2f'
         stars['y'].info.format = '.2f'
@@ -101,7 +102,6 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False,
             except: pass
             for star in stars :
                 x,y = center(tv.img,star['x'],star['y'],rad)
-                print(' ',x-star['x'],y-star['y'])
                 star['x'] = x
                 star['y'] = y
                 if dateobs is not None : star['MJD'] = dateobs.mjd
@@ -220,6 +220,10 @@ def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,display=None,
     except: pass
     stars.add_column(emptycol,name='skysig')
     stars['skysig'].info.format = '.2f'
+    try : stars.remove_column('peak')
+    except: pass
+    stars.add_column(emptycol,name='peak')
+    stars['peak'].info.format = '.1f'
     cnts=[]
     cntserr=[]
 
@@ -264,6 +268,8 @@ def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,display=None,
         # photutils aperture photometry handles pixels on the edges
         apertures = [ CircularAperture((star['x'],star['y']),r) for r in rad ]
         aptab = aperture_photometry(data,apertures,error=uncertainty_data)
+        # run ApertureStats on first aperture to get peak
+        apstats = ApertureStats(data,apertures[0],error=uncertainty_data)
 
         # loop over apertures
         for irad,r in enumerate(rad) :
@@ -305,6 +311,7 @@ def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,display=None,
                 display.tvcirc(star['x'],star['y'],r,color='b')
         stars[istar]['sky'] = sky
         stars[istar]['skysig'] = skysig
+        stars[istar]['peak'] = apstats.max
            
     return stars
 
@@ -739,9 +746,9 @@ def diffphot(tab,aper='aper35.0',yr=0.1,title=None,hard=None) :
     #airfig.tight_layout()
     #plt.draw()
 
-    pdb.set_trace()
-    plt.close()
-    plt.close()
-    plt.close()
+    #pdb.set_trace()
+    #plt.close()
+    #plt.close()
+    #plt.close()
 
     return x,dat

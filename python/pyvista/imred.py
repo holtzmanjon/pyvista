@@ -274,12 +274,18 @@ class Reducer() :
         sort=np.argsort(date)
 
         if htmlfile is not None :
-            fp=html.head(htmlfile)
+            fp=html.head(htmlfile+'.html')
+            fp.write('new objects in light blue, new filter in light green') 
             fp.write('<TABLE BORDER=2>\n')
+            if display is not None :
+                fp.write('<br> <a href={:s}_thumb.html> Thumbnails  page</a>'.format(
+                         os.path.basename(htmlfile)))
+                fd=html.head(htmlfile+'_thumb.html')
+                fd.write('<TABLE BORDER=2>\n')
 
         names=['FILE']
         dtypes=['S24']
-        if htmlfile is not None : fp.write('<TR><TD>FILE\n')
+        if htmlfile is not None : fp.write('<TR style="background-color:lightred"><TD>FILE\n')
         for col in cols :
             try : 
                 val=a[col]
@@ -291,10 +297,35 @@ class Reducer() :
                 print('no card {:s} in header'.format(col))
         tab=Table(names=names,dtype=dtypes)
 
+        # set up style for rows with new object
+        newobj= ''
+        newfilt= ''
+        for col in cols :
+            if 'OBJ' in col :
+                newobj='style="background-color:lightgreen"'
+            if 'FILT' in col :
+                newfilt='style="background-color:lightblue"'
+
+        oldobj = ''
+        oldfilt = ''
+        style = ''
         for i in sort :
           a=fits.open(files[i])[hdu].header
+          # if we have OBJECT card, we can color rows for new object
+          for col in cols :
+            if 'OBJ' in col :
+                if a[col] != oldobj : 
+                    style=newobj
+                    oldobj=a[col]
+                else : style=''
+          # if we have FILTER card, we can color rows for new filter (if not new object)
+          for col in cols :
+            if 'FILT' in col :
+                if a[col] != oldfilt :
+                    oldfilt=a[col]
+                    if style == '' : style=newfilt
           if htmlfile is not None :
-              fp.write('<TR><TD>{:s}\n'.format(os.path.basename(files[i])))  
+              fp.write('<TR {:s}><TD>{:s}\n'.format(style,os.path.basename(files[i])))  
           row=[os.path.basename(files[i])]
           for col in cols :
             try:
@@ -310,10 +341,16 @@ class Reducer() :
                   a=fits.open(files[i])[hdu].data
                   display.tv(a)
                   display.savefig(files[i]+'.png')
-              fp.write('<TD><IMG SRC={:s} WIDTH=400>\n'.format(
+              fp.write('<TD><A HREF="{:s}">png image</A>\n'.
+                      format(
+                      os.path.basename(files[i]+'.png')))
+              fd.write('<TR><TD>{:s}<TD><A HREF="{:s}"><IMG SRC="{:s}" WIDTH=400></A>\n'.
+                      format(os.path.basename(files[i]),
+                      os.path.basename(files[i]+'.png'),
                       os.path.basename(files[i]+'.png')))
         if htmlfile is not None :
             fp.write('</TABLE>\n')
+            if display is not None : fd.write('</TABLE>')
 
         files=glob.glob(self.dir+'/*csv')
         for file in files :
@@ -444,9 +481,9 @@ class Reducer() :
                 search=self.dir+'/'+self.root+form.format(num)
             elif type(num) is str or type(num) is np.str_ :
                 if num.find('/') >= 0 :
-                    search=num+'*'
+                    search=num
                 else :
-                    search=self.dir+'/*'+num+'*'
+                    search=self.dir+'/'+num
             else :
                 print('stopping in rd... num:',num)
                 pdb.set_trace()
