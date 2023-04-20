@@ -76,7 +76,7 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False,
     except: dateobs=None
     cards=['EXPTIME','FILTER','AIRMASS']
     types=['f4','S','f4']
-    if stars == None :
+    if stars is None :
         stars = Table(names=('id','x', 'y'), dtype=('i4','f4', 'f4'))
         stars['x'].info.format = '.2f'
         stars['y'].info.format = '.2f'
@@ -102,7 +102,6 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False,
             except: pass
             for star in stars :
                 x,y = center(tv.img,star['x'],star['y'],rad)
-                print(' ',x-star['x'],y-star['y'])
                 star['x'] = x
                 star['y'] = y
                 if dateobs is not None : star['MJD'] = dateobs.mjd
@@ -747,9 +746,9 @@ def diffphot(tab,aper='aper35.0',yr=0.1,title=None,hard=None) :
     #airfig.tight_layout()
     #plt.draw()
 
-    pdb.set_trace()
-    plt.close()
-    plt.close()
-    plt.close()
+    #pdb.set_trace()
+    #plt.close()
+    #plt.close()
+    #plt.close()
 
     return x,dat

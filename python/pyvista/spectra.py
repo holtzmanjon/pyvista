@@ -24,6 +24,7 @@ import pyvista
 import pyvista.data
 from pyvista import image, tv, skycalc, bitmask, dataclass
 from tools import plots
+import erfa
 
 class WaveCal() :
     """ Class for wavelength solutions
