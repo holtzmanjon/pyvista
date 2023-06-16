@@ -10,7 +10,7 @@ import copy
 import scipy.signal
 import scipy.interpolate
 from scipy.optimize import curve_fit
-from scipy.ndimage import median_filter, gaussian_filter1d
+from scipy.ndimage import median_filter, gaussian_filter1d, gaussian_filter
 from scipy.linalg import solve_banded
 import numpy as np
 import astropy
@@ -25,6 +25,8 @@ import pyvista.data
 from pyvista import image, tv, skycalc, bitmask, dataclass
 from tools import plots
 import erfa
+from numpy.polynomial import Polynomial
+
 
 class WaveCal() :
     """ Class for wavelength solutions
@@ -1521,13 +1523,18 @@ class Trace() :
         if self.rows is None : self.rows=[0,nrows]
         if self.sc0 is None : self.sc0 = ncols//2
 
-        for model in self.model :
+        if not isinstance(self.rows[0],list) :
+            rows = [self.rows]
+        else :
+            rows = self.rows
+
+        for rows,model in zip(rows,self.model) :
             if plot is not None :
-                plot.ax.plot([0,ncols],[self.rows[0],self.rows[0]],color='g')
-                plot.ax.plot([0,ncols],[self.rows[1],self.rows[1]],color='g')
+                plot.ax.plot([0,ncols],[rows[0],rows[0]],color='g')
+                plot.ax.plot([0,ncols],[rows[1],rows[1]],color='g')
                 plt.draw()
-            outrows=np.arange(self.rows[0],self.rows[1])
-            noutrows=len(range(self.rows[0],self.rows[1]))
+            outrows=np.arange(rows[0],rows[1])
+            noutrows=len(range(rows[0],rows[1]))
             spec=np.zeros([noutrows,ncols])
             sig=np.zeros([noutrows,ncols])
             bitmask=np.zeros([noutrows,ncols],dtype=np.uintc)
@@ -1553,6 +1560,106 @@ class Trace() :
         if len(out) == 1 : return out[0]
         else : return out
 
+
+    def findslits(self,im,smooth=3,thresh=1500,display=None,cent=None,degree=2,skip=50) :
+        """ Find slits in a multi-slit flat field image
+    
+        Parameters
+        ----------
+        data : array or Data object, wavelength dimension horizontal
+           input data to find slit edges, usually a flat field
+        smooth : float, optional, default=3
+               smoothing radius for calculated derivatives
+        thresh : float, optional, default=1500
+        skip : integer, optional, default=50
+               spacing of where along spectra to identify edges
+        display : TV object, optional
+               TV object to display slit locations on
+        cent :  int, optional, default=None
+               location of center of spectra, if None use chip center
+        degree : int, option, degree=2
+               polynomial degree to use to fit edge locations
+        
+    
+        """
+        if self.transpose :
+            data = dataclass.transpose(im)
+        else :
+            data = im
+    
+        # find initial set of edges from center of image
+        if cent == None :
+            cent = int(data.shape[1] / 2.)
+        med = np.median(data[:,cent-skip//2:cent+skip//2],axis=1)
+        deriv = gaussian_filter(med[1:] - med[0:-1],smooth)
+        bottom_edges,tmp = findpeak(deriv,thresh)
+        top_edges,tmp = findpeak(-deriv,thresh)
+        if display != None :
+            display.tv(data)
+            for peak in bottom_edges :
+                display.ax.plot([cent,cent],[peak,peak],'bo')
+            for peak in top_edges :
+                display.ax.plot([cent,cent],[peak,peak],'ro')
+    
+        if len(bottom_edges) != len(top_edges) :
+            print("didn't find matching number of bottom and top edges!")
+            pdb.set_trace()
+
+        self.rows = []
+        for b,t in zip(bottom_edges,top_edges) :
+            self.rows.append([b,t])
+    
+        all_bottom=[]
+        all_top=[]
+        allrows=[]
+   
+        # work from center to end
+        bottom = copy.copy(bottom_edges) 
+        top = copy.copy(top_edges) 
+        for irow in np.arange(cent,data.shape[1]-skip,skip) :
+            med = np.median(data[:,irow-skip//2:irow+skip//2],axis=1)
+            bottom=fitpeak(med,bottom,smooth=smooth,width=5)
+            all_bottom.append(bottom)
+            top=fitpeak(med,top,smooth=smooth,width=5,desc=True)
+            all_top.append(top)
+            allrows.append(irow)
+    
+        # work from center to beginning
+        bottom = copy.copy(bottom_edges) 
+        top = copy.copy(top_edges) 
+        for irow in np.arange(cent-skip,skip,-skip) :
+            med = np.median(data[:,irow-skip//2:irow+skip//2],axis=1)
+            bottom=fitpeak(med,bottom,smooth=smooth,width=5)
+            all_bottom.append(bottom)
+            top=fitpeak(med,top,smooth=smooth,width=5,desc=True)
+            all_top.append(top)
+            allrows.append(irow)
+    
+        # fit the edges
+        allrows = np.array(allrows)
+        all_bottom = np.array(all_bottom)
+        all_top = np.array(all_top)
+        all_bottom_fit = []
+        all_top_fit = []
+        self.model = []
+        for ipeak in range(len(bottom_edges)) :
+            poly = Polynomial.fit(allrows,all_bottom[:,ipeak],deg=degree)
+            if display != None :
+                xx = np.arange(data.shape[1])
+                display.ax.plot(xx,poly(xx),color='b')
+            all_bottom_fit.append(poly)
+            self.model.append(poly)
+    
+        for ipeak in range(len(top_edges)) :
+            poly = Polynomial.fit(allrows,all_top[:,ipeak],deg=degree)
+            if display != None :
+                xx = np.arange(data.shape[1])
+                display.ax.plot(xx,poly(xx),color='r')
+            all_top_fit.append(poly)
+    
+        return all_bottom_fit,all_top_fit
+
+    
 class FluxCal() :
     """ Class for flux calibration
 
@@ -1899,6 +2006,39 @@ def findpeak(x,thresh,diff=10000,bundle=0,verbose=False) :
             fiber.append(f)
           
     return j,fiber
+
+def fitpeak(data,peaks,smooth=3,width=3,desc=False) :
+    """ Find slit edges given input set of locations
+
+    Parameters
+    ----------
+    data : 1D array 
+           input data to find slit edges, usually a flat field
+    smooth : integer, optional, default=3
+           smoothing radius for derivative calculation
+    width : integer, optional, default=3
+           window around peak of derivative to do polynomial fit for edge
+    desc : book, optional, default=False
+           if True, find descending peaks
+    """
+    deriv = gaussian_filter(data[1:] - data[0:-1],smooth)
+    if desc : deriv *= -1
+    newpeaks=[]
+    for peak in peaks :
+        ipeak = int(peak)
+        p0 = [deriv[ipeak-width:ipeak+width].max(),
+              deriv[ipeak-width:ipeak+width].argmax()+ipeak-width,1.,0.]
+        xx = np.arange(ipeak-width,ipeak+width+1)
+        yy = deriv[ipeak-width:ipeak+width+1]
+        try :
+            coeffs,var = curve_fit(gauss,xx,yy,p0=p0)
+            newpeaks.append(coeffs[1])
+        except :
+            print('Failed fit: ',peak)
+            newpeaks.append(peak)
+    peaks = np.array(newpeaks)
+
+    return peaks
  
 def getinput(prompt,fig=None,index=False) :
     """  Get input from terminal or matplotlib figure
