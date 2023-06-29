@@ -289,6 +289,7 @@ class WaveCal() :
             self.degree=degree
             self.model = self.getmod()
         mod = self.model
+        redo = False
 
         if not hasattr(self,'ax') : self.ax = None
         if twod :
@@ -354,6 +355,7 @@ class WaveCal() :
                 print('       l : to remove all lines to left of cursor')
                 print('       r : to remove all lines to right of cursor')
                 print('       n : to remove line nearest cursor x position')
+                print('       i : return with True value (to allow iteration)')
                 print('       anything else : finish and return')
                 while not done :
                     # do fit
@@ -413,6 +415,9 @@ class WaveCal() :
                         #bd=np.argmin(np.abs(self.waves[irow]-i[0]))
                         bd=i[3]
                         self.weights[irow[bd]] = 0.
+                    elif i[2] == 'i' :
+                        redo = True
+                        done = True
                     elif i == 'O' :
                         print('  current degree of fit: {:d}'.format(
                               self.degree))
@@ -423,6 +428,8 @@ class WaveCal() :
             models.append(self.model)
           if nmod == 1 : self.model = models[0]
           else : self.model = models       
+     
+          return redo
 
     def set_spectrum(self,spectrum) :
         """ Set spectrum used to derive fit
@@ -496,7 +503,7 @@ class WaveCal() :
                 wav=np.atleast_2d(w0+(pix-pix0)*disp)
             elif self.spectrum is not None :
                 # cross correlate with reference image to get pixel shift
-                print('  cross correlating with reference spectrum using lags: ', lags)
+                print('  cross correlating with reference spectrum using lags between: ', lags[0],lags[-1])
                 fitpeak,shift = image.xcorr(self.spectrum,spectrum.data,lags)
                 if shift.ndim == 1 :
                     pixshift=(fitpeak+lags[0])[0]
@@ -687,10 +694,13 @@ class WaveCal() :
         self.weights=np.array(weight)
         self.spectrum = spectrum.data
 
+        redo = False
         if fit: 
-            self.fit(inter=plotinter)
+            redo = self.fit(inter=plotinter)
             spectrum.add_wave(self.wave(image=spectrum.data.shape))
         print('')
+
+        return redo
 
     def skyline(self,hd,plot=True,thresh=50,inter=True,linear=False,file='skyline.dat') :
         """ Adjust wavelength solution based on sky lines
@@ -1528,11 +1538,8 @@ class Trace() :
         else :
             rows = self.rows
 
+        print('extracting: ')
         for rows,model in zip(rows,self.model) :
-            if plot is not None :
-                plot.ax.plot([0,ncols],[rows[0],rows[0]],color='g')
-                plot.ax.plot([0,ncols],[rows[1],rows[1]],color='g')
-                plt.draw()
             outrows=np.arange(rows[0],rows[1])
             noutrows=len(range(rows[0],rows[1]))
             spec=np.zeros([noutrows,ncols])
@@ -1540,6 +1547,12 @@ class Trace() :
             bitmask=np.zeros([noutrows,ncols],dtype=np.uintc)
             cr=model(np.arange(ncols))
             cr-=cr[self.sc0]
+            if plot is not None :
+                #plot.ax.plot([0,ncols],[rows[0],rows[0]],color='g')
+                #plot.ax.plot([0,ncols],[rows[1],rows[1]],color='g')
+                plot.ax.plot(np.arange(ncols),cr+rows[0],color='g')
+                plot.ax.plot(np.arange(ncols),cr+rows[1],color='g')
+                plt.draw()
             for col in range(ncols) :
                 spec[:,col] = np.interp(outrows+cr[col],np.arange(nrows),
                                         hd.data[:,col])
@@ -1551,8 +1564,11 @@ class Trace() :
                         maskint = np.interp(outrows+cr[col],np.arange(nrows),mask)
                         bitset = np.where(maskint>0)[0] 
                         bitmask[bitset,col] |= 2**bit
+            print(' {:d}-{:d}'.format(rows[0],rows[1]))
+            header=copy.copy(hd.header)
+            header['CNPIX2'] = rows[0]
             out.append(Data(spec,StdDevUncertainty(sig),
-                            bitmask=bitmask,header=hd.header))
+                            bitmask=bitmask,header=header))
 
         if plot is not None: 
            while getinput('  See extraction window(s). Hit space bar to continue....',plot.fig)[2] != ' ' :
@@ -1561,20 +1577,33 @@ class Trace() :
         else : return out
 
 
-    def findslits(self,im,smooth=3,thresh=1500,display=None,cent=None,degree=2,skip=50) :
+    def findslits(self,im,smooth=3,thresh=1500,display=None,cent=None,degree=2,skip=50,sn=False) :
         """ Find slits in a multi-slit flat field image
-    
+   
+        findslits() attempts to find slit locations by looking for peaks
+        in the derivative of the flux (or, if sn=True, in the derivative
+        of S/N) in a window of skip//2 pixels around the center of the
+        image (or around the location given by cent=). Taking those values,
+        it then looks for corresponding edges moving to the left and
+        right of the center. Finally, it fits a polynomial to each set
+        of slit edges to populate the model attribute of the Trace object.
+        It also populates the rows attribute of the Trace object with bottom 
+        and top locations of the slit in the center of the detector.
+ 
         Parameters
         ----------
         data : array or Data object, wavelength dimension horizontal
            input data to find slit edges, usually a flat field
         smooth : float, optional, default=3
                smoothing radius for calculated derivatives
+        sn : boolean, optional, default=False
+               if True, look for edges in delta(S/N)
         thresh : float, optional, default=1500
+               threshold for detecting edges in delta(signal)
         skip : integer, optional, default=50
                spacing of where along spectra to identify edges
         display : TV object, optional
-               TV object to display slit locations on
+               TV object to display derivatives and slit locations 
         cent :  int, optional, default=None
                location of center of spectra, if None use chip center
         degree : int, option, degree=2
@@ -1586,6 +1615,9 @@ class Trace() :
             data = dataclass.transpose(im)
         else :
             data = im
+
+        if sn:
+            data = data.data/data.uncertainty.array
     
         # find initial set of edges from center of image
         if cent == None :
@@ -1595,11 +1627,16 @@ class Trace() :
         bottom_edges,tmp = findpeak(deriv,thresh)
         top_edges,tmp = findpeak(-deriv,thresh)
         if display != None :
+            display.clear()
             display.tv(data)
             for peak in bottom_edges :
                 display.ax.plot([cent,cent],[peak,peak],'bo')
             for peak in top_edges :
                 display.ax.plot([cent,cent],[peak,peak],'ro')
+            display.plotax2.cla()
+            display.plotax2.plot(deriv)
+            display.plotax2.text(0.1,0.9,'Derivative of spatial flux',
+                transform=display.plotax2.transAxes)
     
         if len(bottom_edges) != len(top_edges) :
             print("didn't find matching number of bottom and top edges!")
