@@ -1,6 +1,7 @@
 import copy
 import pdb
 import numpy as np
+import yaml
 from pyvista import simulate, tv, stars, spectra
 from skimage.transform import SimilarityTransform, EuclideanTransform
 from sklearn.cluster import KMeans, MeanShift
@@ -131,7 +132,7 @@ def findstars(b,thresh=500,sharp=[0.4,2]) :
 
     return out[gd]
 
-def fit(holes, locstars, ordered=False) :
+def fit(holes, locstars, ordered=False, fitscale=False) :
     """ Given tables of hole and star locations, find offset and rotation
 
     Parameters
@@ -144,6 +145,15 @@ def fit(holes, locstars, ordered=False) :
             if False, match holes to stars by closest distance.
             if True, stars and holes should match by table order
               (and tables should have the same number of entries)
+    fitscale : bool, default=False
+            if True, solve for scale as well as rotation and translation
+
+    Returns
+    -------
+
+    rotation (degrees)
+    translation (arcsec, assuming .258 arcsec/pix)
+    scale (if fitscale=True)
     """
 
     src=[]
@@ -164,25 +174,36 @@ def fit(holes, locstars, ordered=False) :
     src=np.array(src)
     dest=np.array(dest)
 
-    trans=EuclideanTransform()
-    trans.estimate(src,dest)
-    print('Rotation (degrees) : ',trans.rotation*180/np.pi)
-    print('Translation (arcsec) ', trans.translation*scale)
-    for s,d in zip(src,dest) :
-      fit=trans(s)[0]
-      print(s,fit,d,np.sqrt((fit[0]-d[0])**2 +(fit[1]-d[1])**2))
-
-    sim=SimilarityTransform()
-    sim.estimate(src,dest)
-    print('Rotation (degrees) : ',sim.rotation*180/np.pi)
-    print('Translation (arcsec) ', sim.translation*scale)
-    print('Scale ', sim.scale)
-    for s,d in zip(src,dest) :
-      fit=sim(s)[0]
-      print(s,fit,d,np.sqrt((fit[0]-d[0])**2 +(fit[1]-d[1])**2))
-
-    return trans.rotation*180/np.pi,trans.translation*scale
-
+    if scale :
+        sim=SimilarityTransform()
+        sim.estimate(src,dest)
+        print('Similarity Transform: ')
+        print('Rotation (degrees) : ',sim.rotation*180/np.pi)
+        print('Translation (arcsec) ', sim.translation*scale)
+        print('Scale ', sim.scale)
+        print(' {:8s}{:8s}{:8s}'.format('X','Y','mod-obs'))
+        for s,d in zip(src,dest) :
+          fit=sim(s)[0]
+          print('{:8.1f}{:8.1f}{:8.2f}'.format(
+                s[0],s[1],np.sqrt((fit[0]-d[0])**2 +(fit[1]-d[1])**2)))
+    
+        return sim.rotation*180/np.pi,sim.translation*scale,sim.scale
+    else :
+        trans=EuclideanTransform()
+        trans.estimate(src,dest)
+        print('Euclidean Transform: ')
+        print('  Rotation (degrees) : ',trans.rotation*180/np.pi)
+        print('  Translation (arcsec) ', trans.translation*scale)
+        print(' {:8s}{:8s}{:8s}'.format('X','Y','mod-obs'))
+        for s,d in zip(src,dest) :
+          fit=trans(s)[0]
+          print('{:8.1f}{:8.1f}{:8.2f}'.format(
+                s[0],s[1],np.sqrt((fit[0]-d[0])**2 +(fit[1]-d[1])**2)))
+    
+        print('  Rotation (degrees) : ',trans.rotation*180/np.pi)
+        print('  Translation (arcsec) ', trans.translation*scale)
+        return trans.rotation*180/np.pi,trans.translation*scale
+    
 def test(n=5,rot=0.05,dx=1,dy=-1,display=None) :
     """ Run a test of slitmask routines.  Simulates image and tries to recover rotation and offset
 
@@ -335,3 +356,40 @@ def fitpeak(data,irow,peaks,smooth=3,width=3,desc=False) :
     peaks = np.array(newpeaks)
 
     return peaks
+
+def read_kms(file,sort=None) :
+    """ Read KMS file, return targets, create YAML file
+
+    Parameters
+    ----------
+        file : str
+               input KMS file name
+        sort : str, optional, default=None
+               if specified, return target list sorted by sort
+    """
+
+    with open(file,'r') as fp :
+        fout = open(file.replace('.kms','.yml'),'w')
+        oldtarg=''
+        fout.write('---\n')
+        for line in fp:
+          if line[0] == '#' : fout.write(line)
+          words = line.split()
+          if len(words) > 1 :
+              names=words[0].split('.')
+              if names[0] == 'INS' and 'TARG' in names[1] :
+                  if oldtarg == '' : fout.write('targets :\n')
+                  target = names[1]
+                  if target != oldtarg :
+                      fout.write('- ID : {:s}\n'.format(names[1]) )
+                      oldtarg = target
+                  fout.write('  {:s} : {:s}\n'.format(names[2],words[1]))
+              else :
+                  fout.write('{:s} : {:s}\n'.format(words[0],words[1]))
+
+        fout.close()
+        out= yaml.safe_load(open(file.replace('.kms','.yml')))
+        targets = Table(out['targets'])
+        if sort is not None :
+            targets.sort(sort)
+        return targets
