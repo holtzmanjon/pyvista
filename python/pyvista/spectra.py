@@ -1193,7 +1193,7 @@ class Trace() :
             srows.append(self.model[row](self.sc0)+self.pix0)
         self.trace(hd,srows,plot=plot,thresh=thresh,gaussian=gaussian,skip=10)
     
-    def findpeak(self,hd,sc0=None,width=100,thresh=50,plot=False,
+    def findpeak(self,hd,sc0=None,width=100,thresh=50,plot=False,sort=False,
                  smooth=5,diff=10000,bundle=10000,verbose=False) :
         """ Find peaks in spatial profile for subsequent tracing
 
@@ -1212,6 +1212,8 @@ class Trace() :
                  multiplied by the median uncertainty
             smooth : float, default = 5
                  smoothing FWHM (pixels) for cross-section before peak finding
+            sort : bool, default=False
+                 return peaks sorted with brightest first
 
             Returns
             -------
@@ -1252,7 +1254,8 @@ class Trace() :
             plt.xlabel('Spatial pixel')
             plt.ylabel('Median flux')
         
-        peaks,fiber = findpeak(data, thresh=thresh*sig, diff=diff, bundle=bundle,verbose=verbose)
+        peaks,fiber = findpeak(data, thresh=thresh*sig, diff=diff, 
+                               bundle=bundle,verbose=verbose,sort=sort)
         print('peaks: ',peaks)
         print('aperture/fiber: ',fiber)
         return np.array(peaks)+self.rows[0], fiber
@@ -2006,7 +2009,7 @@ def gauss(x, *p):
 
     return A*np.exp(-(x-mu)**2/(2.*sigma**2))+back
 
-def findpeak(x,thresh,diff=10000,bundle=0,verbose=False) :
+def findpeak(x,thresh,diff=10000,bundle=0,verbose=False,sort=False) :
     """ Find peaks in vector x above input threshold
         attempts to associate an index with each depending on spacing
 
@@ -2021,13 +2024,17 @@ def findpeak(x,thresh,diff=10000,bundle=0,verbose=False) :
         bundle : int
             number of fibers after which to allow max distance 
             to be exceeded without incrementing
+        sort : bool, optional, default=False
+            return peak locations and indices sorted with brightest first
     """
     j=[]
     fiber=[]
+    peak=[]
     f=-1
     for i in range(len(x)) :
         if i>0 and i < len(x)-1 and x[i]>x[i-1] and x[i]>x[i+1] and x[i]>thresh :
             j.append(i)
+            peak.append(x[i])
             if verbose and len(j) > 1 :
                 print(j[-1],j[-2],j[-1]-j[-2],f+1)
 
@@ -2041,6 +2048,13 @@ def findpeak(x,thresh,diff=10000,bundle=0,verbose=False) :
             else :
                 f=f+1
             fiber.append(f)
+
+    if sort :
+      # return brightest peak first
+      isort = np.argsort(peak)[::-1]
+      fiber = list(np.array(fiber)[isort])
+      j = list(np.array(j)[isort])
+
           
     return j,fiber
 
