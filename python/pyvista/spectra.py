@@ -13,8 +13,9 @@ from scipy.optimize import curve_fit
 from scipy.ndimage import median_filter, gaussian_filter1d, gaussian_filter
 from scipy.linalg import solve_banded
 import numpy as np
+from numpy.polynomial.chebyshev import chebvander, chebvander2d
 import astropy
-from astropy.modeling import models, fitting
+from astropy.modeling import models, fitting, Parameter
 from astropy.nddata import StdDevUncertainty
 from pyvista.dataclass import Data
 from astropy.io import ascii, fits
@@ -89,7 +90,7 @@ class WaveCal() :
                 tab=Table.read(files(pyvista.data).joinpath(file),hdu=hdu)
             for tag in ['type','degree','ydegree','waves',
                         'waves_order','orders','index',
-                        'pix0','pix','y','spectrum','weights'] :
+                        'pix0','pix','y','spectrum','weights','apers','coeff'] :
                 if tag in tab.keys() :
                     setattr(self,tag,tab[tag][0])
                 else :
@@ -97,7 +98,8 @@ class WaveCal() :
             self.orders=np.atleast_1d(self.orders)
             # make the initial models from the saved data
             self.model = self.getmod()
-            self.fit()
+            # if we've saved an astropy model, need to redo the fit here
+            if self.type != 'chebyshev2D_shift' : self.fit()
         else :
             self.type = type
             self.degree = degree
@@ -126,8 +128,10 @@ class WaveCal() :
         """
         tab=Table()
         for tag in ['type','degree','ydegree','waves','waves_order',
-                    'orders','index','pix0','pix','y','weights','spectrum'] :
-            tab[tag] = [getattr(self,tag)]
+                    'orders','index','pix0','pix','y','weights','spectrum','apers','coeff'] :
+            try: 
+                if getattr(self,tag) is not None : tab[tag] = [getattr(self,tag)]
+            except: pass
         if append :
             tab.write(file,append=True)
         else :
@@ -154,13 +158,17 @@ class WaveCal() :
 
         """
         if pixels is not None :
-            out=np.zeros(len(pixels[0]))
-            for i,pixel in enumerate(pixels[0]) :
-                order=self.orders[pixels[1][i]]
-                if self.type.find('2D') > 0 :
-                    out[i]=self.model(pixel-self.pix0,pixels[1][i])/order
-                else :
-                    out[i]=self.model(pixel-self.pix0)/order
+            if '2D' in self.type :
+                out=self.model(pixels[0]-self.pix0,pixels[1])/np.array(self.orders)[pixels[1]]
+            else :
+                out=self.model(pixels[0]-self.pix0)/self.orders[pixels[1]]
+            #out=np.zeros(len(pixels[0]))
+            #for i,pixel in enumerate(pixels[0]) :
+            #    order=self.orders[pixels[1][i]]
+            #    if self.type.find('2D') > 0 :
+            #        out[i]=self.model(pixel-self.pix0,pixels[1][i])/order
+            #    else :
+            #        out[i]=self.model(pixel-self.pix0)/order
             return out
         else :
             out=np.zeros(image)
@@ -208,6 +216,9 @@ class WaveCal() :
             sz=self.spectrum.shape
             mod=models.Chebyshev2D(x_degree=self.degree,y_degree=self.ydegree,
                                    x_domain=[0,sz[1]],y_domain=[0,sz[0]])
+        elif self.type == 'chebyshev2D_shift' :
+            mod = Model(func=chebyshev2D_shift,xdegree=self.degree,ydegree=self.ydegree,xdomain=[0,1],ydomain=[0,1],
+                        apers=self.apers,coeff=self.coeff)
         else :
             raise ValueError('unknown fitting type: '+self.type)
             return
@@ -299,12 +310,34 @@ class WaveCal() :
             while nbd != nold :
                 # iterate as long as new points have been removed
                 nold=nbd
-                self.model=fitter(mod,self.pix-self.pix0,self.y,
-                           self.waves*self.waves_order,weights=self.weights)
+
+                if self.type == 'chebyshev2D_shift' :
+                    # don't use astropy routines, use curve_fit
+                    gd=np.where(self.weights > 0)[0]
+                    # quick initial linear fit without shifts
+                    design = chebvander2d(self.pix[gd]-self.pix0,self.y[gd],[self.degree,self.ydegree])
+                    rhs = self.waves[gd]*self.waves_order[gd]
+                    fit=np.linalg.solve(np.dot(design.T,design),np.dot(design.T,rhs))
+                    apers = list(set(self.y[gd]))
+                    model = Model(func=chebyshev2D_shift,xdegree=self.degree,ydegree=self.ydegree,
+                                  xdomain=[0,1],ydomain=[0,1],apers=apers)
+                    cfit=curve_fit(model.evaluate,[self.pix[gd]-self.pix0,self.y[gd]],self.waves[gd],
+                                   p0=np.append(fit,np.zeros(len(apers)-1)),full_output=True)
+
+                    # note that model will only be defined for apertures used for fit
+                    self.coeff = cfit[0]
+                    self.apers = apers
+                    self.model = Model(func=chebyshev2D_shift,coeff=cfit[0],
+                                       xdegree=self.degree,ydegree=self.ydegree,apers=apers,xdomain=[0,1],ydomain=[0,1])
+                else :
+
+                    self.model=fitter(mod,self.pix-self.pix0,self.y,
+                                      self.waves*self.waves_order,weights=self.weights)
+
                 diff=self.waves-self.wave(pixels=[self.pix,self.y])
                 gd = np.where(self.weights > 0)[0]
                 print('  rms: {:8.3f}'.format(diff[gd].std()))
-                bd = np.where(abs(diff) > reject*diff.std())[0]
+                bd = np.where(np.isnan(diff) | (abs(diff) > reject*diff.std()))[0]
                 nbd = len(bd)
                 print('rejecting {:d} points from {:d} total: '.format(
                       nbd,len(self.waves)))
@@ -319,7 +352,7 @@ class WaveCal() :
                             marker='o',color='r',size=5)
 
                 xlim=self.ax[1].get_xlim()
-                self.ax[1].set_ylim(diff.min()-0.5,diff.max()+0.5)
+                self.ax[1].set_ylim(np.nanmin(diff)-0.5,np.nanmax(diff)+0.5)
                 self.ax[1].plot(xlim,[0,0],linestyle=':')
                 self.ax[1].text(0.1,0.9,'rms: {:8.3f}'.format(
                                 diff[gd].std()),transform=self.ax[1].transAxes)
@@ -343,6 +376,7 @@ class WaveCal() :
             self.model=fitter(mod,self.pix[irow]-self.pix0,
                              self.waves[irow]*self.waves_order[irow],
                              weights=self.weights[irow])
+
             gd=np.where(self.weights[irow]>0.)[0]
             diff=self.waves-self.wave(pixels=[self.pix,self.y])
             print('  rms: {:8.3f} Angstroms ({:d} lines)'.format(
@@ -590,6 +624,8 @@ class WaveCal() :
 
         # get centroid around expected lines
         x=[]
+        pix0=[]
+        row0=[]
         y=[]
         fwhm=[]
         waves=[]
@@ -638,7 +674,7 @@ class WaveCal() :
                 # initial guess from input wavelengths
                 peak0=np.nanargmin(abs(line-wav[row,:]))
                 peak=np.nanargmin(abs(line-wav[row,:]))
-                if ( (peak > xmin+rad) and (peak < xmax-rad)) :
+                if ( (spectrum.data[row,peak] > 1) and (peak > xmin+rad) and (peak < xmax-rad)) :
                   # set peak to highest nearby pixel
                   peak=(spectrum.data[row,peak-rad:peak+rad+1]).argmax()+peak-rad
                   if ( (peak < xmin+rad) or (peak > xmax-rad)) : continue
@@ -684,7 +720,7 @@ class WaveCal() :
                     waves_order.append(order)
                     if np.abs(cent-peak0) < maxshift : wt=1.
                     else : 
-                        print('bad: ',cent,peak0)
+                        print('bad: ',row,cent,peak0)
                         wt=0.
                     weight.append(wt)
         if isinstance(display,pyvista.tv.TV) :
@@ -998,7 +1034,7 @@ class Trace() :
 
 
     def trace(self,im,srows,sc0=None,plot=None,display=None,
-              rad=None, thresh=20,index=None,skip=10,gaussian=False) :
+              rad=None, thresh=20,index=None,skip=10,gaussian=False,verbose=False) :
         """ Trace a spectrum from starting position
 
             Parameters
@@ -1033,7 +1069,9 @@ class Trace() :
             raise ValueError('unknown fitting type: '+self.type)
             return
 
-        if index is not None and len(index) != len(srows) :
+        if index is None : 
+            index = np.arange(len(srows))
+        elif len(index) != len(srows) :
             raise ValueError('length of index and srows must be the same')
 
         if self.transpose :
@@ -1048,13 +1086,18 @@ class Trace() :
         else : self.sc0 = sc0
         self.spectrum = hd.data[:,self.sc0]
         self.spectrum[self.spectrum<0] = 0.
+        spectrum=np.zeros([len(hd.data),len(range(skip//2,ncol,skip))])
+        for icol,col in enumerate(range(skip//2,ncol,skip)) :
+            spectrum[:,icol]= np.median(hd.data[:,col-skip//2:col+skip//2+1],axis=1)
+        self.spectrum2d=spectrum
+        self.skip=skip
+        self.cols2d=np.arange(skip//2,ncol,skip)
         rows = np.arange(nrow)
         ypos = np.zeros(ncol)
         ysum = np.zeros(ncol)
         yvar = np.zeros(ncol)
         ymask = np.ones(ncol,dtype=bool)
-        ygpos = np.zeros(ncol)
-        ygsig = np.zeros(ncol)
+        ysig = np.zeros(ncol)
         pixmask = bitmask.PixelBitMask()
 
         # we want to handle multiple traces, so make sure srows is iterable
@@ -1069,7 +1112,10 @@ class Trace() :
             plot.plotax2.cla()
 
         if rad is None : rad = self.rad-1
-        for irow,srow in enumerate(srows) :
+        self.cols=[]
+        self.ypos=[]
+        newindex=[]
+        for irow,(srow,ind) in enumerate(zip(srows,index)) :
             try:
                 print('  Tracing row: {:d}'.format(int(srow)),end='\r')
             except: 
@@ -1080,28 +1126,31 @@ class Trace() :
             sr=hd.data[sr-rad:sr+rad+1,self.sc0].argmax()+sr-rad
             # march left from center
             for col in range(self.sc0,skip//2,-skip) :
-                # centroid
-                data = np.median(hd.data[:,col-skip//2:col+skip//2+1],axis=1)
-                var = np.median(hd.uncertainty.array[:,col-skip//2:col+skip//2+1]**2,axis=1)/(2*skip)
-                cr=sr-rad+data[sr-rad:sr+rad+1].argmax()
+                # centroid, calculate for S/N even if we have gaussian
+                data = np.median(hd.data[sr-rad:sr+rad+1,col-skip//2:col+skip//2+1],axis=1)
+                var = np.median(hd.uncertainty.array[sr-rad:sr+rad+1,col-skip//2:col+skip//2+1]**2,axis=1)/(2*skip)
+                cr=sr-rad+data.argmax()
+                data = np.median(hd.data[cr-rad:cr+rad+1,col-skip//2:col+skip//2+1],axis=1)
+                var = np.median(hd.uncertainty.array[cr-rad:cr+rad+1,col-skip//2:col+skip//2+1]**2,axis=1)/(2*skip)
 
-                ysum[col] = np.sum(data[cr-rad:cr+rad+1])
-                ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*data[cr-rad:cr+rad+1]) / ysum[col]
-                yvar[col] = np.sum(var[cr-rad:cr+rad+1])
-                ymask[col] = False
-
-                # gaussian fit
+                ysum[col] = np.sum(data)
+                ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*data) / ysum[col]
+                yvar[col] = np.sum(var)
                 if gaussian :
-                    #gcoeff=gfit(data,cr,rad=rad,sig=2,back=0.)
+                    # gaussian fit
+                    data = np.median(hd.data[cr-rad-2:cr+rad+2,col-skip//2:col+skip//2+1],axis=1)
                     try : 
-                        gcoeff=gfit(data,cr,rad=rad,sig=2,back=0.)
-                        #ax.plot(data)
-                        ygpos[col] = gcoeff[1]
-                        ygsig[col] = gcoeff[2]
-                    except : pass
+                        gcoeff=gfit(data, rad+2,rad=rad,sig=2,back=0.)
+                        ypos[col] = gcoeff[1]+cr-rad-2
+                        ysig[col] = gcoeff[2]
+                        ymask[col] = False
+                    except : 
+                        pass
+                else :
+                    ymask[col] = False
 
                 # if centroid is too far from starting guess, mask as bad
-                if np.abs(ypos[col]-sr) > rad :
+                if np.abs(ypos[col]-sr) > rad or  (ysum[col]/np.sqrt(yvar[col]) < thresh)  : 
                     ymask[col] = True
 
                 # use this position as starting center for next 
@@ -1116,27 +1165,31 @@ class Trace() :
             sr=hd.data[sr-rad:sr+rad+1,self.sc0].argmax()+sr-rad
 
             for col in range(self.sc0+skip,ncol,skip) :
-                # centroid
-                data = np.median(hd.data[:,col-skip//2:col+skip//2+1],axis=1)
-                var = np.median(hd.uncertainty.array[:,col-skip//2:col+skip//2+1]**2,axis=1)/(2*skip)
-                cr=sr-rad+data[sr-rad:sr+rad+1].argmax()
+                # centroid, calculate for S/N even if we have gaussian
+                data = np.median(hd.data[sr-rad:sr+rad+1,col-skip//2:col+skip//2+1],axis=1)
+                var = np.median(hd.uncertainty.array[sr-rad:sr+rad+1,col-skip//2:col+skip//2+1]**2,axis=1)/(2*skip)
+                cr=sr-rad+data.argmax()
+                data = np.median(hd.data[cr-rad:cr+rad+1,col-skip//2:col+skip//2+1],axis=1)
+                var = np.median(hd.uncertainty.array[cr-rad:cr+rad+1,col-skip//2:col+skip//2+1]**2,axis=1)/(2*skip)
 
-                ysum[col] = np.sum(data[cr-rad:cr+rad+1])
-                ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*data[cr-rad:cr+rad+1]) / ysum[col]
-                yvar[col] = np.sum(var[cr-rad:cr+rad+1])
-                ymask[col] = False
-
-                # gaussian fit
+                ysum[col] = np.sum(data)
+                ypos[col] = np.sum(rows[cr-rad:cr+rad+1]*data) / ysum[col]
+                yvar[col] = np.sum(var)
                 if gaussian :
+                    # gaussian fit
+                    data = np.median(hd.data[cr-rad-2:cr+rad+2,col-skip//2:col+skip//2+1],axis=1)
                     try : 
-                        gcoeff=gfit(data,cr,rad=self.rad,sig=2,back=0.)
-                        #ax.plot(data)
-                        ygpos[col] = gcoeff[1]
-                        ygsig[col] = gcoeff[2]
-                    except : pass
+                        gcoeff=gfit(data, rad+2,rad=rad,sig=2,back=0.)
+                        ypos[col] = gcoeff[1]+cr-rad-2
+                        ysig[col] = gcoeff[2]
+                        ymask[col] = False
+                    except : 
+                        pass
+                else :
+                    ymask[col] = False
 
                 # use this position as starting center for next if above threshold S/N
-                if np.abs(ypos[col]-sr) > rad :
+                if np.abs(ypos[col]-sr) > rad or (ysum[col]/np.sqrt(yvar[col]) < thresh) : 
                     ymask[col] = True
                 if ((not ymask[col]) & np.isfinite(ysum[col]) & 
                     (ysum[col]/np.sqrt(yvar[col]) > thresh) ) : 
@@ -1145,60 +1198,73 @@ class Trace() :
             # do a fit to the measured locations
             cols=np.arange(ncol)
             gd = np.where((~ymask) & (ysum/np.sqrt(yvar)>thresh) )[0]
-            if gaussian :
-                # use gaussian fit centers
-                model=(fitter(mod,cols[gd],ygpos[gd]))
-                res = model(cols)-ygpos
-            else :
-                # use centroid
-                model=(fitter(mod,cols[gd],ypos[gd]))
-                res = model(cols)-ypos
+            model=(fitter(mod,cols[gd],ypos[gd]))
+            res = model(cols)-ypos
 
             # reject outlier points (>1 pixel) and refit
             gd = np.where((~ymask) & (ysum/np.sqrt(yvar)>thresh) & (np.abs(res)<rad))[0]
+            model=(fitter(mod,cols[gd],ypos[gd]))
             if gaussian: 
-                model=(fitter(mod,cols[gd],ygpos[gd]))
-                sigmodel=(fitter(sigmod,cols[gd],ygsig[gd]))
+                sigmodel=(fitter(sigmod,cols[gd],ysig[gd]))
                 self.sigmodel.append(sigmodel)
-            else :
-                model=(fitter(mod,cols[gd],ypos[gd]))
-            if len(gd) < self.degree*2 : 
+            if len(gd) < self.degree*5 : 
                 print('  failed trace for row: {:d} {:d} {:d}'.format(irow,len(gd),len(res)))
-            self.model.append(model)
+                continue
 
-            if plot : 
-                valid = np.where(ypos>0.)[0]
-                if gaussian : 
-                    plot.ax.scatter(cols[valid],ygpos[valid],marker='o',color='r',s=50) 
-                    plot.ax.scatter(cols[gd],ygpos[gd],marker='o',color='g',s=50) 
-                else :
-                    plot.ax.scatter(cols[valid],ypos[valid],marker='o',color='r',s=50) 
-                    plot.ax.scatter(cols[gd],ypos[gd],marker='o',color='g',s=50) 
+            self.model.append(model)
+            newindex.append(ind)
+
+            # plot model here, save all points for single plot command later for matplotlib efficiency and to return
+            self.cols.append(cols[gd])
+            self.ypos.append(ypos[gd])
+
+            if plot :
                 plot.ax.plot(cols,model(cols),color='m')
                 plot.plotax2.plot(cols,model(cols),color='m')
                 plot.plotax2.text(0.05,0.95,'Derived trace',
                        transform=plot.plotax2.transAxes)
-                #plt.pause(0.05)
+
+        if plot : 
+            # append all points for a single matplotlib call
+            allcols=[]
+            allpos=[]
+            for col,ypos in zip(self.cols,self.ypos) :
+                allcols.extend(col)
+                allpos.extend(ypos)
+            allpos=np.array(allpos)
+            allcols=np.array(allcols)
+            valid = np.where(allpos>0.)[0]
+            plot.ax.scatter(allcols[valid],allpos[valid],marker='o',color='r',s=50) 
+            plot.ax.scatter(allcols,allpos,marker='o',color='g',s=50) 
             plt.draw()
 
         self.pix0=0
-        if index is not None : self.index = index
+        if index is not None : self.index = np.array(newindex)
         else : self.index=np.arange(len(self.model))
         print("")
         if plot : 
             while getinput('  See trace. Hit space bar to continue....',plot.fig)[2] != ' ' :
                 pass
 
-    def retrace(self,hd,plot=None,display=None,thresh=20,gaussian=False,skip=10) :
+    def plot(self) :
+        """ Plots points and fits for traces
+        """
+        plt.figure()
+        x=np.arange(self.rows[0],self.rows[1])
+        for cols,ypos,mod,fiber in zip(self.cols,self.ypos,self.model,self.index) :
+            plt.scatter(cols,ypos)
+            plt.plot(x,mod(x))
+            plt.text(x[-1],mod(x[-1]),'{:d}'.format(fiber))
+
+    def retrace(self,hd,plot=None,display=None,thresh=20,gaussian=False,skip=10,rad=3) :
         """ Retrace starting with existing model
         """
         if plot == None and display != None : plot = display
-        self.find(hd)
+        self.find(hd,rad=rad)
         srows = []
         for row in range(len(self.model)) :
-            print("Using shift: ",self.pix0)
             srows.append(self.model[row](self.sc0)+self.pix0)
-        self.trace(hd,srows,plot=plot,thresh=thresh,gaussian=gaussian,skip=10)
+        self.trace(hd,srows,plot=plot,thresh=thresh,gaussian=gaussian,skip=skip,index=self.index)
     
     def findpeak(self,hd,sc0=None,width=100,thresh=50,plot=False,sort=False,
                  smooth=5,diff=10000,bundle=10000,verbose=False) :
@@ -1301,6 +1367,13 @@ class Trace() :
             self.pix0=y-self.model[0](x)
             print('setting trace offset to: ', self.pix0)
             return 
+
+        #for icol,col in enumerate(self.cols2d) :
+        #    lags=np.arange(-9,10)
+        #    spec=np.median(im.data[:,col-self.skip//2:col+self.skip//2+1],axis=1)
+        #    fitpeak,shift = image.xcorr(self.spectrum2d[:,icol],spec,lags,rad=rad)
+        #    pixshift=(fitpeak+lags[0])[0]
+        #    print('  Derived pixel shift from input trace: ',pixshift)
       
         # get median around central column
         if sc0 is None : 
@@ -1731,7 +1804,6 @@ class FluxCal() :
         self.obs = []
         self.obscorr = []
         self.true = []
-        self.weights = []
         self.name = []
         self.degree = degree
         self.median = False
@@ -1749,6 +1821,24 @@ class FluxCal() :
                    names=['wave','mag'],format='ascii')
         else :
             raise ValueError('must specify either file= or stdflux=')
+
+    def write(self,file,append=False) :
+        """ Save object to file  UNTESTED, and NO READ yet!
+
+            Parameters 
+            ----------
+            file : str, name of output file to write to, FITS format
+            append : bool, append to existing file (untested)
+        """
+        tab=Table()
+        for tag in ['nstars','waves','weights','obs','obscorr',
+                'true','name','degree','median','mean','response_curve'] :
+            tab[tag] = [getattr(self,tag)]
+        if append :
+            tab.write(file,append=True)
+        else :
+            tab.write(file,overwrite=True)
+        return tab
 
     def extinct(self,hd,wave) :
         """ Correct input image for atmospheric extinction
@@ -1771,7 +1861,7 @@ class FluxCal() :
         out.uncertainty.array /=corr
         return out
 
-    def addstar(self,hd,wave,pixelmask=None,file=None,stdflux=None,extinct=True) :
+    def addstar(self,hd,wave,pixelmask=None,file=None,stdflux=None,extinct=True,badval=None) :
         """ Derive flux calibration vector from standard star
 
             Parameters 
@@ -1791,7 +1881,8 @@ class FluxCal() :
         if pixelmask is not None :
             bd = np.bitwise_or.reduce(pixelmask.flatten())
             pixelmask=bitmask.PixelBitMask()
-            if bd & pixelmask.badval() :
+            if badval == None : badval = pixelmask.badval()
+            if bd & badval :
                 print('Bad pixels found in spectrum, not adding')
                 return
 
@@ -1922,6 +2013,7 @@ class FluxCal() :
         else :
             for wav in self.waves :
                 if not np.array_equal(wav,self.waves[0]) : 
+                    pdb.set_trace()
                     raise ValueError('cannot median response curves if not all on same wavelengths')
             allobs = np.array(self.obscorr)
             alltrue = np.array(self.true)
@@ -1966,6 +2058,7 @@ class FluxCal() :
                 corr = 10.**(-0.4*spline(waves[irow]))
                 hd.data[irow] /= corr
                 hd.uncertainty.array[irow] /= corr
+        hd.add_response(corr)
 
     def refraction(self,h=2000,temp=10,rh=0.25) :
         p0=101325
@@ -2271,3 +2364,40 @@ def extract_col(pars) :
             sig2[i,:] += np.nansum(background_err,axis=0)/nback*(2*rad)
 
     return spec, np.sqrt(sig2), mask
+
+class Model() :
+    def __init__(self,func=None,apers=None,coeff=None,xdegree=1,ydegree=0,xdomain=[-1,1],ydomain=[-1,1]) :
+        self.func=func
+        self.apers=np.array(apers)
+        self.coeff=coeff
+        self.xdegree=xdegree
+        self.ydegree=ydegree
+        self.xdomain=xdomain
+        self.ydomain=ydomain
+
+    def __call__(self,x,y) :
+        return self.func(x,y,*self.coeff,xdegree=self.xdegree,ydegree=self.ydegree,
+                         xdomain=self.xdomain,ydomain=self.ydomain,apers=self.apers)
+
+    def evaluate(self,x,*coeff) :
+        return self.func(x[0],x[1],*coeff,xdegree=self.xdegree,ydegree=self.ydegree,
+                         xdomain=self.xdomain,ydomain=self.ydomain,apers=self.apers)
+
+def chebyshev2D_shift(x,y,*coeff,xdegree=0,ydegree=0,xdomain=[-1,1],ydomain=[-1,1],apers=None):
+    """ Evaluate chebyshev2d function
+    """
+    xshift = np.zeros(len(x))
+    if apers is not None :
+        xshift[:] = np.nan
+        j=np.where(y==int(apers[0]))[0]
+        xshift[j] = 0.
+        for i,aper in enumerate(apers[1:]) :
+            j=np.where(y==int(aper))
+            xshift[j] = coeff[(xdegree+1)*(ydegree+1)+i]
+
+    xcheb = (x+xshift-xdomain[0])/(xdomain[1]-xdomain[0])*2 - 1
+    ycheb = (y-ydomain[0])/(ydomain[1]-ydomain[0])*2 - 1
+    design = chebvander2d(xcheb,ycheb,[xdegree,ydegree])
+
+    return np.dot(design,coeff[0:(xdegree+1)*(ydegree+1)])
+
