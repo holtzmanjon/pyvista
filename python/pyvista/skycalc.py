@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import erfa
 
 import pdb
 import astroplan
@@ -295,4 +296,26 @@ def parang(hd,obs='apo',tz='US/Mountain') :
     print(time)
     print(obj)
     return site.parallactic_angle(time,obj).deg
+
+
+
+def refraction(obs=None,wav=0.5,h=2000,temp=20,rh=0.25) :
+    """ Calculate coefficient of refraction
+    """
+    # set the site
+    if obs != None :
+        site=Observer.at_site(obs,timezone='US/Mountain')
+        h=site.location.height.value
+
+    p0=101325
+    M = 0.02896968
+    g = 9.80665
+    T0 = 288.16
+    R0 = 8.314462618
+    pressure = p0 *np.exp(-g*h*M/T0/R0)*10
+    tsl=temp+273
+    pressure = 1013.25 * np.exp ( -h / ( 29.3 * tsl ) )
+    ref=erfa.refco(pressure,temp,rh,wav)[0]*206265
+    return ref
+
 
