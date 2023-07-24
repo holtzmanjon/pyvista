@@ -3,7 +3,7 @@ channels : ['a','b','c']
 formstr  : ['-a-{:08d}.apz','-b-{:08d}.apz','-c-{:08d}.apz']
 cols : ['DATE-OBS','EXPTYPE','RADEG','DECDEG','EXPTIME']
 gain     : [1.9,1.9,1.9]
-rn       : [20,20,20]
+rn       : [24.7,20.9,19]
 crbox    : [1,11]
 scat     : 10
 biastype : -1
