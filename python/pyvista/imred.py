@@ -453,7 +453,7 @@ class Reducer() :
 
             # read the file into a Data object
             if self.verbose : print('  Reading file: {:s}'.format(file)) 
-            if self.inst == 'APOGEE' :
+            if 'APOGEE' in self.inst :
                 im=apogee.cds(file,dark=dark)
             else :
                 try : im=Data.read(file,hdu=ext,unit=u.dimensionless_unscaled)
