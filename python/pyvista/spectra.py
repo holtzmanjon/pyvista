@@ -411,11 +411,18 @@ class WaveCal() :
                     elif i[2] == 'r' :
                         bd=np.where(self.waves[irow]>i[0])[0]
                         self.weights[irow[bd]] = 0.
+                    elif i[2] == 'u' :
+                        bd=np.where(diff>i[1])[0]
+                        self.weights[irow[bd]] = 0.
+                    elif i[2] == 'd' :
+                        bd=np.where(diff<i[1])[0]
+                        self.weights[irow[bd]] = 0.
                     elif i[2] == 'n' :
                         #bd=np.argmin(np.abs(self.waves[irow]-i[0]))
                         bd=i[3]
                         self.weights[irow[bd]] = 0.
                     elif i[2] == 'i' :
+                        self.weights[:] = 1.
                         redo = True
                         done = True
                     elif i == 'O' :
