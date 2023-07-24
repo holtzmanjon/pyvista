@@ -10,7 +10,7 @@ import copy
 import scipy.signal
 import scipy.interpolate
 from scipy.optimize import curve_fit
-from scipy.ndimage import median_filter, gaussian_filter1d
+from scipy.ndimage import median_filter, gaussian_filter1d, gaussian_filter
 from scipy.linalg import solve_banded
 import numpy as np
 import astropy
@@ -24,6 +24,9 @@ import pyvista
 import pyvista.data
 from pyvista import image, tv, skycalc, bitmask, dataclass
 from tools import plots
+import erfa
+from numpy.polynomial import Polynomial
+
 
 class WaveCal() :
     """ Class for wavelength solutions
@@ -286,6 +289,7 @@ class WaveCal() :
             self.degree=degree
             self.model = self.getmod()
         mod = self.model
+        redo = False
 
         if not hasattr(self,'ax') : self.ax = None
         if twod :
@@ -351,6 +355,7 @@ class WaveCal() :
                 print('       l : to remove all lines to left of cursor')
                 print('       r : to remove all lines to right of cursor')
                 print('       n : to remove line nearest cursor x position')
+                print('       i : return with True value (to allow iteration)')
                 print('       anything else : finish and return')
                 while not done :
                     # do fit
@@ -406,10 +411,20 @@ class WaveCal() :
                     elif i[2] == 'r' :
                         bd=np.where(self.waves[irow]>i[0])[0]
                         self.weights[irow[bd]] = 0.
+                    elif i[2] == 'u' :
+                        bd=np.where(diff>i[1])[0]
+                        self.weights[irow[bd]] = 0.
+                    elif i[2] == 'd' :
+                        bd=np.where(diff<i[1])[0]
+                        self.weights[irow[bd]] = 0.
                     elif i[2] == 'n' :
                         #bd=np.argmin(np.abs(self.waves[irow]-i[0]))
                         bd=i[3]
                         self.weights[irow[bd]] = 0.
+                    elif i[2] == 'i' :
+                        self.weights[:] = 1.
+                        redo = True
+                        done = True
                     elif i == 'O' :
                         print('  current degree of fit: {:d}'.format(
                               self.degree))
@@ -420,6 +435,8 @@ class WaveCal() :
             models.append(self.model)
           if nmod == 1 : self.model = models[0]
           else : self.model = models       
+     
+          return redo
 
     def set_spectrum(self,spectrum) :
         """ Set spectrum used to derive fit
@@ -493,7 +510,7 @@ class WaveCal() :
                 wav=np.atleast_2d(w0+(pix-pix0)*disp)
             elif self.spectrum is not None :
                 # cross correlate with reference image to get pixel shift
-                print('  cross correlating with reference spectrum using lags: ', lags)
+                print('  cross correlating with reference spectrum using lags between: ', lags[0],lags[-1])
                 fitpeak,shift = image.xcorr(self.spectrum,spectrum.data,lags)
                 if shift.ndim == 1 :
                     pixshift=(fitpeak+lags[0])[0]
@@ -684,10 +701,13 @@ class WaveCal() :
         self.weights=np.array(weight)
         self.spectrum = spectrum.data
 
+        redo = False
         if fit: 
-            self.fit(inter=plotinter)
+            redo = self.fit(inter=plotinter)
             spectrum.add_wave(self.wave(image=spectrum.data.shape))
         print('')
+
+        return redo
 
     def skyline(self,hd,plot=True,thresh=50,inter=True,linear=False,file='skyline.dat') :
         """ Adjust wavelength solution based on sky lines
@@ -1180,7 +1200,7 @@ class Trace() :
             srows.append(self.model[row](self.sc0)+self.pix0)
         self.trace(hd,srows,plot=plot,thresh=thresh,gaussian=gaussian,skip=10)
     
-    def findpeak(self,hd,sc0=None,width=100,thresh=50,plot=False,
+    def findpeak(self,hd,sc0=None,width=100,thresh=50,plot=False,sort=False,
                  smooth=5,diff=10000,bundle=10000,verbose=False) :
         """ Find peaks in spatial profile for subsequent tracing
 
@@ -1199,6 +1219,8 @@ class Trace() :
                  multiplied by the median uncertainty
             smooth : float, default = 5
                  smoothing FWHM (pixels) for cross-section before peak finding
+            sort : bool, default=False
+                 return peaks sorted with brightest first
 
             Returns
             -------
@@ -1239,7 +1261,8 @@ class Trace() :
             plt.xlabel('Spatial pixel')
             plt.ylabel('Median flux')
         
-        peaks,fiber = findpeak(data, thresh=thresh*sig, diff=diff, bundle=bundle,verbose=verbose)
+        peaks,fiber = findpeak(data, thresh=thresh*sig, diff=diff, 
+                               bundle=bundle,verbose=verbose,sort=sort)
         print('peaks: ',peaks)
         print('aperture/fiber: ',fiber)
         return np.array(peaks)+self.rows[0], fiber
@@ -1520,18 +1543,26 @@ class Trace() :
         if self.rows is None : self.rows=[0,nrows]
         if self.sc0 is None : self.sc0 = ncols//2
 
-        for model in self.model :
-            if plot is not None :
-                plot.ax.plot([0,ncols],[self.rows[0],self.rows[0]],color='g')
-                plot.ax.plot([0,ncols],[self.rows[1],self.rows[1]],color='g')
-                plt.draw()
-            outrows=np.arange(self.rows[0],self.rows[1])
-            noutrows=len(range(self.rows[0],self.rows[1]))
+        if not isinstance(self.rows[0],list) :
+            rows = [self.rows]
+        else :
+            rows = self.rows
+
+        print('extracting: ')
+        for rows,model in zip(rows,self.model) :
+            outrows=np.arange(rows[0],rows[1])
+            noutrows=len(range(rows[0],rows[1]))
             spec=np.zeros([noutrows,ncols])
             sig=np.zeros([noutrows,ncols])
             bitmask=np.zeros([noutrows,ncols],dtype=np.uintc)
             cr=model(np.arange(ncols))
             cr-=cr[self.sc0]
+            if plot is not None :
+                #plot.ax.plot([0,ncols],[rows[0],rows[0]],color='g')
+                #plot.ax.plot([0,ncols],[rows[1],rows[1]],color='g')
+                plot.ax.plot(np.arange(ncols),cr+rows[0],color='g')
+                plot.ax.plot(np.arange(ncols),cr+rows[1],color='g')
+                plt.draw()
             for col in range(ncols) :
                 spec[:,col] = np.interp(outrows+cr[col],np.arange(nrows),
                                         hd.data[:,col])
@@ -1543,8 +1574,11 @@ class Trace() :
                         maskint = np.interp(outrows+cr[col],np.arange(nrows),mask)
                         bitset = np.where(maskint>0)[0] 
                         bitmask[bitset,col] |= 2**bit
+            print(' {:d}-{:d}'.format(rows[0],rows[1]))
+            header=copy.copy(hd.header)
+            header['CNPIX2'] = rows[0]
             out.append(Data(spec,StdDevUncertainty(sig),
-                            bitmask=bitmask,header=hd.header))
+                            bitmask=bitmask,header=header))
 
         if plot is not None: 
            while getinput('  See extraction window(s). Hit space bar to continue....',plot.fig)[2] != ' ' :
@@ -1552,6 +1586,127 @@ class Trace() :
         if len(out) == 1 : return out[0]
         else : return out
 
+
+    def findslits(self,im,smooth=3,thresh=1500,display=None,cent=None,degree=2,skip=50,sn=False) :
+        """ Find slits in a multi-slit flat field image
+   
+        findslits() attempts to find slit locations by looking for peaks
+        in the derivative of the flux (or, if sn=True, in the derivative
+        of S/N) in a window of skip//2 pixels around the center of the
+        image (or around the location given by cent=). Taking those values,
+        it then looks for corresponding edges moving to the left and
+        right of the center. Finally, it fits a polynomial to each set
+        of slit edges to populate the model attribute of the Trace object.
+        It also populates the rows attribute of the Trace object with bottom 
+        and top locations of the slit in the center of the detector.
+ 
+        Parameters
+        ----------
+        data : array or Data object, wavelength dimension horizontal
+           input data to find slit edges, usually a flat field
+        smooth : float, optional, default=3
+               smoothing radius for calculated derivatives
+        sn : boolean, optional, default=False
+               if True, look for edges in delta(S/N)
+        thresh : float, optional, default=1500
+               threshold for detecting edges in delta(signal)
+        skip : integer, optional, default=50
+               spacing of where along spectra to identify edges
+        display : TV object, optional
+               TV object to display derivatives and slit locations 
+        cent :  int, optional, default=None
+               location of center of spectra, if None use chip center
+        degree : int, option, degree=2
+               polynomial degree to use to fit edge locations
+        
+    
+        """
+        if self.transpose :
+            data = dataclass.transpose(im)
+        else :
+            data = im
+
+        if sn:
+            data = data.data/data.uncertainty.array
+    
+        # find initial set of edges from center of image
+        if cent == None :
+            cent = int(data.shape[1] / 2.)
+        med = np.median(data[:,cent-skip//2:cent+skip//2],axis=1)
+        deriv = gaussian_filter(med[1:] - med[0:-1],smooth)
+        bottom_edges,tmp = findpeak(deriv,thresh)
+        top_edges,tmp = findpeak(-deriv,thresh)
+        if display != None :
+            display.clear()
+            display.tv(data)
+            for peak in bottom_edges :
+                display.ax.plot([cent,cent],[peak,peak],'bo')
+            for peak in top_edges :
+                display.ax.plot([cent,cent],[peak,peak],'ro')
+            display.plotax2.cla()
+            display.plotax2.plot(deriv)
+            display.plotax2.text(0.1,0.9,'Derivative of spatial flux',
+                transform=display.plotax2.transAxes)
+    
+        if len(bottom_edges) != len(top_edges) :
+            print("didn't find matching number of bottom and top edges!")
+            pdb.set_trace()
+
+        self.rows = []
+        for b,t in zip(bottom_edges,top_edges) :
+            self.rows.append([b,t])
+    
+        all_bottom=[]
+        all_top=[]
+        allrows=[]
+   
+        # work from center to end
+        bottom = copy.copy(bottom_edges) 
+        top = copy.copy(top_edges) 
+        for irow in np.arange(cent,data.shape[1]-skip,skip) :
+            med = np.median(data[:,irow-skip//2:irow+skip//2],axis=1)
+            bottom=fitpeak(med,bottom,smooth=smooth,width=5)
+            all_bottom.append(bottom)
+            top=fitpeak(med,top,smooth=smooth,width=5,desc=True)
+            all_top.append(top)
+            allrows.append(irow)
+    
+        # work from center to beginning
+        bottom = copy.copy(bottom_edges) 
+        top = copy.copy(top_edges) 
+        for irow in np.arange(cent-skip,skip,-skip) :
+            med = np.median(data[:,irow-skip//2:irow+skip//2],axis=1)
+            bottom=fitpeak(med,bottom,smooth=smooth,width=5)
+            all_bottom.append(bottom)
+            top=fitpeak(med,top,smooth=smooth,width=5,desc=True)
+            all_top.append(top)
+            allrows.append(irow)
+    
+        # fit the edges
+        allrows = np.array(allrows)
+        all_bottom = np.array(all_bottom)
+        all_top = np.array(all_top)
+        all_bottom_fit = []
+        all_top_fit = []
+        self.model = []
+        for ipeak in range(len(bottom_edges)) :
+            poly = Polynomial.fit(allrows,all_bottom[:,ipeak],deg=degree)
+            if display != None :
+                xx = np.arange(data.shape[1])
+                display.ax.plot(xx,poly(xx),color='b')
+            all_bottom_fit.append(poly)
+            self.model.append(poly)
+    
+        for ipeak in range(len(top_edges)) :
+            poly = Polynomial.fit(allrows,all_top[:,ipeak],deg=degree)
+            if display != None :
+                xx = np.arange(data.shape[1])
+                display.ax.plot(xx,poly(xx),color='r')
+            all_top_fit.append(poly)
+    
+        return all_bottom_fit,all_top_fit
+
+    
 class FluxCal() :
     """ Class for flux calibration
 
@@ -1861,7 +2016,7 @@ def gauss(x, *p):
 
     return A*np.exp(-(x-mu)**2/(2.*sigma**2))+back
 
-def findpeak(x,thresh,diff=10000,bundle=0,verbose=False) :
+def findpeak(x,thresh,diff=10000,bundle=0,verbose=False,sort=False) :
     """ Find peaks in vector x above input threshold
         attempts to associate an index with each depending on spacing
 
@@ -1876,13 +2031,17 @@ def findpeak(x,thresh,diff=10000,bundle=0,verbose=False) :
         bundle : int
             number of fibers after which to allow max distance 
             to be exceeded without incrementing
+        sort : bool, optional, default=False
+            return peak locations and indices sorted with brightest first
     """
     j=[]
     fiber=[]
+    peak=[]
     f=-1
     for i in range(len(x)) :
         if i>0 and i < len(x)-1 and x[i]>x[i-1] and x[i]>x[i+1] and x[i]>thresh :
             j.append(i)
+            peak.append(x[i])
             if verbose and len(j) > 1 :
                 print(j[-1],j[-2],j[-1]-j[-2],f+1)
 
@@ -1896,8 +2055,48 @@ def findpeak(x,thresh,diff=10000,bundle=0,verbose=False) :
             else :
                 f=f+1
             fiber.append(f)
+
+    if sort :
+      # return brightest peak first
+      isort = np.argsort(peak)[::-1]
+      fiber = list(np.array(fiber)[isort])
+      j = list(np.array(j)[isort])
+
           
     return j,fiber
+
+def fitpeak(data,peaks,smooth=3,width=3,desc=False) :
+    """ Find slit edges given input set of locations
+
+    Parameters
+    ----------
+    data : 1D array 
+           input data to find slit edges, usually a flat field
+    smooth : integer, optional, default=3
+           smoothing radius for derivative calculation
+    width : integer, optional, default=3
+           window around peak of derivative to do polynomial fit for edge
+    desc : book, optional, default=False
+           if True, find descending peaks
+    """
+    deriv = gaussian_filter(data[1:] - data[0:-1],smooth)
+    if desc : deriv *= -1
+    newpeaks=[]
+    for peak in peaks :
+        ipeak = int(peak)
+        p0 = [deriv[ipeak-width:ipeak+width].max(),
+              deriv[ipeak-width:ipeak+width].argmax()+ipeak-width,1.,0.]
+        xx = np.arange(ipeak-width,ipeak+width+1)
+        yy = deriv[ipeak-width:ipeak+width+1]
+        try :
+            coeffs,var = curve_fit(gauss,xx,yy,p0=p0)
+            newpeaks.append(coeffs[1])
+        except :
+            print('Failed fit: ',peak)
+            newpeaks.append(peak)
+    peaks = np.array(newpeaks)
+
+    return peaks
  
 def getinput(prompt,fig=None,index=False) :
     """  Get input from terminal or matplotlib figure

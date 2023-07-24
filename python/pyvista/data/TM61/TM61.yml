@@ -2,7 +2,7 @@
 channels  : ['']
 formstr   : [' {:d}.f*']
 ext : 'fts'
-cols : ['DATE-OBS','OBJECT', 'RA', 'DEC','EXPTIME']
+cols : ['DATE-OBS','OBJECT', 'RA', 'DEC','FILTER','EXPTIME']
 gain      : [0.8]
 rn        : [10]
 biastype  : 0
