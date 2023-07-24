@@ -116,7 +116,7 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=300,threads=24,m
         red=imred.Reducer('APOGEE',dir=os.environ['APOGEE_DATA_N']+'/'+str(plan['mjd']))
         prefix='ap'
     else :
-        red=imred.Reducer('APOGEE',dir=os.environ['APOGEE_DATA_S']+'/'+str(plan['mjd']))
+        red=imred.Reducer('APOGEES',dir=os.environ['APOGEE_DATA_S']+'/'+str(plan['mjd']))
         prefix='as'
 
     # get Dark
@@ -144,17 +144,17 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=300,threads=24,m
         trace.trace(flat,peaks[0:nfibers],index=fiber[0:nfibers],skip=4)
         trace.write(dir+name)
 
-    # now reduce and extract flux
+    # now reduce and extract flux for 1D flat
     name='ap1D-{:s}-{:08d}.fits'.format(chan[channel],int(plan['fluxid']))
     print('flux: ', name)
     if os.path.exists(dir+name) and not clobber : 
         flux=Data.read(dir+name)
     else :
         im=red.reduce(int(plan['fluxid']),channel=channel,dark=dark)
-        flux=trace.extract(im,threads=threads,nout=300,new=True)
+        flux=trace.extract(im,threads=threads,nout=300)
         flux.write(dir+name,overwrite=True)
     f=np.median(flux.data[:,500:1500],axis=1)
-    f/=np.median(f)
+    f/=np.percentile(f,[90])[0]
     np.savetxt(dir+name.replace('.fits','.txt'),f)
     fim=np.tile(f,(2048,1)).T
 
@@ -203,7 +203,7 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=300,threads=24,m
             out=Data.read(dir+name)
         else :
             im=red.reduce(exp_no,channel=channel,dark=dark,display=display)
-            out=trace.extract(im,threads=threads,nout=300,display=display,new=True)
+            out=trace.extract(im,threads=threads,nout=300,display=display)
             out.data /= fim
             out.uncertainty.array /= fim
             out.write(dir+name,overwrite=True)
@@ -215,40 +215,55 @@ def mkyaml(mjd,obs='apo') :
     if obs == 'apo' :
         red=imred.Reducer('APOGEE',dir=os.environ['APOGEE_DATA_N']+'/'+str(mjd))
     else :
-        red=imred.Reducer('APOGEE',dir=os.environ['APOGEE_DATA_S']+'/'+str(mjd))
+        red=imred.Reducer('APOGEES',dir=os.environ['APOGEE_DATA_S']+'/'+str(mjd))
 
-    files = red.log(cols=['DATE-OBS','FIELDID','EXPTYPE','CONFIGID'],ext='apz',hdu=1,channel='-b-')
-    pdb.set_trace()
-
-    #apogee_drp_ver: daily
-    #telescope: lco25m
-    #psfid: 42550002
-    psfid=0
-    darkid=0
-    fp = open('{:d}.yaml'.format(mjd),'w')
-    if obs == 'lco' :
-        fp.write('telescope: lco25m\n')
-        fp.write('instrument: apogee-s\n')
+    if mjd > 59600 :
+        files = red.log(cols=['DATE-OBS','FIELDID','EXPTYPE','CONFIGID'],ext='apz',hdu=1,channel='-b-')
+        files['NAME'] = files['CONFIGID']
     else :
-        fp.write('telescope: apo25m\n')
-        fp.write('instrument: apogee-n\n')
-    fp.write('mjd: {:d}\n'.format(mjd))
-    fp.write('darkid: {:d}\n'.format(darkid))
-    for file in files :
-        name=file['FILE'].split('-')
-        expno = name[2].replace('.apz','')
-        if file['EXPTYPE'] == 'QUARTZFLAT' and psfid==0 : 
-            psfid = expno
-            fluxid = expno
-            fp.write('fluxid: {:s}\n'.format(fluxid))
-            fp.write('psfid: {:s}\n'.format(psfid))
-            fp.write('APEXP:\n')
+        files = red.log(cols=['DATE-OBS','EXPTYPE','PLATEID','NAME'],ext='apz',hdu=1,channel='-b-')
+        files['CONFIGID'] = files['PLATEID']
+        files['FIELDID'] = files['PLATEID']
 
-        if file['EXPTYPE'] == 'OBJECT' :
-            fp.write('- plateid: {:s}\n'.format(file['CONFIGID']))
-            fp.write('  mjd: {:d}\n'.format(mjd))
-            fp.write('  flavor: {:s}\n'.format(file['EXPTYPE'].lower()))
-            name=file['FILE'].split('-')
-            fp.write('  name: {:s}\n'.format(expno))
-            fp.write('  single: -1\n')
-            fp.write('  singlename: none\n')
+    fields = set(files['FIELDID'])
+    for field in fields :
+
+        obj = np.where((files['FIELDID'].astype(int) == int(field)) & (files['EXPTYPE'] == 'OBJECT'))[0]
+        if len(obj) < 1 : continue
+
+        darkid=0
+        fp = open('apPlan-{:s}-{:d}.yaml'.format(field,mjd),'w')
+        fp.write('plateid: {:s}\n'.format(field))
+        if obs == 'lco' :
+            fp.write('telescope: lco25m\n')
+            fp.write('instrument: apogee-s\n')
+        else :
+            fp.write('telescope: apo25m\n')
+            fp.write('instrument: apogee-n\n')
+        fp.write('mjd: {:d}\n'.format(mjd))
+        fp.write('darkid: {:d}\n'.format(darkid))
+
+        # get QUARTZFLAT nearest in time for psfid
+        flat = np.where((files['EXPTYPE'] == 'QUARTZFLAT'))[0]
+        jmin= np.argmin(np.abs(Time(files['DATE-OBS'][flat])-Time(files['DATE-OBS'][obj[0]])))
+        expno=files[flat[jmin]]['FILE'].split('-')[2].replace('.apz','')
+        psfid=expno
+        fp.write('psfid: {:s}\n'.format(psfid))
+
+        # get DOMEFLAT nearest in time for fluxid
+        flats = np.where((files['EXPTYPE'] == 'DOMEFLAT'))[0]
+        jmin= np.argmin(np.abs(Time(files['DATE-OBS'][flat])-Time(files['DATE-OBS'][obj[0]])))
+        expno=files[flat[jmin]]['FILE'].split('-')[2].replace('.apz','')
+        fluxid=expno
+        fp.write('fluxid: {:s}\n'.format(expno))
+
+        if len(obj) > 0 :
+            fp.write('plugmap: {:s}\n'.format(files[obj[0]]['NAME'].lower()))
+            fp.write('APEXP:\n')
+            for o in obj :
+                expno=files[o]['FILE'].split('-')[2].replace('.apz','')
+                fp.write('- name: {:s}\n'.format(expno))
+                fp.write('  flavor: {:s}\n'.format(files[o]['EXPTYPE'].lower()))
+                fp.write('  single: -1\n')
+                fp.write('  singlename: none\n')
+        fp.close()
