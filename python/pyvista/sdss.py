@@ -60,6 +60,10 @@ def getconfig(config_id=None,plugid=None,specid=1,obs='apo') :
     elif plugid is not None :
         if obs == 'apo' :
             plug,header=config(os.environ['MAPPER_DATA_N']+'/'+plugid.split('-')[1]+'/plPlugMapM-'+plugid+'.par',specid=specid,struct='PLUGMAPOBJ')
+            if specid == 2 :
+                # need to remove MANGA objects
+                obj=np.where(plug['holeType'] == b'OBJECT')[0]
+                plug=plug[obj]
         else :
             plug,header=config(os.environ['MAPPER_DATA_S']+'/'+plugid.split('-')[1]+'/plPlugMapM-'+plugid+'.par',specid=specid,struct='PLUGMAPOBJ')
         sky=np.where(plug['objType'] == b'SKY')[0]
@@ -108,12 +112,12 @@ def config(cid,specid=2,struct='FIBERMAP',useparent=True,useconfF=False,obs='apo
         conf = yanny(cid)
     else :
         print(os.environ['SDSSCORE_DIR']+'/{:s}/summary_files/{:04d}XX/{:s}-{:d}.par'.format(obs,cid//100,confname,cid))
-        conf = yanny(os.environ['SDSSCORE_DIR']+'/{:s}/summary_files/{:0>4d}XX/{:s}-{:d}.par'.format(obs,cid//100,confname,cid))
+        conf = yanny(os.environ['SDSSCORE_DIR']+'/{:s}/summary_files/{:03d}XXX/{:04d}XX/{:s}-{:d}.par'.format(obs,cid//1000,cid//100,confname,cid))
         if useparent :
             try :
                 parent = int(conf['parent_configuration'])
                 if parent > 0 :
-                    conf = yanny(os.environ['SDSSCORE_DIR']+'/{:s}/summary_files/{:04d}XX/{:s}-{:d}.par'.format(obs,parent//100,confname,parent))
+                    conf = yanny(os.environ['SDSSCORE_DIR']+'/{:s}/summary_files/{:03d}XXX/{:04d}XX/{:s}-{:d}.par'.format(obs,parent/1000,parent//100,confname,parent))
             except :  pass
 
     if conf == None or len(conf) == 0 :
