@@ -1,0 +1,18 @@
+---
+channels : ['a','b','c']
+formstr  : ['-a-{:08d}.apz','-b-{:08d}.apz','-c-{:08d}.apz']
+cols : ['DATE-OBS','EXPTYPE','RADEG','DECDEG','EXPTIME']
+gain     : [3.0,3.0,3.0]
+rn       : [21,24,12]
+crbox    : [1,11]
+scat     : 10
+biastype : -1
+biasregion :
+   - [[0,2127],[0,2067]]
+biasbox : 
+   - [[2075,2125],[20,2028]]
+trimbox : 
+   - [[0,2047],[0,2047]]
+normbox : 
+   - [[1000,1050],[1000,1050]]
+
