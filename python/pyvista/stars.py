@@ -16,7 +16,7 @@ from astropy.time import Time
 from pyvista import mmm, tv, spectra
 from astropy.stats import sigma_clipped_stats
 from photutils import CircularAperture, CircularAnnulus,aperture_photometry
-from photutils import ApertureStats
+from photutils.aperture import ApertureStats
 from photutils.detection import DAOStarFinder
 from tools import plots,html
 import matplotlib.pyplot as plt
@@ -26,17 +26,30 @@ from astropy import coordinates as coord
 import astropy.units as u
 
 @support_nddata
-def find(data,fwhm=4,thresh=4000) :
+def find(data,fwhm=4,thresh=4000,sharp=[0.,1.],round=[-2.,2.]) :
     """ Star finding using DAOStarfinder
+
+        Parameters
+        ----------
+        data   : array-like
+                 2D data array
+        fwhm   : optional, float
+                 FWHM (pixels) for matching, default=4 
+        thresh : optional, float
+                 Threshold above background, default=4000
+        sharp  : optional, [float,float]
+                 Low and high bounds for sharpness, default=[0.,1.]
+        round  : optional, [float,float]
+                 Low and high bounds for roundness, default=[-2.,2]
     """
-    daofind = DAOStarFinder(fwhm=fwhm,threshold=thresh)
+    daofind = DAOStarFinder(fwhm=fwhm,threshold=thresh,sharplo=sharp[0],sharphi=sharp[1],roundlo=round[0],roundhi=round[1])
     sources=daofind(data)
     sources.rename_column('xcentroid','x')
     sources.rename_column('ycentroid','y')
     return sources
 
 @support_nddata
-def automark(data,stars,rad=3,func='centroid',plot=None) :
+def automark(data,stars,rad=3,func='centroid',plot=None,dx=0,dy=0,verbose=False) :
     """ Recentroid existing star list on input data array
     """
     if func == 'centroid' : 
@@ -47,9 +60,13 @@ def automark(data,stars,rad=3,func='centroid',plot=None) :
         center = gfit2
     new=copy.deepcopy(stars)
     for i,star in enumerate(new) :
-        x,y = center(data,star['x'],star['y'],rad,plot=plot)
-        new[i]['x'] = x
-        new[i]['y'] = y
+        try :
+            x,y = center(data,star['x']+dx,star['y']+dy,rad,plot=plot,verbose=verbose)
+            new[i]['x'] = x
+            new[i]['y'] = y
+        except :
+            new[i]['x'] = np.nan
+            new[i]['y'] = np.nan
     return new
 
 def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False,func='centroid'):
@@ -324,7 +341,7 @@ def save(file,stars) :
     """ Save internal photometry list to FITS table"""
     stars.write(file,overwrite=True)
 
-def centroid(data,x,y,r,verbose=False) :
+def centroid(data,x,y,r,verbose=False,plot=None) :
     """ Get centroid in input data around input position, with given radius
     """
     # create arrays of pixel numbers for centroiding
@@ -344,12 +361,14 @@ def centroid(data,x,y,r,verbose=False) :
         dist2 = (xpix-round(x))**2 + (ypix-round(y))**2
         # get pixels to use for background, and get background
         gd = np.where((dist2 > r**2) & (dist2 < (r+1)**2))
-        back = np.median(tmpdata[gd[0],gd[1]])
+        back = np.nanmedian(tmpdata[gd[0],gd[1]])
         # get the centroid
         gd = np.where(dist2 < r**2)
         norm=np.sum(tmpdata[gd[0],gd[1]]-back)
+        if verbose: print(iter,x,y,back,norm)
         x = np.sum((tmpdata[gd[0],gd[1]]-back)*xpix[gd[0],gd[1]]) / norm
         y = np.sum((tmpdata[gd[0],gd[1]]-back)*ypix[gd[0],gd[1]]) / norm
+
         if round(x) == xold and round(y) == yold : break
         xold = round(x)
         yold = round(y)
