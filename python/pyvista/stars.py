@@ -49,7 +49,7 @@ def find(data,fwhm=4,thresh=4000,sharp=[0.,1.],round=[-2.,2.]) :
     return sources
 
 @support_nddata
-def automark(data,stars,rad=3,func='centroid',plot=None,dx=0,dy=0,verbose=False) :
+def automark(data,stars,rad=3,func='centroid',plot=None,dx=0,dy=0,verbose=False,background=True) :
     """ Recentroid existing star list on input data array
     """
     if func == 'centroid' : 
@@ -61,7 +61,7 @@ def automark(data,stars,rad=3,func='centroid',plot=None,dx=0,dy=0,verbose=False)
     new=copy.deepcopy(stars)
     for i,star in enumerate(new) :
         try :
-            x,y = center(data,star['x']+dx,star['y']+dy,rad,plot=plot,verbose=verbose)
+            x,y = center(data,star['x']+dx,star['y']+dy,rad,plot=plot,verbose=verbose,background=background)
             new[i]['x'] = x
             new[i]['y'] = y
         except :
@@ -341,7 +341,7 @@ def save(file,stars) :
     """ Save internal photometry list to FITS table"""
     stars.write(file,overwrite=True)
 
-def centroid(data,x,y,r,verbose=False,plot=None) :
+def centroid(data,x,y,r,verbose=False,plot=None,background=True) :
     """ Get centroid in input data around input position, with given radius
     """
     # create arrays of pixel numbers for centroiding
@@ -360,8 +360,11 @@ def centroid(data,x,y,r,verbose=False,plot=None) :
     while iter<10 :
         dist2 = (xpix-round(x))**2 + (ypix-round(y))**2
         # get pixels to use for background, and get background
-        gd = np.where((dist2 > r**2) & (dist2 < (r+1)**2))
-        back = np.nanmedian(tmpdata[gd[0],gd[1]])
+        if background :
+            gd = np.where((dist2 > r**2) & (dist2 < (r+1)**2))
+            back = np.nanmedian(tmpdata[gd[0],gd[1]])
+        else :
+            back = 0.
         # get the centroid
         gd = np.where(dist2 < r**2)
         norm=np.sum(tmpdata[gd[0],gd[1]]-back)
@@ -377,7 +380,7 @@ def centroid(data,x,y,r,verbose=False,plot=None) :
     if iter > 9 : print('possible centroiding convergence issues, consider using a larger radius?')
     return x,y
 
-def gfit(data,x,y,rad,verbose=False) :
+def gfit(data,x,y,rad,verbose=False,background=True,plot=False) :
     """ Gaussian fit to marginal distribution
     """
     xold=0
@@ -386,14 +389,17 @@ def gfit(data,x,y,rad,verbose=False) :
     while iter<10 :
         x0=int(x)
         y0=int(y)
-        coeff = spectra.gfit(data[y0-rad:y0+rad+1,x0-2*rad:x0+2*rad+1].sum(axis=0),rad*2,sig=rad/2.,rad=rad,back=0)
+        coeff = spectra.gfit(data[y0-rad:y0+rad+1,x0-2*rad:x0+2*rad+1].sum(axis=0),rad*2,sig=rad/2.,rad=rad,back=background)
         x = coeff[1]+x0-2*rad
-        coeff = spectra.gfit(data[y0-2*rad:y0+2*rad+1,x0-rad:x0+rad+1].sum(axis=1),rad*2,sig=rad/2.,rad=rad,back=0)
+        coeff = spectra.gfit(data[y0-2*rad:y0+2*rad+1,x0-rad:x0+rad+1].sum(axis=1),rad*2,sig=rad/2.,rad=rad,back=background)
         y = coeff[1]+y0-2*rad
         if round(x) == xold and round(y) == yold : break
         xold = round(x)
         yold = round(y)
+        iter += 1
         if verbose: print(iter,x,y)
+
+    if iter > 9 : print('possible centroiding convergence issues, consider using a larger radius?')
 
     return x, y
 
@@ -423,7 +429,7 @@ def gauss3(x,*p) :
             back)
 
     
-def gfit2(data,x,y,rad,verbose=False,plot=None) :
+def gfit2(data,x,y,rad,verbose=False,plot=None,background=True) :
     """ Gaussian fit to marginal distribution
     """
     xold=0
