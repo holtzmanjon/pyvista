@@ -101,6 +101,7 @@ def visit_channel(planfile=None,channel=0,clobber=False,nfibers=300,threads=24,m
     chan=['a','b','c' ]
     plan=yaml.load(open(planfile,'r'), Loader=yaml.BaseLoader)
     dir=os.path.dirname(planfile)+'/'
+    if dir == '/' : dir='./'
 
     # are all files already created?
     done =True
@@ -244,16 +245,16 @@ def mkyaml(mjd,obs='apo') :
         fp.write('darkid: {:d}\n'.format(darkid))
 
         # get QUARTZFLAT nearest in time for psfid
-        flat = np.where((files['EXPTYPE'] == 'QUARTZFLAT'))[0]
-        jmin= np.argmin(np.abs(Time(files['DATE-OBS'][flat])-Time(files['DATE-OBS'][obj[0]])))
-        expno=files[flat[jmin]]['FILE'].split('-')[2].replace('.apz','')
+        flats = np.where((files['EXPTYPE'] == 'QUARTZFLAT'))[0]
+        jmin= np.argmin(np.abs(Time(files['DATE-OBS'][flats])-Time(files['DATE-OBS'][obj[0]])))
+        expno=files[flats[jmin]]['FILE'].split('-')[2].replace('.apz','')
         psfid=expno
         fp.write('psfid: {:s}\n'.format(psfid))
 
         # get DOMEFLAT nearest in time for fluxid
         flats = np.where((files['EXPTYPE'] == 'DOMEFLAT'))[0]
-        jmin= np.argmin(np.abs(Time(files['DATE-OBS'][flat])-Time(files['DATE-OBS'][obj[0]])))
-        expno=files[flat[jmin]]['FILE'].split('-')[2].replace('.apz','')
+        jmin= np.argmin(np.abs(Time(files['DATE-OBS'][flats])-Time(files['DATE-OBS'][obj[0]])))
+        expno=files[flats[jmin]]['FILE'].split('-')[2].replace('.apz','')
         fluxid=expno
         fp.write('fluxid: {:s}\n'.format(expno))
 
