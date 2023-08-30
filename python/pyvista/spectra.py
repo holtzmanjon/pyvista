@@ -1140,7 +1140,7 @@ class Trace() :
                     # gaussian fit
                     data = np.median(hd.data[cr-rad-2:cr+rad+2,col-skip//2:col+skip//2+1],axis=1)
                     try : 
-                        gcoeff=gfit(data, rad+2,rad=rad,sig=2,back=0.)
+                        gcoeff=gfit(data, rad+2,rad=rad,sig=2,back=True)
                         ypos[col] = gcoeff[1]+cr-rad-2
                         ysig[col] = gcoeff[2]
                         ymask[col] = False
@@ -1179,7 +1179,7 @@ class Trace() :
                     # gaussian fit
                     data = np.median(hd.data[cr-rad-2:cr+rad+2,col-skip//2:col+skip//2+1],axis=1)
                     try : 
-                        gcoeff=gfit(data, rad+2,rad=rad,sig=2,back=0.)
+                        gcoeff=gfit(data, rad+2,rad=rad,sig=2,back=True)
                         ypos[col] = gcoeff[1]+cr-rad-2
                         ysig[col] = gcoeff[2]
                         ymask[col] = False
@@ -2069,7 +2069,7 @@ class FluxCal() :
         pressure = p0 *np.exp(-g*h*M/T0/R0)*10
         ref=erfa.refco(pressure,temp,rh,wav)[0]*206265
 
-def gfit(data,x0,rad=10,sig=3,back=None) :
+def gfit(data,x0,rad=10,sig=3,back=False) :
     """ Fit 1D gaussian
     """ 
     xx = np.arange(x0-rad,x0+rad+1)
@@ -2077,7 +2077,7 @@ def gfit(data,x0,rad=10,sig=3,back=None) :
     peak=yy.argmax()+x0-rad
     xx = np.arange(peak-rad,peak+rad+1)
     yy = data[peak-rad:peak+rad+1]
-    if back == None : 
+    if back == False : 
         p0 = [data[peak],peak,sig]
         bounds = ((yy.min(),peak-rad,0.3),(yy.max(),peak+rad,rad))
     else : 
