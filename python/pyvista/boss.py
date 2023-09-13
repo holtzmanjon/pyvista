@@ -6,7 +6,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 from pydl.pydlutils import yanny
 from pyvista import imred, spectra, sdss, gaia, bitmask
-import gaiaxpy
+try :import gaiaxpy
+except : print('no gaiaxpy...!')
 from pyvista.dataclass import Data
 from tools import match,plots
 from scipy.ndimage import median_filter
