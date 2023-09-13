@@ -26,7 +26,6 @@ setup(
                       'pyyaml',
                       'pyautogui',
                       'pydl',
-                      'esutil',
                       'astroquery',
                       'importlib_resources',
                       'numpy',
