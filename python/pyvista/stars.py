@@ -16,7 +16,7 @@ from astropy.time import Time
 from pyvista import mmm, tv, spectra
 from astropy.stats import sigma_clipped_stats
 from photutils import CircularAperture, CircularAnnulus,aperture_photometry
-from photutils import ApertureStats
+from photutils.aperture import ApertureStats
 from photutils.detection import DAOStarFinder
 from tools import plots,html
 import matplotlib.pyplot as plt

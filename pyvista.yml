@@ -1,0 +1,26 @@
+name: pyvista
+channels:
+  - conda-forge
+dependencies:
+  - python=3.9
+  - pip
+  - ipython
+  - jupyter
+  - numpy
+  - scipy
+  - scikit-learn
+  - matplotlib
+  - bokeh
+  - astropy
+  - astroquery
+  - astroscrappy
+  - astroml
+  - pyyaml
+  - psycopg2
+  - pydl
+  - astroplan
+  - esutil
+  - tqdm
+  - photutils
+  - pyautogui
+  - importlib_resources
