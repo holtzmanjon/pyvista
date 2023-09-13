@@ -20,7 +20,7 @@ setup(
     install_requires=[
                       'holtz-tools',
                       'astropy',
-                      'ccdproc',
+                      'astroscrappy',
                       'photutils',
                       'astroplan',
                       'pyyaml',
