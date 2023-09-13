@@ -26,17 +26,30 @@ from astropy import coordinates as coord
 import astropy.units as u
 
 @support_nddata
-def find(data,fwhm=4,thresh=4000) :
+def find(data,fwhm=4,thresh=4000,sharp=[0.,1.],round=[-2.,2.]) :
     """ Star finding using DAOStarfinder
+
+        Parameters
+        ----------
+        data   : array-like
+                 2D data array
+        fwhm   : optional, float
+                 FWHM (pixels) for matching, default=4 
+        thresh : optional, float
+                 Threshold above background, default=4000
+        sharp  : optional, [float,float]
+                 Low and high bounds for sharpness, default=[0.,1.]
+        round  : optional, [float,float]
+                 Low and high bounds for roundness, default=[-2.,2]
     """
-    daofind = DAOStarFinder(fwhm=fwhm,threshold=thresh)
+    daofind = DAOStarFinder(fwhm=fwhm,threshold=thresh,sharplo=sharp[0],sharphi=sharp[1],roundlo=round[0],roundhi=round[1])
     sources=daofind(data)
     sources.rename_column('xcentroid','x')
     sources.rename_column('ycentroid','y')
     return sources
 
 @support_nddata
-def automark(data,stars,rad=3,func='centroid',plot=None) :
+def automark(data,stars,rad=3,func='centroid',plot=None,dx=0,dy=0,verbose=False,background=True) :
     """ Recentroid existing star list on input data array
     """
     if func == 'centroid' : 
@@ -47,9 +60,13 @@ def automark(data,stars,rad=3,func='centroid',plot=None) :
         center = gfit2
     new=copy.deepcopy(stars)
     for i,star in enumerate(new) :
-        x,y = center(data,star['x'],star['y'],rad,plot=plot)
-        new[i]['x'] = x
-        new[i]['y'] = y
+        try :
+            x,y = center(data,star['x']+dx,star['y']+dy,rad,plot=plot,verbose=verbose,background=background)
+            new[i]['x'] = x
+            new[i]['y'] = y
+        except :
+            new[i]['x'] = np.nan
+            new[i]['y'] = np.nan
     return new
 
 def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False,func='centroid'):
@@ -324,7 +341,7 @@ def save(file,stars) :
     """ Save internal photometry list to FITS table"""
     stars.write(file,overwrite=True)
 
-def centroid(data,x,y,r,verbose=False) :
+def centroid(data,x,y,r,verbose=False,plot=None,background=True) :
     """ Get centroid in input data around input position, with given radius
     """
     # create arrays of pixel numbers for centroiding
@@ -343,13 +360,18 @@ def centroid(data,x,y,r,verbose=False) :
     while iter<10 :
         dist2 = (xpix-round(x))**2 + (ypix-round(y))**2
         # get pixels to use for background, and get background
-        gd = np.where((dist2 > r**2) & (dist2 < (r+1)**2))
-        back = np.median(tmpdata[gd[0],gd[1]])
+        if background :
+            gd = np.where((dist2 > r**2) & (dist2 < (r+1)**2))
+            back = np.nanmedian(tmpdata[gd[0],gd[1]])
+        else :
+            back = 0.
         # get the centroid
         gd = np.where(dist2 < r**2)
         norm=np.sum(tmpdata[gd[0],gd[1]]-back)
+        if verbose: print(iter,x,y,back,norm)
         x = np.sum((tmpdata[gd[0],gd[1]]-back)*xpix[gd[0],gd[1]]) / norm
         y = np.sum((tmpdata[gd[0],gd[1]]-back)*ypix[gd[0],gd[1]]) / norm
+
         if round(x) == xold and round(y) == yold : break
         xold = round(x)
         yold = round(y)
@@ -358,7 +380,7 @@ def centroid(data,x,y,r,verbose=False) :
     if iter > 9 : print('possible centroiding convergence issues, consider using a larger radius?')
     return x,y
 
-def gfit(data,x,y,rad,verbose=False) :
+def gfit(data,x,y,rad,verbose=False,background=True,plot=False) :
     """ Gaussian fit to marginal distribution
     """
     xold=0
@@ -367,14 +389,17 @@ def gfit(data,x,y,rad,verbose=False) :
     while iter<10 :
         x0=int(x)
         y0=int(y)
-        coeff = spectra.gfit(data[y0-rad:y0+rad+1,x0-2*rad:x0+2*rad+1].sum(axis=0),rad*2,sig=rad/2.,rad=rad,back=0)
+        coeff = spectra.gfit(data[y0-rad:y0+rad+1,x0-2*rad:x0+2*rad+1].sum(axis=0),rad*2,sig=rad/2.,rad=rad,back=background)
         x = coeff[1]+x0-2*rad
-        coeff = spectra.gfit(data[y0-2*rad:y0+2*rad+1,x0-rad:x0+rad+1].sum(axis=1),rad*2,sig=rad/2.,rad=rad,back=0)
+        coeff = spectra.gfit(data[y0-2*rad:y0+2*rad+1,x0-rad:x0+rad+1].sum(axis=1),rad*2,sig=rad/2.,rad=rad,back=background)
         y = coeff[1]+y0-2*rad
         if round(x) == xold and round(y) == yold : break
         xold = round(x)
         yold = round(y)
+        iter += 1
         if verbose: print(iter,x,y)
+
+    if iter > 9 : print('possible centroiding convergence issues, consider using a larger radius?')
 
     return x, y
 
@@ -404,7 +429,7 @@ def gauss3(x,*p) :
             back)
 
     
-def gfit2(data,x,y,rad,verbose=False,plot=None) :
+def gfit2(data,x,y,rad,verbose=False,plot=None,background=True) :
     """ Gaussian fit to marginal distribution
     """
     xold=0
