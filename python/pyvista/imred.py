@@ -293,19 +293,23 @@ class Reducer() :
                 fd=html.head(htmlfile+'_thumb.html')
                 fd.write('<TABLE BORDER=2>\n')
 
+        # get names and dtypes for table, based on which requested cards are in last header
         names=['FILE']
         dtypes=['S24']
+        newcols=[]
         if htmlfile is not None : fp.write('<TR style="background-color:lightred"><TD>FILE\n')
         for col in cols :
             try : 
                 val=a[col]
                 names.append(col)
                 dtypes.append('S16')
+                newcols.append(col)
                 if htmlfile is not None :
                     fp.write('<TD>{:s}\n'.format(col))
             except KeyError:
-                print('no card {:s} in header'.format(col))
+                print('no card {:s} in last header'.format(col))
         tab=Table(names=names,dtype=dtypes)
+        cols=newcols
 
         # set up style for rows with new object
         newobj= ''
@@ -324,16 +328,20 @@ class Reducer() :
           # if we have OBJECT card, we can color rows for new object
           for col in cols :
             if 'OBJ' in col :
-                if a[col] != oldobj : 
-                    style=newobj
-                    oldobj=a[col]
-                else : style=''
+                try :
+                    if a[col] != oldobj : 
+                        style=newobj
+                        oldobj=a[col]
+                    else : style=''
+                except : pass
           # if we have FILTER card, we can color rows for new filter (if not new object)
           for col in cols :
             if 'FILT' in col :
-                if a[col] != oldfilt :
-                    oldfilt=a[col]
-                    if style == '' : style=newfilt
+                try :
+                    if a[col] != oldfilt :
+                        oldfilt=a[col]
+                        if style == '' : style=newfilt
+                except : pass
           if htmlfile is not None :
               fp.write('<TR {:s}><TD>{:s}\n'.format(style,os.path.basename(files[i])))  
           row=[os.path.basename(files[i])]
