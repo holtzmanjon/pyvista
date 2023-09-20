@@ -8,7 +8,7 @@ import scipy
 from astropy.modeling.models import BlackBody
 from astropy.io import ascii
 from astropy.table import Table
-from tools import plots
+from holtztools import plots
 
 ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../../'
 

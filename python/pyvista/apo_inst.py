@@ -15,7 +15,7 @@ from pyvista import tv
 from astropy.io import fits
 from astropy import units
 from astropy.nddata import CCDData, StdDevUncertainty
-from tools import plots
+from holtztools import plots
 import scipy.signal
 
 ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../../'

@@ -13,7 +13,7 @@ from astropy.io import registry, fits
 from astropy.nddata import ccddata, CCDData
 import astropy.units as u
 from astropy import log
-from tools import plots
+from holtztools import plots
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt

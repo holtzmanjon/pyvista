@@ -4,7 +4,7 @@ try: from esutil import htm
 except: print('esutil not available!')
 from astropy.table import Table, Column
 from astropy.io import fits
-from tools import match
+from holtztools import match
 import os
 import pdb
 from astroquery.gaia import Gaia

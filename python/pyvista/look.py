@@ -3,8 +3,7 @@ matplotlib.use('Agg')
 import glob
 from astropy.io import ascii
 from astropy.io import fits
-from tools import plots
-from tools import html
+from holtztools import plots, html
 import matplotlib.pyplot as plt
 import subprocess
 import argparse

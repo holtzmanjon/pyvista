@@ -8,7 +8,7 @@ import os
 try: import esutil
 except : print('esutil not available!')
 from pydl.pydlutils.yanny import yanny
-from tools import plots, match
+from holtztools import plots, match
 import matplotlib
 import matplotlib.pyplot as plt
 

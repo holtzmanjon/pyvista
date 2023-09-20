@@ -12,7 +12,7 @@ from astropy.io import fits, ascii
 from astropy.wcs import WCS
 from astropy.modeling import models, fitting
 from astropy.convolution import convolve, Box1DKernel, Box2DKernel, Box2DKernel
-from tools import html, plots
+from holtztools import html, plots
 import astroscrappy
 import scipy.signal
 from scipy.optimize import curve_fit

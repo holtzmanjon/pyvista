@@ -7,7 +7,7 @@ import yaml
 import matplotlib.pyplot as plt
 from collections.abc import Iterable
 from pyvista import imred, image, spectra, tv
-from tools import plots, html
+from holtztools import plots, html
 from astropy import units as u
 from astropy.nddata import StdDevUncertainty
 from pyvista.dataclass import Data

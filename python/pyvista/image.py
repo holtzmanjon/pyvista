@@ -1,7 +1,7 @@
 from __future__ import print_function
 import numpy as np
 import copy
-from tools import plots
+from holtztools import plots
 from astropy import units as u
 from astropy.io import fits, ascii
 from astropy.modeling import models, fitting

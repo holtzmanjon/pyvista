@@ -18,7 +18,7 @@ from astropy.stats import sigma_clipped_stats
 from photutils import CircularAperture, CircularAnnulus,aperture_photometry
 from photutils.aperture import ApertureStats
 from photutils.detection import DAOStarFinder
-from tools import plots,html
+from holtztools import plots,html
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from astroquery.sdss import SDSS

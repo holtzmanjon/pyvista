@@ -24,7 +24,7 @@ from astropy.table import Table
 import pyvista
 import pyvista.data
 from pyvista import image, tv, skycalc, bitmask, dataclass
-from tools import plots
+from holtztools import plots
 import erfa
 from numpy.polynomial import Polynomial
 
