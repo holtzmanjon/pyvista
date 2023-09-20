@@ -26,6 +26,8 @@ dependencies =[
     "holtz-tools",
     "astropy",
     "astroscrappy",
+    "esutil",
+    "gaiaxpy",
     "photutils",
     "astroplan",
     "pyyaml",
