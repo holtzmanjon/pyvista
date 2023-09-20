@@ -266,17 +266,17 @@ class Reducer() :
         objs=[]
         for file in files :
           try :
-              a=fits.open(file)[hdu].header
+              header=fits.open(file)[hdu].header
           except FileNotFound :
               print('error opening file: {:s}, hdu: {:d}'.format(file,hdu))
               return
           try :
-              date.append(a['DATE-OBS'])
+              date.append(header['DATE-OBS'])
           except KeyError :
               print('file {:s} does not have DATE-OBS'.format(file))
               date.append('')
           for col in cols :
-              if 'OBJ' in col : objs.append(a[col])
+              if 'OBJ' in col : objs.append(header[col])
         date=np.array(date)
         sort=np.argsort(date)
 
@@ -317,22 +317,28 @@ class Reducer() :
         oldfilt = ''
         style = ''
         for i in sort :
-          a=fits.open(files[i])[hdu].header
+          header=fits.open(files[i])[hdu].header
+          if 'RA' not in header  :
+              try: header['RA'] = header['OBJCTRA'].replace(' ',':')
+              except : print('no RA or OBJCTRA found')
+          if 'DEC' not in header  :
+              try: header['DEC'] = header['OBJCTDEC'].replace(' ',':')
+              except : print('no DEC or OBJCTDEC found')
           # if we have OBJECT card, we can color rows for new object
           for col in cols :
             if 'OBJ' in col :
                 try :
-                    if a[col] != oldobj : 
+                    if header[col] != oldobj : 
                         style=newobj
-                        oldobj=a[col]
+                        oldobj=header[col]
                     else : style=''
                 except : pass
           # if we have FILTER card, we can color rows for new filter (if not new object)
           for col in cols :
             if 'FILT' in col :
                 try :
-                    if a[col] != oldfilt :
-                        oldfilt=a[col]
+                    if header[col] != oldfilt :
+                        oldfilt=header[col]
                         if style == '' : style=newfilt
                 except : pass
           if htmlfile is not None :
@@ -340,9 +346,9 @@ class Reducer() :
           row=[os.path.basename(files[i])]
           for col in cols :
             try:
-              row.append(str(a[col]))
+              row.append(str(header[col]))
               if htmlfile is not None:
-                  fp.write('<TD>{:s}\n'.format(str(a[col])))
+                  fp.write('<TD>{:s}\n'.format(str(header[col])))
             except: 
               row.append('')
               if htmlfile is not None: fp.write('<TD>\n')
