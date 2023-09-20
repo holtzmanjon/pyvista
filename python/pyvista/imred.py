@@ -265,7 +265,11 @@ class Reducer() :
         date=[]
         objs=[]
         for file in files :
-          a=fits.open(file)[hdu].header
+          try :
+              a=fits.open(file)[hdu].header
+          except FileNotFound :
+              print('error opening file: {:s}, hdu: {:d}'.format(file,hdu))
+              return
           try :
               date.append(a['DATE-OBS'])
           except KeyError :
