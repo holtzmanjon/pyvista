@@ -318,12 +318,13 @@ class Reducer() :
         style = ''
         for i in sort :
           header=fits.open(files[i])[hdu].header
+          # fix for RA/DEC for MaximDL headers
           if 'RA' not in header  :
               try: header['RA'] = header['OBJCTRA'].replace(' ',':')
-              except : print('no RA or OBJCTRA found')
+              except : pass
           if 'DEC' not in header  :
               try: header['DEC'] = header['OBJCTDEC'].replace(' ',':')
-              except : print('no DEC or OBJCTDEC found')
+              except : pass
           # if we have OBJECT card, we can color rows for new object
           for col in cols :
             if 'OBJ' in col :
@@ -527,12 +528,13 @@ class Reducer() :
                 else : 
                     try : im.header['OBJECT'] = im.header['FILE']
                     except KeyError : print('No OBJECT, OBJNAME, or FILE in header')
+            # fix for RA/DEC for MaximDL headers
             if 'RA' not in im.header  :
                 try: im.header['RA'] = im.header['OBJCTRA']
-                except : print('no RA or OBJCTRA found')
+                except : print('no RA or OBJCTRA found in {:s}'.format(file))
             if 'DEC' not in im.header  :
                 try: im.header['DEC'] = im.header['OBJCTDEC']
-                except : print('no DEC or OBJCTDEC found')
+                except : print('no DEC or OBJCTDEC found in {:s}'.format(file))
 
             # Add uncertainty (will be in error if there is an overscan, but redo with overscan subraction later)
             data=copy.copy(im.data)
