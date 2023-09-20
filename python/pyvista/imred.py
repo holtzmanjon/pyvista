@@ -296,20 +296,13 @@ class Reducer() :
         # get names and dtypes for table, based on which requested cards are in last header
         names=['FILE']
         dtypes=['S24']
-        newcols=[]
         if htmlfile is not None : fp.write('<TR style="background-color:lightred"><TD>FILE\n')
         for col in cols :
-            try : 
-                val=a[col]
-                names.append(col)
-                dtypes.append('S16')
-                newcols.append(col)
-                if htmlfile is not None :
-                    fp.write('<TD>{:s}\n'.format(col))
-            except KeyError:
-                print('no card {:s} in last header'.format(col))
+            names.append(col)
+            dtypes.append('S16')
+            if htmlfile is not None :
+                fp.write('<TD>{:s}\n'.format(col))
         tab=Table(names=names,dtype=dtypes)
-        cols=newcols
 
         # set up style for rows with new object
         newobj= ''
