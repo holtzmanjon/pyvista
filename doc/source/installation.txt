@@ -1,6 +1,17 @@
 Installation
 ============
 
+Versions of pyvista are available through PyPI as astro-pyvista (pyvista is the name of another product!).
+
+We strongly recommend that you create a new virtual environment for pyvista to avoid issues with package
+conflicts. If you are working in the Anaconda environment, you should download the YAML conda configuration
+file pyvista.yml
+
+.. code-bock:: csh
+
+conda env create -f pyvista.yml
+
+
 Coming soon (!) : pip install astro-pyvista
 
 Installation from github
