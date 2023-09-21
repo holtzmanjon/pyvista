@@ -10,3 +10,5 @@ pyautogui
 pyyaml
 astroplan
 astroquery
+astroscrappy
+skimage
