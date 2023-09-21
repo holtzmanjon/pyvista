@@ -1,4 +1,4 @@
-##pyvista
+## pyvista
 
 pyvista is a package for the inspection, reduction, and analysis
 of astronomical data. It includes a native Python display tool, tv,
