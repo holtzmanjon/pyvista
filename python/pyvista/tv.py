@@ -606,7 +606,9 @@ class TV:
           x,y=pyautogui.position()
         except:
           x,y=(500,500)
-        self.fig.canvas.motion_notify_event(x,y)
+        # following fails on Windows QT
+        try: self.fig.canvas.motion_notify_event(x,y)
+        except : pass
 
     def tvtext(self,x,y,text,color='m',ha='center',va='center') :
         """ Annotates with text
