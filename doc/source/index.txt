@@ -35,10 +35,12 @@ Some documentation can be found at https://pyvista.readthedocs.org
 Some examples in the form of Jupyter notebooks, can be found in the doc/notebooks
 directory, see https://github.com/holtzmanjon/pyvista/tree/main/doc/notebooks
 
+Questions, requests, etc., can be directed to Jon Holtzman at holtz@nmsu.edu
+
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
 
    installation 
    tv

@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name="astro-pyvista"
-version="0.3.0"   
+version="0.3.1"   
 authors=[
   { name="Jon Holtzman", email="holtzmanjon@gmail.com" },
 ]
@@ -26,6 +26,7 @@ dependencies =[
     "holtz-tools",
     "astropy",
     "astroscrappy",
+    "gaiaxpy",
     "photutils",
     "astroplan",
     "pyyaml",
@@ -33,6 +34,7 @@ dependencies =[
     "pydl",
     "astroquery",
     "importlib_resources",
+    "sphinx",
     "numpy",
     "scipy",
 ]

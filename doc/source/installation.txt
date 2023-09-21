@@ -1,52 +1,39 @@
 Installation
 ============
 
-Coming soon (!) : pip install astro-pyvista
+Versions of pyvista are available through PyPI as astro-pyvista (pyvista is the name of another product!).
 
-Installation from github
+We recommend that you create a new virtual environment for pyvista to avoid issues with package
+conflicts. If you are working in the Anaconda environment, you should download the YAML conda configuration
+file `pyvista.yml <https://github.com/holtzmanjon/pyvista/blob/main/pyvista.yml?raw=true>`_ (right click to download).
+Then you can:
 
-first clone (or fork, if you are interested in contributing)
-the project from gihub:
+.. code-block:: csh
+
+   conda env create -f pyvista.yml
+   conda activate pyvista
+   pip install astro-pyvista
+
+If you are using Anaconda Navigator, you can use the Environments section on 
+the left, then use Import at the bottom and specify the location of the 
+pyvista.yml file
+
+
+Editable installation into Python distribution
+-------------------------------------
+
+If you may be editing the code, you can download pyvista from github, and
+do an editable install:
 
 .. code-block:: csh
 
    git clone https://github.com/holtzmanjon/pyvista
-
-Installation into Python distribution
--------------------------------------
-
-While pyvista does not depend on special versions of other packages, to 
-avoid package conflicts, using a Python virtual environment (conda env or pyenv)
-is encouraged!
-
-Once downloaded, you can install with the usual
-
-.. code-block:: csh
-
-   python setup.py install
-
-However, if you want to be able to report issues, make requests and easily
-get new implementations for development, we recommend an installation that will
-allow you to update from the github repository and have changes immediately
-available, which can be achieved by using:
-
-.. code-block:: csh
-
-   python setup.py develop
-
-Note that pyvista has several dependencies for different packages
-   - numpy
-   - scipy
-   - astropy
-   - bz2
-   - pyautogui (for tv: optional but valuable, for keystroke controlled moves in the display)
-   - photutils (required for stars)
-
-The setup.py should install these for you.
+   cd pyvista
+   pip install -e .
 
 Installation using environment variables
 ----------------------------------------
-As an alternative to using setup.py, define an environment 
+As an alternative to using a pip installation, you can define an environment 
 variable PYVISTA_DIR that refers to the top level pyvista directory, e.g.
 
 .. code-block:: csh

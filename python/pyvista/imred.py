@@ -265,14 +265,18 @@ class Reducer() :
         date=[]
         objs=[]
         for file in files :
-          a=fits.open(file)[hdu].header
           try :
-              date.append(a['DATE-OBS'])
+              header=fits.open(file)[hdu].header
+          except FileNotFound :
+              print('error opening file: {:s}, hdu: {:d}'.format(file,hdu))
+              return
+          try :
+              date.append(header['DATE-OBS'])
           except KeyError :
               print('file {:s} does not have DATE-OBS'.format(file))
               date.append('')
           for col in cols :
-              if 'OBJ' in col : objs.append(a[col])
+              if 'OBJ' in col : objs.append(header[col])
         date=np.array(date)
         sort=np.argsort(date)
 
@@ -289,18 +293,15 @@ class Reducer() :
                 fd=html.head(htmlfile+'_thumb.html')
                 fd.write('<TABLE BORDER=2>\n')
 
+        # get names and dtypes for table, based on which requested cards are in last header
         names=['FILE']
         dtypes=['S24']
         if htmlfile is not None : fp.write('<TR style="background-color:lightred"><TD>FILE\n')
         for col in cols :
-            try : 
-                val=a[col]
-                names.append(col)
-                dtypes.append('S16')
-                if htmlfile is not None :
-                    fp.write('<TD>{:s}\n'.format(col))
-            except KeyError:
-                print('no card {:s} in header'.format(col))
+            names.append(col)
+            dtypes.append('S16')
+            if htmlfile is not None :
+                fp.write('<TD>{:s}\n'.format(col))
         tab=Table(names=names,dtype=dtypes)
 
         # set up style for rows with new object
@@ -316,28 +317,39 @@ class Reducer() :
         oldfilt = ''
         style = ''
         for i in sort :
-          a=fits.open(files[i])[hdu].header
+          header=fits.open(files[i])[hdu].header
+          # fix for RA/DEC for MaximDL headers
+          if 'RA' not in header  :
+              try: header['RA'] = header['OBJCTRA'].replace(' ',':')
+              except : pass
+          if 'DEC' not in header  :
+              try: header['DEC'] = header['OBJCTDEC'].replace(' ',':')
+              except : pass
           # if we have OBJECT card, we can color rows for new object
           for col in cols :
             if 'OBJ' in col :
-                if a[col] != oldobj : 
-                    style=newobj
-                    oldobj=a[col]
-                else : style=''
+                try :
+                    if header[col] != oldobj : 
+                        style=newobj
+                        oldobj=header[col]
+                    else : style=''
+                except : pass
           # if we have FILTER card, we can color rows for new filter (if not new object)
           for col in cols :
             if 'FILT' in col :
-                if a[col] != oldfilt :
-                    oldfilt=a[col]
-                    if style == '' : style=newfilt
+                try :
+                    if header[col] != oldfilt :
+                        oldfilt=header[col]
+                        if style == '' : style=newfilt
+                except : pass
           if htmlfile is not None :
               fp.write('<TR {:s}><TD>{:s}\n'.format(style,os.path.basename(files[i])))  
           row=[os.path.basename(files[i])]
           for col in cols :
             try:
-              row.append(str(a[col]))
+              row.append(str(header[col]))
               if htmlfile is not None:
-                  fp.write('<TD>{:s}\n'.format(str(a[col])))
+                  fp.write('<TD>{:s}\n'.format(str(header[col])))
             except: 
               row.append('')
               if htmlfile is not None: fp.write('<TD>\n')
@@ -516,12 +528,13 @@ class Reducer() :
                 else : 
                     try : im.header['OBJECT'] = im.header['FILE']
                     except KeyError : print('No OBJECT, OBJNAME, or FILE in header')
+            # fix for RA/DEC for MaximDL headers
             if 'RA' not in im.header  :
                 try: im.header['RA'] = im.header['OBJCTRA']
-                except : print('no RA or OBJCTRA found')
+                except : print('no RA or OBJCTRA found in {:s}'.format(file))
             if 'DEC' not in im.header  :
                 try: im.header['DEC'] = im.header['OBJCTDEC']
-                except : print('no DEC or OBJCTDEC found')
+                except : print('no DEC or OBJCTDEC found in {:s}'.format(file))
 
             # Add uncertainty (will be in error if there is an overscan, but redo with overscan subraction later)
             data=copy.copy(im.data)
