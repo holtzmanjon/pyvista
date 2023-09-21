@@ -40,7 +40,7 @@ Questions, requests, etc., can be directed to Jon Holtzman at holtz@nmsu.edu
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
 
    installation 
    tv
