@@ -11,4 +11,4 @@ pyyaml
 astroplan
 astroquery
 astroscrappy
-skimage
+scikit-learn
