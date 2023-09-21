@@ -5,7 +5,7 @@ Versions of pyvista are available through PyPI as astro-pyvista (pyvista is the 
 
 We recommend that you create a new virtual environment for pyvista to avoid issues with package
 conflicts. If you are working in the Anaconda environment, you should download the YAML conda configuration
-file `pyvista.yml <https://github.com/holtzmanjon/pyvista/blob/main/pyvista.yml>`_ (right click to download).
+file `pyvista.yml <https://github.com/holtzmanjon/pyvista/blob/main/pyvista.yml?raw=true>`_ (right click to download).
 Then you can:
 
 .. code-block:: csh
