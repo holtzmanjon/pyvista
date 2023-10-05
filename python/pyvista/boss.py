@@ -5,7 +5,7 @@ import pdb
 import matplotlib
 import matplotlib.pyplot as plt
 from pydl.pydlutils import yanny
-from pyvista import imred, spectra, sdss, gaia, bitmask
+from pyvista import imred, spectra, sdss, gaia, bitmask, stars, image
 try :import gaiaxpy
 except : print('no gaiaxpy...!')
 from pyvista.dataclass import Data
@@ -498,7 +498,7 @@ def combine(planfile,wnew=10.**(np.arange(3.5589,4.0151,1.e-4)),maxobj=None) :
 
     return comb
 
-def mkhtml(planfile,maxobj=None,channel=0) :
+def mkhtml(planfile,maxobj=None,channel=0,backend='Agg') :
     """ Create HTML file for visit
     """
     if not os.path.exists(planfile) :
@@ -515,7 +515,7 @@ def mkhtml(planfile,maxobj=None,channel=0) :
     else :
         plug,header,sky,stan = sdss.getconfig(plugid=plan['SPEXP']['mapname'][objs[0]].astype(str),specid=1)
 
-    matplotlib.use('Agg')
+    matplotlib.use(backend)
     #for obj in objs[0:maxobj] :
     for icomb in range(1) :
         #name=plan['SPEXP']['name'][obj][1].astype(str)
@@ -646,11 +646,34 @@ def mkyaml(mjd,obs='apo') :
         fp.close()
 
 
-def arc_transform(mjd,obs='lco',refarc=0,nskip=40, clobber=False, outdir=None) :
+def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None,
+                  vers='test/sean/v6_1_1-tracetweak', planfile=False, backend='Agg') :
     """ Get transformations from first arc for all arcs on a given MJD
         Make plots and HTML page
+
+        Parameters
+        ----------
+        mjd  : int
+               MJD to process
+        obs  : str
+               observatory = 'lco'|'apo', default='lco'
+        refarc : str
+               string identifying reference arc to use, default=None
+               if None, use planfile or first arc if no planfile
+        nskip : int
+               use every nskip line, default=False
+        clobber : bool
+        outdir : str
+        vers : str
+               string for BOSS version, with planfile
+        planfile : bool
+               if True, use planfile, default=False
+        backend : str
+               default = 'Agg'
+               
     """
 
+    matplotlib.use(backend)
     if outdir == None : outdir='./'
     try: os.makedirs('{:s}/{:d}'.format(outdir,mjd))
     except: pass
@@ -658,44 +681,125 @@ def arc_transform(mjd,obs='lco',refarc=0,nskip=40, clobber=False, outdir=None) :
     grid=[]
     if obs == 'lco' :
         data_env = 'BOSS_SPECTRO_DATA_S'
-        cols = ['b2','r2']
+        cams = ['b2','r2']
+        channels = [2,3]
     else :
         data_env = 'BOSS_SPECTRO_DATA_N'
-        cols = ['b1','r1']
+        cams = ['b1','r1']
+        channels = [0,1]
+
+    if planfile :
+        plan = yanny.yanny('{:s}/{:s}/trace/{:d}/spPlanTrace-{:d}_{:s}.par'.format(
+                    os.environ['BOSS_SPECTRO_REDUX'],vers,mjd,mjd,obs.upper()))
+        traceflat=np.where(plan['SPEXP']['flavor'] == b'TRACEFLAT')[0][0]
+        tracearc=np.where(plan['SPEXP']['flavor'] == b'TRACEARC')[0][0]
+        arcs=np.where(plan['SPEXP']['flavor'] == b'arc')[0]
+        flats=np.where(plan['SPEXP']['flavor'] == b'flat')[0]
+
     boss=imred.Reducer('BOSS',dir=os.environ[data_env]+'/{:d}'.format(mjd))
-    for channel in [2,3] :
-        if channel == 2 :
-          log = boss.log(channel='b2')
+    xt=[]
+    for channel,cam in zip(channels,cams) :
+
+        if planfile :
+            flatfile = plan['SPEXP']['name'][traceflat][channel%2].astype(str)
+            tracetab = fits.open('{:s}/{:s}/trace/{:d}/{:s}s.gz'.format(
+                       os.environ['BOSS_SPECTRO_REDUX'],vers,mjd,flatfile.replace('sdR','spTraceFlat')))[5].data
+            col0 = np.arange(len(tracetab[0]))
+
+        if refarc is None :
+            reffile = plan['SPEXP']['name'][tracearc][channel%2].astype(str)+'.gz'
         else :
-          log = boss.log(channel='r2')
-        if len(log) == 0 : return
+            j = np.where(np.char.find(log['FILE'][arcs].astype(str),str(refarc)) >= 0)[0]
+            reffile = log['FILE'][arcs[j]][0]
 
-        arcs = np.where((log['FLAVOR'] == 'arc') & (log['HARTMANN'] == 'Out'))[0]
-        if len(arcs) <= 1 : return
-
-        im0=boss.reduce(log['FILE'][arcs[refarc]],channel=channel)
-        print('finding lines in reference: ', log['FILE'][arcs[refarc]])
+        im0=boss.reduce(reffile,channel=channel)
+        print('finding lines in reference: ', reffile)
         lines0=stars.find(im0.data,thresh=400,sharp=[0,0.5],round=[-0.25,0.75])[::nskip]
-        print('automarking lines in reference: ', log['FILE'][arcs[refarc]])
+        print('automarking lines in reference: ', reffile)
         lines=stars.automark(im0.data,lines0,rad=2,dx=0,dy=0,background=False,func='gfit')
-        row=[]
+
+        if not planfile :
+            log = boss.log(channel=cam)
+            if len(log) == 0 : return
+            arcs = np.where((log['FLAVOR'] == 'arc') & (log['HARTMANN'] == 'Out'))[0]
+            if len(arcs) <= 1 : return
+
+        col1=[]
+        col2=[]
         yt=[]
+        xt.append(cam)
+        xt.append(cam)
         for arc in arcs :
-            hard = '{:s}/{:d}/{:s}.png'.format(outdir,mjd,os.path.basename(log['FILE'][arc]).replace('.fit.gz','')) 
+            if planfile :
+               arcfile = plan['SPEXP']['name'][arc][channel%2].astype(str)
+            else :
+               arcfile = os.path.basename(log['FILE'][arc])
+
+            hard = '{:s}/{:d}/{:s}.png'.format( outdir,mjd,arcfile.replace('.fit.gz',''))
             if not clobber and  os.path.exists(hard) :
-                row.append('{:s}.png'.format(os.path.basename(hard)))
-                yt.append(log['FILE'][arc].split('.')[0].split('-')[2])
+                col1.append('{:s}'.format(os.path.basename(hard)))
+                yt.append(arcfile.split('.')[0].split('-')[2])
+                col2.append(os.path.basename(hard).replace('.png','_compare.png'))
                 continue
 
-            print(log['FILE'][arc],channel)
-            im=boss.reduce(log['FILE'][arc],channel=channel)
+            print(arcfile,channel)
+            im=boss.reduce(arcfile+'.gz',channel=channel)
+            col1.append(os.path.basename(hard))
+            yt.append(arcfile.split('.')[0].split('-')[2])
 
-            transform(im0,im,lines,hard=hard)
-            row.append(hard)
-            yt.append(log['FILE'][arc].split('.')[0].split('-')[2])
-        grid.append(row)
+            linfit = transform(im0,im,lines,hard=hard)
+            if planfile :
+                # calculate derived tracetable
+                out=copy.copy(tracetab)
+                for irow,row0 in enumerate(tracetab) :
+                    fit = linfit(np.vstack([row0,col0]).T)
+                    out[irow,:]= np.interp(np.arange(len(row0)),fit[:,1],fit[:,0])
+                    #out[irow,:] = linfit(np.vstack([row0,col0]).T)[:,0]
 
-    html.htmltab(np.array(grid).T,file='{:s}/{:d}/arcs_{:d}.html'.format(outdir,mjd,mjd),ytitle=yt,xtitle=cols)
+                # write derived trace table
+                hdu=fits.PrimaryHDU(out)
+                hdu.writeto('{:s}/{:d}/{:s}'.format(outdir,mjd,
+                    arcfile.replace('sdR','spTraceTab').replace('.fit','.fits')),overwrite=True)
+
+                # plot difference between master trace and derived trace
+                fig,ax=plots.multi(1,2)
+                ax[0].set_title('difference between derived trace and {:s}'.format(flatfile))
+                for a,b in zip(out,tracetab) :
+                    ax[0].plot(a-b)
+                ax[0].set_ylim(-5,5)
+                ax[0].set_xlim(0,len(a))
+
+                # if we have a flat at the field, compare it to derived trace
+                field = plan['SPEXP']['fieldid'][arc]
+                j=np.where(plan['SPEXP']['fieldid'][flats] == field)[0]
+                if len(j) > 0 :
+                    flat=plan['SPEXP']['name'][flats[j[0]]][channel%2].astype(str)
+                    flat_data = fits.open('{:s}/{:s}/{:s}/{:s}s.gz'.format(
+                       os.environ['BOSS_SPECTRO_REDUX'],vers,field.astype(str),
+                       flat.replace('sdR','spFlat')))[0].data
+                    tab = fits.open('{:s}/{:s}/{:s}/{:s}s.gz'.format(
+                       os.environ['BOSS_SPECTRO_REDUX'],vers,field.astype(str),
+                       flat.replace('sdR','spFlat')))[5].data
+                    ax[1].set_title('difference between derived trace and {:s}'.format(flat))
+                    x=np.arange(len(out[0]))
+                    ax[1].set_xlim(0,len(x))
+                    for a,b,c in zip(out,tab,flat_data) :
+                        p=ax[1].plot(x,a-b,ls=':')
+                        gd =np.where(c>0)[0]
+                        ax[1].plot(x[gd],a[gd]-b[gd],color=p[-1].get_color())
+                    ax[1].set_ylim(-5,5)
+                fig.tight_layout()
+                fig.savefig(hard.replace('.png','_compare.png'))
+                plt.close()
+                col2.append(os.path.basename(hard).replace('.png','_compare.png'))
+
+        if channel==channels[0] :
+            grid=np.vstack([np.array(col1),np.array(col2)])
+        else :
+            grid=np.vstack([grid,np.array(col1),np.array(col2)])
+
+    html.htmltab(np.array(grid).T,file='{:s}/{:d}/arcs_{:d}.html'.format(outdir,mjd,mjd),
+                 ytitle=yt,xtitle=xt)
 
 
 def transform(im0,im,lines0,xcorr_shift=range(-10,11),hard=None) :
@@ -720,6 +824,7 @@ def transform(im0,im,lines0,xcorr_shift=range(-10,11),hard=None) :
 
     # smooth cross correlation by by 3x3 kernel in case there are multiple peaks and the wrong one 
     # happens to match pixel centering better
+    # Just use integer peak
     kernel=np.ones([3,3])
     indices=np.unravel_index(convolve(shift,kernel,mode='same').argmax(),shift.shape)
     dy=indices[0]+xcorr_shift[0]
@@ -772,7 +877,7 @@ def transform(im0,im,lines0,xcorr_shift=range(-10,11),hard=None) :
         cbar_ax = fig.add_axes([0.9, 0.15, 0.05, 0.7])
         fig.colorbar(cbar, cax=cbar_ax)
 
-        if hard is not '' :
+        if hard != '' :
             fig.savefig(hard)
         else :
             plt.draw()
