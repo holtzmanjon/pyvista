@@ -13,7 +13,7 @@ from pyvista.dataclass import Data
 import matplotlib.pyplot as plt
 import multiprocessing as mp
 import yaml
-from pyvista import imred, spectra,sdss
+from pyvista import imred, spectra,sdss,stars,image
 
 def unzip(file,dark=None) :
     """ Read APOGEE .apz file, get CDS image
@@ -268,3 +268,38 @@ def mkyaml(mjd,obs='apo') :
                 fp.write('  single: -1\n')
                 fp.write('  singlename: none\n')
         fp.close()
+
+def fit_fpi(data,display=None,skip=10,thresh=3000) :
+    """ Fit 2D gaussians to FPI frame and get surface fits of parameters
+    """
+    lines = stars.find(data,thresh=thresh)[::skip]
+    print(len(lines),' lines found')
+    params=[]
+    for i,(x,y) in enumerate(zip(lines['x'],lines['y'])) :
+        print(i)
+        try: params.append(image.gfit2d(data,x,y,astropy=False,sub=False))
+        except : pass
+    params=np.array(params)
+    gd=np.where((params[:,3] < 5) & (params[:,4] < 5))[0]
+    coeff3=image.fit2d(params[gd,1],params[gd,2],params[gd,3])
+    coeff4=image.fit2d(params[gd,1],params[gd,2],params[gd,4])
+    coeff5=image.fit2d(params[gd,1],params[gd,2],params[gd,5])
+    y,x=np.mgrid[0:2048,0:2048]
+    fit3 = image.mk2d(x,y,coeff3)
+    fit4 = image.mk2d(x,y,coeff4)
+    fit5 = image.mk2d(x,y,coeff5)
+    fig,ax=plots.multi(3,1,figsize=(12,4),hspace=0.001,wspace=0.001)
+    ax[0].imshow(fit3)
+    ax[1].imshow(fit4)
+    ax[2].imshow(fit5)
+
+    if display is not None :
+        display.tv(data)
+        plots.plotc(display.ax,params[:,1],params[:,2],params[:,3],size=30,zr=[1,3])
+        pdb.set_trace()
+        plots.plotc(display.ax,params[:,1],params[:,2],params[:,4],size=30,zr=[1,3])
+        pdb.set_trace()
+        plots.plotc(display.ax,params[:,1],params[:,2],params[:,5],size=30)
+        pdb.set_trace()
+
+
