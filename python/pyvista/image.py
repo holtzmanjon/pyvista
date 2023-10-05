@@ -9,6 +9,7 @@ from astropy.convolution import convolve, Box1DKernel
 from astropy.nddata import StdDevUncertainty, support_nddata
 import scipy.signal
 import scipy.ndimage
+from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 import glob
 import bz2
@@ -207,45 +208,86 @@ def abx(data,box) :
                         data[box.ymin:box.ymax,box.xmin:box.xmax].argmax(),
                         (box.nrow(),box.ncol()) )[0]+box.ymin}
 
-def gfit(data,x0,y0,size=5,fwhm=3,sub=True,plot=None,fig=1,scale=1,pafixed=False) :
+def gauss2d(X, amp, x0, y0, a, b, c, back) :
+
+    x = X[0]
+    y = X[1]
+    out= amp*(np.exp(-a*(x-x0)**2-b*(x-x0)*(y-y0)-c*(y-y0)**2))+back
+    return out.flatten()
+
+
+def gfit2d(data,x0,y0,size=5,fwhm=3,sub=True,plot=None,fig=1,scale=1,pafixed=False,astropy=True) :
     """ 
     Does gaussian fit to input data given initial xcen,ycen
     """
-    fit=fitting.LevMarLSQFitter()
-    #fit=fitting.SLSQPLSQFitter()
+
+    # use initial guess to get peak
     z=data[int(y0)-size:int(y0)+size,int(x0)-size:int(x0)+size]
+    # refine subarray around peak
     xcen,ycen=np.unravel_index(np.argmax(z),z.shape)
     xcen+=(int(x0)-size)
     ycen+=(int(y0)-size)
+
+    # set up input data and fit
     y,x=np.mgrid[ycen-size:ycen+size,xcen-size:xcen+size]
     z=data[ycen-size:ycen+size,xcen-size:xcen+size]
-    g_init=models.Gaussian2D(x_mean=xcen,y_mean=ycen,
+
+    if astropy :
+        g_init=models.Gaussian2D(x_mean=xcen,y_mean=ycen,
                              x_stddev=fwhm/2.354,y_stddev=fwhm/2.354,
                              amplitude=data[ycen,xcen],theta=0.,
                              fixed={'theta':pafixed})+models.Const2D(0.)
-    g=fit(g_init,x,y,z)
-    xfwhm=g[0].x_stddev*2.354*scale
-    yfwhm=g[0].y_stddev*2.354*scale
-    fwhm=np.sqrt(xfwhm*yfwhm)
-    xcen=g[0].x_mean.value
-    ycen=g[0].y_mean.value
-    theta=(g[0].theta.value % (2*np.pi)) * 180./np.pi
-    print('xFWHM:{:8.2f}   yFWHM:{:8.2f}   FWHM:{:8.2f}  SCALE:{:8.2f}  PA:{:8.2f}'.format(xfwhm,yfwhm,fwhm,scale,theta))
-    if plot is not None:
-        r = np.sqrt((y-ycen)**2 + (x-xcen)**2)
-        plots.plotp(plot,r,z,xt='R(pixels)',yt='Intensity')
-        r = np.arange(0.,5*fwhm/2.354/scale,0.1)
-        peak=g[0].amplitude
-        plot.plot(r,peak*np.exp(-np.power(r, 2.) / (2 * np.power(g[0].x_stddev, 2.)))+g[1].amplitude)
-        plot.plot(r,peak*np.exp(-np.power(r, 2.) / (2 * np.power(g[0].y_stddev, 2.)))+g[1].amplitude)
-        plot.text(0.9,0.9,'x: {:7.1f} y: {:7.1f} fw: {:8.2f}'.format(xcen,ycen,fwhm),transform=plot.transAxes,ha='right')
-        plt.draw()
+        fit=fitting.LevMarLSQFitter()
+        g=fit(g_init,x,y,z)
+        xfwhm=g[0].x_stddev*2.354*scale
+        yfwhm=g[0].y_stddev*2.354*scale
+        fwhm=np.sqrt(xfwhm*yfwhm)
+        theta=(g[0].theta.value % (2*np.pi)) * 180./np.pi
+        print('xFWHM:{:8.2f}   yFWHM:{:8.2f}   FWHM:{:8.2f}  SCALE:{:8.2f}  PA:{:8.2f}'.format(xfwhm,yfwhm,fwhm,scale,theta))
+        if plot is not None:
+            xc=g[0].x_mean.value
+            yc=g[0].y_mean.value
+            r = np.sqrt((y-yc)**2 + (x-xc)**2)
+            plots.plotp(plot,r,z,xt='R(pixels)',yt='Intensity')
+            r = np.arange(0.,5*fwhm/2.354/scale,0.1)
+            peak=g[0].amplitude
+            plot.plot(r,peak*np.exp(-np.power(r, 2.) / (2 * np.power(g[0].x_stddev, 2.)))+g[1].amplitude)
+            plot.plot(r,peak*np.exp(-np.power(r, 2.) / (2 * np.power(g[0].y_stddev, 2.)))+g[1].amplitude)
+            plot.text(0.9,0.9,'x: {:7.1f} y: {:7.1f} fw: {:8.2f}'.format(xc,yc,fwhm),transform=plot.transAxes,ha='right')
+            plt.draw()
+        if sub :
+            data[ycen-size:ycen+size,xcen-size:xcen+size]-=g[0](x,y)
        
-    if sub :
-        out=data
-        out[ycen-size:ycen+size,xcen-size:xcen+size]-=g[0](x,y)
-        return out
-    return g
+        return g
+
+    else :
+        p0=np.array([data[ycen,xcen],xcen,ycen,1./2*(fwhm/2.354)**2,0.,1./2*(fwhm/2.354)**2,0.])
+        g=curve_fit(gauss2d,np.array([x,y]),z.flatten(), p0=p0)
+
+        # translate parameters to xfwhm,yfwhm,theta
+        amp,x0,y0,a,b,c,back=g[0]
+        theta=0.5*np.arctan(b/(a-c))
+        xfwhm=np.sqrt(1/(2*a*np.cos(theta)**2+2*b*np.cos(theta)*np.sin(theta)+2*c*np.sin(theta)**2))*2.354
+        yfwhm=np.sqrt(1/(2*a*np.sin(theta)**2-2*b*np.cos(theta)*np.sin(theta)+2*c*np.cos(theta)**2))*2.354
+        print('xFWHM:{:8.2f}   yFWHM:{:8.2f}   FWHM:{:8.2f}  SCALE:{:8.2f}  PA:{:8.2f}'.format(
+               xfwhm,yfwhm,np.sqrt(xfwhm*yfwhm),scale,(theta%(2*np.pi))*180/np.pi))
+        if sub :
+            data[ycen-size:ycen+size,xcen-size:xcen+size]-=gauss2d(np.array([x,y]),*g).reshape(-2*size,2*size)
+        return np.array([amp,x0,y0,xfwhm,yfwhm,theta,back])
+
+def fit2d(X,Y,Z) :
+    """ Fit 2D quadratic surface
+    """
+    gd=np.where(np.isfinite(Z))
+    A = np.array([X[gd]*0+1, X[gd], Y[gd], X[gd]**2, X[gd]**2*Y[gd], X[gd]**2*Y[gd]**2, Y[gd]**2, X[gd]*Y[gd]**2, X[gd]*Y[gd]]).T
+    coeff, r, rank, s = np.linalg.lstsq(A, Z[gd])
+    return coeff
+
+def mk2d(X,Y,coeff) :
+    """ Return 2D surface given input points and coefficients
+    """
+    A = np.array([X*0+1, X, Y, X**2, X**2*Y, X**2*Y**2, Y**2, X*Y**2, X*Y]).T
+    return np.dot(A,coeff)
 
 def tvstar(tv,plot=None,size=11,fwhm=5,scale=1,pafixed=False) :
     """ Fit gaussian and show radial profile of stars marked interactively
@@ -629,16 +671,20 @@ def xcorr2d(a,b,lags) :
         for j, ylag in enumerate(lags) :
             shift[j,i] = np.sum(a.data[ys:ye,xs:xe]*b.data[ys+ylag:ye+ylag,xs+xlag:xe+xlag])
 
-    # quadratic fit and determine peak
-    fit=fitting.LinearLSQFitter()
-    mod=models.Polynomial2D(degree=2)
     y,x=np.meshgrid(lags,lags)
     yp,xp=np.unravel_index(shift.argmax(),shift.shape)
     print(yp,xp)
-    p=fit(mod,x[yp-1:yp+2,xp-1:xp+2],y[yp-1:yp+2,xp-1:xp+2],shift[yp-1:yp+2,xp-1:xp+2])
-    a = np.array([ [2*p.parameters[2], p.parameters[5]], [p.parameters[5],2*p.parameters[4]] ])
-    b = np.array([-p.parameters[1],-p.parameters[3]])
-    peak=np.linalg.solve(a,b)+(xp,yp)+(lags[0],lags[0])
+    if xp == 0 or yp == 0 or xp > len(lags)-1 or yp > len(lags)-1 :
+        # peak at edge of cross correlation
+        peak= (xp,yp)
+    else :
+        # quadratic fit and determine peak
+        fit=fitting.LinearLSQFitter()
+        mod=models.Polynomial2D(degree=2)
+        p=fit(mod,x[yp-1:yp+2,xp-1:xp+2],y[yp-1:yp+2,xp-1:xp+2],shift[yp-1:yp+2,xp-1:xp+2])
+        a = np.array([ [2*p.parameters[2], p.parameters[5]], [p.parameters[5],2*p.parameters[4]] ])
+        b = np.array([-p.parameters[1],-p.parameters[3]])
+        peak=np.linalg.solve(a,b)+(xp,yp)+(lags[0],lags[0])
 
     return peak,shift
 
