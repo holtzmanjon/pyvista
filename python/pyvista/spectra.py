@@ -29,6 +29,8 @@ import erfa
 from numpy.polynomial import Polynomial
 
 
+sig2fwhm = 2*np.sqrt(2*np.log(2))
+
 class WaveCal() :
     """ Class for wavelength solutions
 
@@ -691,7 +693,7 @@ class WaveCal() :
                     yy = spectrum.data[row,peak-rad:peak+rad+1]
                     try :  
                       while peak != oldpeak and  niter<10:
-                        p0 = [spectrum.data[row,peak],peak,rad/2.354,0.]
+                        p0 = [spectrum.data[row,peak],peak,rad/sig2fwhm,0.]
                         coeff, var_matrix = curve_fit(gauss, xx, yy, p0=p0)
                         cent = coeff[1]
                         oldpeak = peak
@@ -712,7 +714,7 @@ class WaveCal() :
                                        rotation='vertical',va='top',ha='center')
                     x.append(cent)
                     y.append(row)
-                    fwhm.append(np.abs(coeff[2]*2.354))
+                    fwhm.append(np.abs(coeff[2]*sig2fwhm))
                     # we will fit for wavelength*order
                     waves.append(line)
                     try: order = self.orders[row]
@@ -1316,7 +1318,7 @@ class Trace() :
 
         data = np.median(im.data[self.rows[0]:self.rows[1],
                                  sc0-width:sc0+width],axis=1)-back
-        if smooth > 0 : data = gaussian_filter1d(data, smooth/2.354)
+        if smooth > 0 : data = gaussian_filter1d(data, smooth/sig2fwhm
 
         if plot :
             plt.figure()

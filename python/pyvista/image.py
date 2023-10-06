@@ -215,6 +215,7 @@ def gauss2d(X, amp, x0, y0, a, b, c, back) :
     out= amp*(np.exp(-a*(x-x0)**2-b*(x-x0)*(y-y0)-c*(y-y0)**2))+back
     return out.flatten()
 
+sig2fwhm = 2*np.sqrt(2*np.log(2))
 
 def gfit2d(data,x0,y0,size=5,fwhm=3,sub=True,plot=None,fig=1,scale=1,pafixed=False,astropy=True) :
     """ 
@@ -234,13 +235,13 @@ def gfit2d(data,x0,y0,size=5,fwhm=3,sub=True,plot=None,fig=1,scale=1,pafixed=Fal
 
     if astropy :
         g_init=models.Gaussian2D(x_mean=xcen,y_mean=ycen,
-                             x_stddev=fwhm/2.354,y_stddev=fwhm/2.354,
+                             x_stddev=fwhm/sig2fwhm,y_stddev=fwhm/sig2fwhm,
                              amplitude=data[ycen,xcen],theta=0.,
                              fixed={'theta':pafixed})+models.Const2D(0.)
         fit=fitting.LevMarLSQFitter()
         g=fit(g_init,x,y,z)
-        xfwhm=g[0].x_stddev*2.354*scale
-        yfwhm=g[0].y_stddev*2.354*scale
+        xfwhm=g[0].x_stddev*sig2fwhm*scale
+        yfwhm=g[0].y_stddev*sig2fwhm*scale
         fwhm=np.sqrt(xfwhm*yfwhm)
         theta=(g[0].theta.value % (2*np.pi)) * 180./np.pi
         print('xFWHM:{:8.2f}   yFWHM:{:8.2f}   FWHM:{:8.2f}  SCALE:{:8.2f}  PA:{:8.2f}'.format(xfwhm,yfwhm,fwhm,scale,theta))
@@ -249,7 +250,7 @@ def gfit2d(data,x0,y0,size=5,fwhm=3,sub=True,plot=None,fig=1,scale=1,pafixed=Fal
             yc=g[0].y_mean.value
             r = np.sqrt((y-yc)**2 + (x-xc)**2)
             plots.plotp(plot,r,z,xt='R(pixels)',yt='Intensity')
-            r = np.arange(0.,5*fwhm/2.354/scale,0.1)
+            r = np.arange(0.,5*fwhm/sig2fwhm/scale,0.1)
             peak=g[0].amplitude
             plot.plot(r,peak*np.exp(-np.power(r, 2.) / (2 * np.power(g[0].x_stddev, 2.)))+g[1].amplitude)
             plot.plot(r,peak*np.exp(-np.power(r, 2.) / (2 * np.power(g[0].y_stddev, 2.)))+g[1].amplitude)
@@ -261,14 +262,14 @@ def gfit2d(data,x0,y0,size=5,fwhm=3,sub=True,plot=None,fig=1,scale=1,pafixed=Fal
         return g
 
     else :
-        p0=np.array([data[ycen,xcen],xcen,ycen,1./2*(fwhm/2.354)**2,0.,1./2*(fwhm/2.354)**2,0.])
+        p0=np.array([data[ycen,xcen],xcen,ycen,1./2*(fwhm/sig2fwhm)**2,0.,1./2*(fwhm/sig2fwhm)**2,0.])
         g=curve_fit(gauss2d,np.array([x,y]),z.flatten(), p0=p0)
 
         # translate parameters to xfwhm,yfwhm,theta
         amp,x0,y0,a,b,c,back=g[0]
         theta=0.5*np.arctan(b/(a-c))
-        xfwhm=np.sqrt(1/(2*a*np.cos(theta)**2+2*b*np.cos(theta)*np.sin(theta)+2*c*np.sin(theta)**2))*2.354
-        yfwhm=np.sqrt(1/(2*a*np.sin(theta)**2-2*b*np.cos(theta)*np.sin(theta)+2*c*np.cos(theta)**2))*2.354
+        xfwhm=np.sqrt(1/(2*a*np.cos(theta)**2+2*b*np.cos(theta)*np.sin(theta)+2*c*np.sin(theta)**2))*sig2fwhm
+        yfwhm=np.sqrt(1/(2*a*np.sin(theta)**2-2*b*np.cos(theta)*np.sin(theta)+2*c*np.cos(theta)**2))*sig2fwhm
         print('xFWHM:{:8.2f}   yFWHM:{:8.2f}   FWHM:{:8.2f}  SCALE:{:8.2f}  PA:{:8.2f}'.format(
                xfwhm,yfwhm,np.sqrt(xfwhm*yfwhm),scale,(theta%(2*np.pi))*180/np.pi))
         if sub :

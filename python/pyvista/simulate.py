@@ -4,6 +4,8 @@ import numpy as np
 import pdb
 from astropy.nddata import CCDData
 
+sig2fwhm = 2*np.sqrt(2*np.log(2))
+
 def gauss2d(data, coords,fwhm=1,back=0,noise=False,rn=0) :
     """ Add 2d gaussians to data given input coords, fwhm, noise
     """
@@ -14,7 +16,7 @@ def gauss2d(data, coords,fwhm=1,back=0,noise=False,rn=0) :
 
     # set arrays of pixel index values
     ypix,xpix = np.mgrid[0:data.shape[0],0:data.shape[1]]
-    sig2 = (fwhm/2.354)**2
+    sig2 = (fwhm/sig2fwhm)**2
 
     # loop over input objects
     for coord in coords: 
