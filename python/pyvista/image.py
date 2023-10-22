@@ -16,6 +16,9 @@ import bz2
 import os
 import pdb
 
+sig2fwhm = 2*np.sqrt(2*np.log(2))
+#sig2fwhm=np.float64(2.354)
+
 class BOX() :
     """ 
     Defines BOX class
@@ -208,34 +211,75 @@ def abx(data,box) :
                         data[box.ymin:box.ymax,box.xmin:box.xmax].argmax(),
                         (box.nrow(),box.ncol()) )[0]+box.ymin}
 
-def gauss2d(X, amp, x0, y0, a, b, c, back) :
+def gauss2d_binned(X, amp, x0, y0, a, b, c, back) :
+    return gauss2d(X, amp, x0, y0, a, b, c, back, binned=True) 
 
+
+def gauss2d(X, amp, x0, y0, a, b, c, back, binned=False) :
+    """ Evaluate Gaussian 2D function  
+
+        Form: amp*exp(-a(x-x0)**2 - b(x-x0)*(y-y0) - c(y-y0)**2) + consth
+
+        Parameters
+        ----------
+        X : arraylike [2,npts]
+            x,y positions to evaluate at
+        amp, x0, y0, a, b, c, back : float
+            coefficients of function
+    """
     x = X[0]
     y = X[1]
-    out= amp*(np.exp(-a*(x-x0)**2-b*(x-x0)*(y-y0)-c*(y-y0)**2))+back
+
+    if binned :
+        pdb.set_trace()
+        # use 10x10 sub-bins
+        yy,xx=np.mgrid[y.min()-0.5:y.max()+0.5:0.1,x.min()-0.5:x.max()+0.5:0.1]
+        out= (amp/100.*(np.exp(-a*(xx-x0)**2-b*(xx-x0)*(yy-y0)-c*(yy-y0)**2))).reshape(x.shape[0],10,y.shape[0],10).sum(3).sum(1)+back
+    else :
+        out= amp*(np.exp(-a*(x-x0)**2-b*(x-x0)*(y-y0)-c*(y-y0)**2))+back
+
     return out.flatten()
 
-sig2fwhm = 2*np.sqrt(2*np.log(2))
+def abc2fwxfwytheta(a,b,c) :
+    """ Convert a,b,c, from gauss2d to xfwhm, yfwhm, theta
+    """
+    theta=0.5*np.arctan(-b/(a-c))
+    xfwhm=np.sqrt(1/(2*a*np.cos(theta)**2-2*b*np.cos(theta)*np.sin(theta)+2*c*np.sin(theta)**2))*sig2fwhm
+    yfwhm=np.sqrt(1/(2*a*np.sin(theta)**2+2*b*np.cos(theta)*np.sin(theta)+2*c*np.cos(theta)**2))*sig2fwhm
 
-def gfit2d(data,x0,y0,size=5,fwhm=3,sub=True,plot=None,fig=1,scale=1,pafixed=False,astropy=True) :
+    return xfwhm, yfwhm, theta
+
+def fwxfwytheta2abc(xfwhm,yfwhm,theta) :
+    """ Convert xfwhm, yfwhm, theta to a,b,c for gauss2d
+    """
+
+    sigx = xfwhm / sig2fwhm
+    sigy = yfwhm / sig2fwhm
+    a = np.cos(theta)**2/(2*sigx**2) + np.sin(theta)**2/(2*sigy**2)
+    b = -np.sin(2*theta)/(2*sigx**2) + np.sin(2*theta)/(2*sigy**2)
+    c = np.sin(theta)**2/(2*sigx**2) + np.cos(theta)**2/(2*sigy**2)
+
+    return a,b,c
+
+def gfit2d(data,x0,y0,size=5,fwhm=3.,sub=True,plot=None,fig=1,scale=1,pafixed=False,astropy=True,binned=False) :
     """ 
     Does gaussian fit to input data given initial xcen,ycen
     """
 
     # use initial guess to get peak
-    z=data[int(y0)-size:int(y0)+size,int(x0)-size:int(x0)+size]
+    z=data[int(y0)-size:int(y0)+size+1,int(x0)-size:int(x0)+size+1]
     # refine subarray around peak
     xcen,ycen=np.unravel_index(np.argmax(z),z.shape)
     xcen+=(int(x0)-size)
     ycen+=(int(y0)-size)
 
     # set up input data and fit
-    y,x=np.mgrid[ycen-size:ycen+size,xcen-size:xcen+size]
-    z=data[ycen-size:ycen+size,xcen-size:xcen+size]
+    y,x=np.mgrid[ycen-size:ycen+size+1,xcen-size:xcen+size+1]
+    z=data[ycen-size:ycen+size+1,xcen-size:xcen+size+1]
 
     if astropy :
         g_init=models.Gaussian2D(x_mean=xcen,y_mean=ycen,
-                             x_stddev=fwhm/sig2fwhm,y_stddev=fwhm/sig2fwhm,
+                             x_stddev=fwhm/2.3548,y_stddev=fwhm/2.3548,
                              amplitude=data[ycen,xcen],theta=0.,
                              fixed={'theta':pafixed})+models.Const2D(0.)
         fit=fitting.LevMarLSQFitter()
@@ -262,8 +306,11 @@ def gfit2d(data,x0,y0,size=5,fwhm=3,sub=True,plot=None,fig=1,scale=1,pafixed=Fal
         return g
 
     else :
-        p0=np.array([data[ycen,xcen],xcen,ycen,1./2*(fwhm/sig2fwhm)**2,0.,1./2*(fwhm/sig2fwhm)**2,0.])
-        g=curve_fit(gauss2d,np.array([x,y]),z.flatten(), p0=p0)
+        p0=np.array([data[ycen,xcen],xcen,ycen,1./(2*(fwhm/sig2fwhm)**2),0.,1./(2*(fwhm/sig2fwhm)**2),0.])
+        if binned :
+            g=curve_fit(gauss2d_binned,np.array([x,y]),z.flatten(), p0=p0)
+        else :
+            g=curve_fit(gauss2d,np.array([x,y]),z.flatten(), p0=p0)
 
         # translate parameters to xfwhm,yfwhm,theta
         amp,x0,y0,a,b,c,back=g[0]
@@ -273,7 +320,7 @@ def gfit2d(data,x0,y0,size=5,fwhm=3,sub=True,plot=None,fig=1,scale=1,pafixed=Fal
         print('xFWHM:{:8.2f}   yFWHM:{:8.2f}   FWHM:{:8.2f}  SCALE:{:8.2f}  PA:{:8.2f}'.format(
                xfwhm,yfwhm,np.sqrt(xfwhm*yfwhm),scale,(theta%(2*np.pi))*180/np.pi))
         if sub :
-            data[ycen-size:ycen+size,xcen-size:xcen+size]-=gauss2d(np.array([x,y]),*g).reshape(-2*size,2*size)
+            data[ycen-size:ycen+size,xcen-size:xcen+size]-=gauss2d(np.array([x,y]),*g[0]).reshape(-2*size,2*size)
         return np.array([amp,x0,y0,xfwhm,yfwhm,theta,back])
 
 def fit2d(X,Y,Z) :
