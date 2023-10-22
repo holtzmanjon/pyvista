@@ -689,12 +689,16 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
         channels = [0,1]
 
     if planfile :
+        if not os.path.exists('{:s}/{:s}/trace/{:d}/spPlanTrace-{:d}_{:s}.par'.format( 
+            os.environ['BOSS_SPECTRO_REDUX'],vers,mjd,mjd,obs.upper())) :
+            raise FileNotFoundError('no planfile')
         plan = yanny.yanny('{:s}/{:s}/trace/{:d}/spPlanTrace-{:d}_{:s}.par'.format(
                     os.environ['BOSS_SPECTRO_REDUX'],vers,mjd,mjd,obs.upper()))
         traceflat=np.where(plan['SPEXP']['flavor'] == b'TRACEFLAT')[0][0]
         tracearc=np.where(plan['SPEXP']['flavor'] == b'TRACEARC')[0][0]
         arcs=np.where(plan['SPEXP']['flavor'] == b'arc')[0]
         flats=np.where(plan['SPEXP']['flavor'] == b'flat')[0]
+        outdir='{:s}/{:s}/trace/'.format(os.environ['BOSS_SPECTRO_REDUX'],vers)
 
     boss=imred.Reducer('BOSS',dir=os.environ[data_env]+'/{:d}'.format(mjd))
     xt=[]
@@ -773,21 +777,23 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
                 field = plan['SPEXP']['fieldid'][arc]
                 j=np.where(plan['SPEXP']['fieldid'][flats] == field)[0]
                 if len(j) > 0 :
-                    flat=plan['SPEXP']['name'][flats[j[0]]][channel%2].astype(str)
-                    flat_data = fits.open('{:s}/{:s}/{:s}/{:s}s.gz'.format(
-                       os.environ['BOSS_SPECTRO_REDUX'],vers,field.astype(str),
-                       flat.replace('sdR','spFlat')))[0].data
-                    tab = fits.open('{:s}/{:s}/{:s}/{:s}s.gz'.format(
-                       os.environ['BOSS_SPECTRO_REDUX'],vers,field.astype(str),
-                       flat.replace('sdR','spFlat')))[5].data
-                    ax[1].set_title('difference between derived trace and {:s}'.format(flat))
-                    x=np.arange(len(out[0]))
-                    ax[1].set_xlim(0,len(x))
-                    for a,b,c in zip(out,tab,flat_data) :
-                        p=ax[1].plot(x,a-b,ls=':')
-                        gd =np.where(c>0)[0]
-                        ax[1].plot(x[gd],a[gd]-b[gd],color=p[-1].get_color())
-                    ax[1].set_ylim(-5,5)
+                    flat=plan['SPEXP']['name'][flats[j[-1]]][channel%2].astype(str)
+                    try :
+                        flat_data = fits.open('{:s}/{:s}/{:s}/{:s}s.gz'.format(
+                           os.environ['BOSS_SPECTRO_REDUX'],vers,field.astype(str),
+                           flat.replace('sdR','spFlat')))[0].data
+                        tab = fits.open('{:s}/{:s}/{:s}/{:s}s.gz'.format(
+                           os.environ['BOSS_SPECTRO_REDUX'],vers,field.astype(str),
+                           flat.replace('sdR','spFlat')))[5].data
+                        ax[1].set_title('difference between derived trace and {:s}'.format(flat))
+                        x=np.arange(len(out[0]))
+                        ax[1].set_xlim(0,len(x))
+                        for a,b,c in zip(out,tab,flat_data) :
+                            p=ax[1].plot(x,a-b,ls=':')
+                            gd =np.where(c>0)[0]
+                            ax[1].plot(x[gd],a[gd]-b[gd],color=p[-1].get_color())
+                        ax[1].set_ylim(-5,5)
+                    except : pass
                 fig.tight_layout()
                 fig.savefig(hard.replace('.png','_compare.png'))
                 plt.close()
@@ -798,11 +804,11 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
         else :
             grid=np.vstack([grid,np.array(col1),np.array(col2)])
 
-    html.htmltab(np.array(grid).T,file='{:s}/{:d}/arcs_{:d}.html'.format(outdir,mjd,mjd),
+    html.htmltab(np.array(grid).T,file='{:s}/{:d}/arcs_{:d}_{:s}.html'.format(outdir,mjd,mjd,obs),
                  ytitle=yt,xtitle=xt)
 
 
-def transform(im0,im,lines0,xcorr_shift=range(-10,11),hard=None) :
+def transform(im0,im,lines0,xcorr_shift=range(-10,11),hard=None,reject=1) :
     """ Get geometric transformation between images based on point sources
 
     Parameters
@@ -843,12 +849,13 @@ def transform(im0,im,lines0,xcorr_shift=range(-10,11),hard=None) :
     gd = np.where((np.isfinite(lines0['x']))&(np.isfinite(lines['x'])))[0]
     src=np.array([lines0['x'][gd]-2048,lines0['y'][gd]-2048]).T
     dest=np.array([lines['x'][gd]-2048,lines['y'][gd]-2048]).T
-    #lin.estimate(src,dest)
-    rot.estimate(src,dest)
-    res=rot(src)-dest
+    lin.estimate(src,dest)
+    res=lin(src)-dest
+    #rot.estimate(src,dest)
+    #res=rot(src)-dest
     # reject points with >1 pixel residual
-    gd=np.where((np.abs(res[:,0])<1)&(np.abs(res[:,1])<1))[0]
-    bd=np.where((np.abs(res[:,0])>1)|(np.abs(res[:,1])>1))[0]
+    gd=np.where((np.abs(res[:,0])<reject)&(np.abs(res[:,1])<reject))[0]
+    bd=np.where((np.abs(res[:,0])>reject)|(np.abs(res[:,1])>reject))[0]
     print(len(gd),len(res))
     rot.estimate(src[gd],dest[gd])
     lin.estimate(src[gd],dest[gd])
