@@ -1318,7 +1318,7 @@ class Trace() :
 
         data = np.median(im.data[self.rows[0]:self.rows[1],
                                  sc0-width:sc0+width],axis=1)-back
-        if smooth > 0 : data = gaussian_filter1d(data, smooth/sig2fwhm
+        if smooth > 0 : data = gaussian_filter1d(data, smooth/sig2fwhm)
 
         if plot :
             plt.figure()
