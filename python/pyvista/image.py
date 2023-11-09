@@ -75,6 +75,12 @@ class BOX() :
         self.ymin = ymin
         self.ymax = ymax
 
+    def bin(self,binfactor) :
+        self.xmin //= binfactor
+        self.xmax //= binfactor
+        self.ymin //= binfactor
+        self.ymax //= binfactor
+
     def nrow(self):
         """ Returns number of rows in a box
 
