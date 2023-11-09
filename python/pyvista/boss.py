@@ -647,7 +647,7 @@ def mkyaml(mjd,obs='apo') :
 
 
 def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None,
-                  vers='test/sean/v6_1_1-tracetweak', planfile=False, backend='Agg') :
+                  vers='test/sean/v6_1_1-tracetweak', planfile=True, backend='Agg') :
     """ Get transformations from first arc for all arcs on a given MJD
         Make plots and HTML page
 
@@ -751,7 +751,11 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
             col1.append(os.path.basename(hard))
             yt.append(arcfile.split('.')[0].split('-')[2])
 
-            linfit = transform(im0,im,lines,hard=hard)
+            try: linfit = transform(im0,im,lines,hard=hard)
+            except :
+                print('failed transform....',arcfile)
+                pdb.set_trace()
+
             if planfile :
                 # calculate derived tracetable
                 out=copy.copy(tracetab)
@@ -781,18 +785,20 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
                     try :
                         flat_data = fits.open('{:s}/{:s}/{:s}/{:s}s.gz'.format(
                            os.environ['BOSS_SPECTRO_REDUX'],vers,field.astype(str),
-                           flat.replace('sdR','spFlat')))[0].data
+                           flat.replace('sdR','spFlat')))[0]
                         tab = fits.open('{:s}/{:s}/{:s}/{:s}s.gz'.format(
                            os.environ['BOSS_SPECTRO_REDUX'],vers,field.astype(str),
                            flat.replace('sdR','spFlat')))[5].data
                         ax[1].set_title('difference between derived trace and {:s}'.format(flat))
                         x=np.arange(len(out[0]))
                         ax[1].set_xlim(0,len(x))
-                        for a,b,c in zip(out,tab,flat_data) :
+                        for a,b,c in zip(out,tab,flat_data.data) :
                             p=ax[1].plot(x,a-b,ls=':')
                             gd =np.where(c>0)[0]
                             ax[1].plot(x[gd],a[gd]-b[gd],color=p[-1].get_color())
                         ax[1].set_ylim(-5,5)
+                        dt=(flat_data.header['TAI-BEG']-im.header['TAI-BEG'])/3600.
+                        ax[1].text(0.5,0.9,'dt: {:.2f}'.format(dt),transform=ax[1].transAxes)
                     except : pass
                 fig.tight_layout()
                 fig.savefig(hard.replace('.png','_compare.png'))
@@ -808,7 +814,7 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
                  ytitle=yt,xtitle=xt)
 
 
-def transform(im0,im,lines0,xcorr_shift=range(-10,11),hard=None,reject=1) :
+def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),hard=None,reject=1) :
     """ Get geometric transformation between images based on point sources
 
     Parameters
@@ -826,15 +832,15 @@ def transform(im0,im,lines0,xcorr_shift=range(-10,11),hard=None,reject=1) :
     """
 
     # 2D cross correlation
-    peak,shift=image.xcorr2d(im0,im,xcorr_shift)
+    peak,shift=image.xcorr2d(im0,im,xlags=xlags,ylags=ylags)
 
     # smooth cross correlation by by 3x3 kernel in case there are multiple peaks and the wrong one 
     # happens to match pixel centering better
     # Just use integer peak
     kernel=np.ones([3,3])
     indices=np.unravel_index(convolve(shift,kernel,mode='same').argmax(),shift.shape)
-    dy=indices[0]+xcorr_shift[0]
-    dx=indices[1]+xcorr_shift[0]
+    dy=indices[0]+ylags[0]
+    dx=indices[1]+xlags[0]
     print('xcorr shifts: ',dx,dy)
     print('automarking...',len(lines0))
     lines=stars.automark(im.data,lines0,rad=2,dx=dx,dy=dy,background=False,func='gfit')
