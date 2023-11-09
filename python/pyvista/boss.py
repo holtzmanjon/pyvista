@@ -10,7 +10,7 @@ try :import gaiaxpy
 except : print('no gaiaxpy...!')
 from pyvista.dataclass import Data
 from skimage.transform import SimilarityTransform, AffineTransform
-from tools import match,plots,html
+from holtztools import match,plots,html
 from scipy.ndimage import median_filter
 from scipy.signal import convolve
 import multiprocessing as mp
@@ -720,7 +720,7 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
         print('finding lines in reference: ', reffile)
         lines0=stars.find(im0.data,thresh=400,sharp=[0,0.5],round=[-0.25,0.75])[::nskip]
         print('automarking lines in reference: ', reffile)
-        lines=stars.automark(im0.data,lines0,rad=2,dx=0,dy=0,background=False,func='gfit')
+        lines=stars.automark(im0.data,lines0,rad=2,dx=0,dy=0,background=False,func='marginal_gfit')
 
         if not planfile :
             log = boss.log(channel=cam)
