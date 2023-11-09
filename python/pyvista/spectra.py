@@ -2326,8 +2326,8 @@ def extract_col(pars) :
         ymid=model(cols)+pix0
 
         # calculate distance of each pixel from trace center
-        ylo = np.int(np.min(np.floor(ymid-rad)))
-        yhi = np.int(np.max(np.ceil(ymid+rad)))
+        ylo = int(np.min(np.floor(ymid-rad)))
+        yhi = int(np.max(np.ceil(ymid+rad)))
         dist=y[ylo:yhi+1,:]-ymid
 
         # determine contribution of each pixel to boxcar
