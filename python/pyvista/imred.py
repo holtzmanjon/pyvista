@@ -110,7 +110,7 @@ class Reducer() :
             self.formstr=config['formstr']
             self.gain=config['gain']
             self.rn=config['rn']/np.sqrt(nfowler)
-            for card in ['cols','ext','scale','crbox'] :
+            for card in ['cols','ext','scale','crbox','headerbox'] :
                 try : setattr(self,card,config[card])
                 except : setattr(self,card,None)
             try : self.saturation=config['saturation']
@@ -579,7 +579,10 @@ class Reducer() :
             rns = self.rn
             biasboxes = self.biasbox
             biasregions = self.biasregion
-        for ichan,(im,gain,rn,biasbox,biasregion) in enumerate(zip(ims,gains,rns,biasboxes,biasregions)) :
+        if self.headerbox : self.boxfromheader(im,2,2)
+
+        for ichan,(im,gain,rn,biasbox,biasregion) in \
+                enumerate(zip(ims,gains,rns,biasboxes,biasregions)) :
             if display is not None : 
                 display.tv(im)
                 ax=display.plotax2
@@ -663,6 +666,7 @@ class Reducer() :
         if type(inim) is not list : ims=[inim]
         else : ims = inim
 
+        if self.headerbox : self.boxfromheader(inim,2,2)
         outim = []
         for  im,trimbox,outbox in zip(ims,self.trimbox,self.outbox) :
             if self.namp == 1 : 
@@ -699,6 +703,30 @@ class Reducer() :
             else : return outim
         else : return inim
        
+    def boxfromheader(self,im,nx,ny) :
+        """ Set boxes from image header
+        """
+        i=0
+        xs=0
+        for ix in range(nx) :
+            ys=0
+            for iy in range(ny) :
+                dsec=im.header['BSEC{:d}{:d}'.format(ix+1,iy+1)]
+                out=dsec.strip('[').strip(']').replace(',',' ').replace(':',' ').split() 
+                xmin,xmax,ymin,ymax=[int(i) for i in out]
+                self.biasbox[0][i].set(xmin-1,xmax-1,ymin-1,ymax-1)
+
+                dsec=im.header['DSEC{:d}{:d}'.format(ix+1,iy+1)]
+                out=dsec.strip('[').strip(']').replace(',',' ').replace(':',' ').split() 
+                xmin,xmax,ymin,ymax=[int(i) for i in out]
+                self.biasregion[0][i].set(xmin-1,xmax-1,ymin-1,ymax-1)
+                self.trimbox[0][i].set(xmin-1,xmax-1,ymin-1,ymax-1)
+
+                self.outbox[0][i].set(xs,xs+xmax-xmin,ys,ys+ymax-ymin)
+                ys+=(ymax-ymin+1)
+                i+=1
+            xs+=(xmax-xmin+1)
+
     def bias(self,im,superbias=None) :
          """ Superbias subtraction
          """
@@ -1239,8 +1267,8 @@ class Reducer() :
                     display.fig.canvas.draw_idle()
                     if div :
                         display.plotax2.hist((allcube[i][chip].data/med)[gd[0],gd[1]],
-                                            bins=np.linspace(0.5,1.5,100),histtype='step')
-                        display.tv(allcube[i][chip].data/med,min=0.5,max=1.5,
+                                            bins=np.linspace(0.8,1.2,100),histtype='step')
+                        display.tv(allcube[i][chip].data/med,min=0.8,max=1.2,
                                    object='{} / master'.format(im))
                         getinput("    see image: {} divided by master".format(allcube[i][chip].header['FILE']),display)
                     else :
@@ -1542,3 +1570,4 @@ def getinput(text,display) :
     elif get == 'p' :
         pdb.set_trace()
     return get
+
