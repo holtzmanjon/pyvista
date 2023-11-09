@@ -696,7 +696,7 @@ def xcorr(a,b,lags,medfilt=0,rad=3) :
 
     return fitpeak,np.squeeze(np.array(shift))
 
-def xcorr2d(a,b,lags) :
+def xcorr2d(a,b,lags=None,xlags=None,ylags=None) :
     """ Two-dimensional cross correlation
 
         Args:
@@ -708,21 +708,23 @@ def xcorr2d(a,b,lags) :
             2D cross correlation function
     """
     # do x-corrlation over section of image that fits within input lag array
-    xs = -lags[0]
-    xe = np.min([a.shape[1],b.shape[1]])-lags[-1]
-    ys = -lags[0]
-    ye = np.min([a.shape[0],b.shape[0]])-lags[-1]
+    if xlags is None : xlags = lags
+    if ylags is None : ylags = lags
+    xs = -xlags[0]
+    xe = np.min([a.shape[1],b.shape[1]])-xlags[-1]
+    ys = -ylags[0]
+    ye = np.min([a.shape[0],b.shape[0]])-ylags[-1]
 
     # compute x-corrleation
-    shift = np.zeros([len(lags),len(lags)])
-    for i, xlag in enumerate(lags) :
-        for j, ylag in enumerate(lags) :
+    shift = np.zeros([len(ylags),len(xlags)])
+    for i, xlag in enumerate(xlags) :
+        for j, ylag in enumerate(ylags) :
             shift[j,i] = np.sum(a.data[ys:ye,xs:xe]*b.data[ys+ylag:ye+ylag,xs+xlag:xe+xlag])
 
-    y,x=np.meshgrid(lags,lags)
+    y,x=np.meshgrid(ylags,xlags)
     yp,xp=np.unravel_index(shift.argmax(),shift.shape)
     print(yp,xp)
-    if xp == 0 or yp == 0 or xp > len(lags)-1 or yp > len(lags)-1 :
+    if xp == 0 or yp == 0 or xp > len(xlags)-1 or yp > len(ylags)-1 :
         # peak at edge of cross correlation
         peak= (xp,yp)
     else :
@@ -732,7 +734,7 @@ def xcorr2d(a,b,lags) :
         p=fit(mod,x[yp-1:yp+2,xp-1:xp+2],y[yp-1:yp+2,xp-1:xp+2],shift[yp-1:yp+2,xp-1:xp+2])
         a = np.array([ [2*p.parameters[2], p.parameters[5]], [p.parameters[5],2*p.parameters[4]] ])
         b = np.array([-p.parameters[1],-p.parameters[3]])
-        peak=np.linalg.solve(a,b)+(xp,yp)+(lags[0],lags[0])
+        peak=np.linalg.solve(a,b)+(xp,yp)+(xlags[0],ylags[0])
 
     return peak,shift
 
