@@ -724,11 +724,6 @@ class TV:
             amp,xcen,ycen,xfwhm,yfwhm,theta,back= \
                     image.gfit2d(self.img,x,y,size=size,fwhm=fwhm,scale=scale,plot=self.plotax1,
                             sub=False,pafixed=pafixed,astropy=False)
-            #g=image.gfit2d(self.img,x,y,size=size,fwhm=fwhm,scale=scale,plot=self.plotax1,sub=False,pafixed=pafixed)
-            #xfwhm=g[0].x_stddev*sig2fwhm*scale
-            #yfwhm=g[0].y_stddev*sig2fwhm*scale
-            #xcen=g[0].x_mean.value
-            #ycen=g[0].y_mean.value
             self.tvcirc(xcen,ycen,np.sqrt(xfwhm*yfwhm)/2.)
             self.histclick = False
 
