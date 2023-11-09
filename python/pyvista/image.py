@@ -337,16 +337,6 @@ def mk2d(X,Y,coeff) :
     A = np.array([X*0+1, X, Y, X**2, X**2*Y, X**2*Y**2, Y**2, X*Y**2, X*Y]).T
     return np.dot(A,coeff)
 
-def tvstar(tv,plot=None,size=11,fwhm=5,scale=1,pafixed=False) :
-    """ Fit gaussian and show radial profile of stars marked interactively
-    """
-    key=''
-    print('Hit key near star center, "q" to quit')
-    while key != 'q' :
-        key,x,y=tv.tvmark()
-        tv.plotax2.cla()
-        gfit(tv.img,x,y,size=size,fwhm=fwhm,scale=scale,plot=tv.plotax2,sub=False,pafixed=pafixed)
-
 def window(hdu,box) :
     """
     Reduce size of image and header accordingly
