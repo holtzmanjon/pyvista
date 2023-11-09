@@ -13,7 +13,7 @@ from pyvista.dataclass import Data
 import matplotlib.pyplot as plt
 import multiprocessing as mp
 import yaml
-from pyvista import imred, spectra,sdss
+from pyvista import imred, spectra,sdss,stars,image
 
 def unzip(file,dark=None) :
     """ Read APOGEE .apz file, get CDS image
@@ -268,3 +268,65 @@ def mkyaml(mjd,obs='apo') :
                 fp.write('  single: -1\n')
                 fp.write('  singlename: none\n')
         fp.close()
+
+def fit_lines(data,display=None,skip=10,thresh=3000,binned=False) :
+    """ Fit 2D gaussians to 'arc' frame and get surface fits of parameters
+    """
+    lines = stars.find(data,thresh=thresh)[::skip]
+    print(len(lines),' lines found')
+    params=[]
+    for i,(x,y) in enumerate(zip(lines['x'],lines['y'])) :
+        print(i)
+        try: params.append(image.gfit2d(data,x,y,astropy=False,sub=False,binned=binned))
+        except : pass
+    params=np.array(params)
+    gd=np.where((params[:,3] < 5) & (params[:,4] < 5))[0]
+    coeff3=image.fit2d(params[gd,1],params[gd,2],params[gd,3])
+    coeff4=image.fit2d(params[gd,1],params[gd,2],params[gd,4])
+    coeff5=image.fit2d(params[gd,1],params[gd,2],params[gd,5])
+    y,x=np.mgrid[0:2048,0:2048]
+    fit3 = image.mk2d(x,y,coeff3)
+    fit4 = image.mk2d(x,y,coeff4)
+    fit5 = image.mk2d(x,y,coeff5)
+    fig,ax=plots.multi(3,1,figsize=(12,4),hspace=0.001,wspace=0.001)
+    ax[0].imshow(fit3,vmin=1,vmax=3)
+    ax[1].imshow(fit4,vmin=1,vmax=3)
+    ax[2].imshow(fit5,vmin=0,vmax=360)
+
+    if display is not None :
+        display.tv(data)
+        plots.plotc(display.ax,params[:,1],params[:,2],params[:,3],size=30,zr=[1,3])
+        pdb.set_trace()
+        plots.plotc(display.ax,params[:,1],params[:,2],params[:,4],size=30,zr=[1,3])
+        pdb.set_trace()
+        plots.plotc(display.ax,params[:,1],params[:,2],params[:,5],size=30)
+        pdb.set_trace()
+
+    return params
+
+def get_fiberind(lines,trace) :
+    """ Get associated fiber with every line, given a Trace stobject
+    """
+
+    # get the row of each trace at the central column
+    yc=[]
+    for tr in trace.model :
+        yc.append(tr(1024))
+    yc=np.array(yc)
+
+    lines['fiberind'] = -1
+    for line in lines :
+        # search traces where line['y'] is within 20 pixels of central pixel
+        gd = np.where(np.abs(line['y']-yc) < 20)[0]
+        i1=gd.min()
+        i2=gd.max()
+        for i,(tr,ind) in enumerate(zip(trace.model[i1:i2+1],trace.index[i1:i2+1])) :
+            # get y position of trace at x position of line
+            y=tr(line['x'])
+            d=np.abs(line['y']-y)
+            if d.min() < 2 :
+                line['fiberind'] = trace.index[gd.min()+i]
+                print(line['x'],line['y'],line['fiberind'])
+
+
+

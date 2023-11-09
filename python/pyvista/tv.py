@@ -17,6 +17,9 @@ except:
    print('pyautogui does not seem to be available, disabling arrow key cursor moves')
 
 import pdb
+
+sig2fwhm = 2*np.sqrt(2*np.log(2))
+
  
 class TV:
     """
@@ -709,18 +712,27 @@ class TV:
         """ Fit gaussian and show radial profile of stars marked interactively
         """
         key=''
+        rect = 0.74, 0.15, 0.25, 0.4
+        plotax = self.fig.add_axes(rect,projection='3d')
         print('Hit key near star center, "q" to quit')
         while key != 'q' :
             key,x,y=self.tvmark()
-            if key == 'q' : return
+            if key == 'q' : 
+                self.plotax2 = self.fig.add_axes(rect)
+                return
             self.plotax1.cla()
-            g=image.gfit(self.img,x,y,size=size,fwhm=fwhm,scale=scale,plot=self.plotax1,sub=False,pafixed=pafixed)
-            xfwhm=g[0].x_stddev*2.354*scale
-            yfwhm=g[0].y_stddev*2.354*scale
-            xcen=g[0].x_mean.value
-            ycen=g[0].y_mean.value
+            amp,xcen,ycen,xfwhm,yfwhm,theta,back= \
+                    image.gfit2d(self.img,x,y,size=size,fwhm=fwhm,scale=scale,plot=self.plotax1,
+                            sub=False,pafixed=pafixed,astropy=False)
             self.tvcirc(xcen,ycen,np.sqrt(xfwhm*yfwhm)/2.)
             self.histclick = False
+
+            #3D plot
+            x=int(x)
+            y=int(y)
+            yg,xg=np.mgrid[y-size:y+size,x-size:x+size]
+            plotax.cla()
+            plotax.plot_surface(xg, yg, self.img[y-size:y+size,x-size:x+size],cmap='jet')
 
     def savefig(self,name) :
         """ hardcopy of only display Axes

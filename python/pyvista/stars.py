@@ -54,8 +54,8 @@ def automark(data,stars,rad=3,func='centroid',plot=None,dx=0,dy=0,verbose=False,
     """
     if func == 'centroid' : 
         center = centroid
-    elif func == 'gfit' :
-        center = gfit
+    elif func == 'marginal_gfit' :
+        center = marginal_gfit
     elif func == 'gfit2' :
         center = gfit2
     new=copy.deepcopy(stars)
@@ -82,8 +82,8 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False,
 
     if func == 'centroid' : 
         center = centroid
-    elif func == 'gfit' :
-        center = gfit
+    elif func == 'marginal_gfit' :
+        center = marginal_gfit
     elif func == 'gfit2' :
         center = gfit2
 
@@ -380,7 +380,7 @@ def centroid(data,x,y,r,verbose=False,plot=None,background=True) :
     if iter > 9 : print('possible centroiding convergence issues, consider using a larger radius?')
     return x,y
 
-def gfit(data,x,y,rad,verbose=False,background=True,plot=False) :
+def marginal_gfit(data,x,y,rad,verbose=False,background=True,plot=False) :
     """ Gaussian fit to marginal distribution
     """
     xold=0
