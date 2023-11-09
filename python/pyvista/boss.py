@@ -843,7 +843,7 @@ def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),hard=None,re
     dx=indices[1]+xlags[0]
     print('xcorr shifts: ',dx,dy)
     print('automarking...',len(lines0))
-    lines=stars.automark(im.data,lines0,rad=2,dx=dx,dy=dy,background=False,func='gfit')
+    lines=stars.automark(im.data,lines0,rad=2,dx=dx,dy=dy,background=False,func='marginal_gfit')
 
     dx=np.nanmean(lines['x']-lines0['x'])
     dy=np.nanmean(lines['y']-lines0['y'])
