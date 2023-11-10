@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import erfa
+from holtztools import plots
 
 import pdb
 import astroplan
@@ -124,7 +125,7 @@ def calendar(obs='apo',tz='US/Mountain',year=2023,plot=False,sun_dt=10.) :
         plt.plot(times.datetime,val,label='Sunrise')
         plt.xlabel('Date')
         plt.ylabel('Time')
-        plt.legend()
+        plt.legend(fontsize='x-small')
 
         # create the secondary axis showing mjd at the top
         def plot2mjd(t):
@@ -142,9 +143,25 @@ def calendar(obs='apo',tz='US/Mountain',year=2023,plot=False,sun_dt=10.) :
     return out
 
     
-def object(ra=0., dec=0., obs='apo', date=None,name='object',plot=False,tz='US/Mountain') :
-
+def object(ras=[], decs=[], names=[], file=None, obs='apo', date=None,plot=False,tz='US/Mountain') :
     """  Get airmass table for specified object position, observatory, date
+
+    Parameters
+    ----------
+    ras : float, str, or array-like
+          input RA(s) of objects (sexagesimal hh:mm:ss or degrees)
+    decs : float, str, or array-like
+          input DEC(s) of objects (sexagesimal dd:mm:ss or degrees)
+    names : str, or array-like
+          name(s) of  objects
+    file : str
+          filename to read name, ra, dec from
+    obs : str
+          observatory for site
+    plot : bool
+          show plots of airmass and parallactic angle?
+    tz : str
+         timezone
     """
 
     # set the site
@@ -167,92 +184,110 @@ def object(ra=0., dec=0., obs='apo', date=None,name='object',plot=False,tz='US/M
     print('Nautical twilight: ',nautical)
     print('Astronomical twilight: ',astronomical)
 
-    # object information
-    print('\nObject at RA={:}, DEC={:}'.format(ra,dec))
+    if plot: 
+        fig,ax = plots.multi(1,2,sharex=True,hspace=0.001)
 
     # set the objects
-    if type(ra) is float :
-        obj=FixedTarget(name=name,coord=SkyCoord(str(ra)+'d',str(dec)+'d'))
+    if file is not None :
+        fp=open(file,'r')
+        for line in fp:
+            names.append(line.split()[0])
+            ras.append(line.split()[1])
+            decs.append(line.split()[2])
+        fp.close()
     else :
-        obj=FixedTarget(name=name,coord=SkyCoord(ra+'h',dec+'d'))
+        if isinstance(ras,float) or isinstance(ras,int) or isinstance(ras,str) : ras=[ras]
+        if isinstance(decs,float) or isinstance(decs,int) or isinstance(decs,str) : decs=[decs]
+        if isinstance(names,float) or isinstance(names,str) : names=[names]
+        if len(names) != len(ras) : 
+            names=[]
+            for ra in ras : names.append('object')
 
-    if plot: 
-        fig,ax = plt.subplots(2,1)
-        fig.subplots_adjust(hspace=0.001)
+    for ra,dec,name in zip(ras,decs,names) :
+        # object information
+        print('\nObject at RA={:}, DEC={:}'.format(ra,dec))
+        if isinstance(ra,float) or isinstance(ra,int) :
+            obj=FixedTarget(name=name,coord=SkyCoord(str(ra)+'d',str(dec)+'d'))
+        else :
+            obj=FixedTarget(name=name,coord=SkyCoord(ra+'h',dec+'d'))
 
-        plot_airmass(obj,site,time,ax=ax[0])
-        plot_parallactic(obj,site,time,ax=ax[1])
+        if plot :
+            plot_airmass(obj,site,time,ax=ax[0])
+            ax[0].legend()
+            plot_parallactic(obj,site,time,ax=ax[1])
+            ax[1].legend()
 
-    time1 = Time('{:s} {:d}:00:00'.format(date,0),scale='utc',
-               location=(site.location.lon,site.location.lat),precision=0)
-    time2 = Time('{:s} {:d}:00:00'.format(date,23),scale='utc',
-               location=(site.location.lon,site.location.lat),precision=0)
-    time_range = Time([time1,time2])
-    time_resolution = 1.0*units.hour
-    times = time_grid_from_range(time_range, time_resolution=time_resolution)
-    sun=get_sun(times)
-    gd = np.where(site.sun_altaz(times).alt.value < 10)[0]
-    times = times[gd]
+        time1 = Time('{:s} {:d}:00:00'.format(date,0),scale='utc',
+                   location=(site.location.lon,site.location.lat),precision=0)
+        time2 = Time('{:s} {:d}:00:00'.format(date,23),scale='utc',
+                   location=(site.location.lon,site.location.lat),precision=0)
+        time_range = Time([time1,time2])
+        time_resolution = 1.0*units.hour
+        times = time_grid_from_range(time_range, time_resolution=time_resolution)
+        sun=get_sun(times)
+        gd = np.where(site.sun_altaz(times).alt.value < 10)[0]
+        times = times[gd]
 
-    # get LSTs and Moon information
-    lsts=times.sidereal_time('mean',longitude=site.location.lon).hms
-    illums=astroplan.moon_illumination(times)
-    moons = get_moon(times)
-    airmass=site.altaz(times,obj).secz
-    moonalt=site.moon_altaz(times).alt.value 
-    local=site.astropy_time_to_datetime(times)
-    parallactic_angle =  site.parallactic_angle(times,obj).deg
-    ha=site.target_hour_angle(times,obj)
-    ha.wrap_angle=180 *units.deg
+        # get LSTs and Moon information
+        lsts=times.sidereal_time('mean',longitude=site.location.lon).hms
+        illums=astroplan.moon_illumination(times)
+        moons = get_moon(times)
+        airmass=site.altaz(times,obj).secz
+        moonalt=site.moon_altaz(times).alt.value 
+        local=site.astropy_time_to_datetime(times)
+        parallactic_angle =  site.parallactic_angle(times,obj).deg
+        ha=site.target_hour_angle(times,obj)
+        ha.wrap_angle=180 *units.deg
 
-    out=Table()
-    out['date'] = local
-    out['time'] = times
-    out['LOCAL'] = '00:00'
-    out['UT'] = '00:00'
-    out['ha_h'] = ha.hms[0].astype(int)
-    out['ha_m'] = ha.hms[1].astype(int)
-    out['HA'] = ' 00:00'
-    out['lst_h'] = np.array(lsts[0]).astype(int)
-    out['lst_m'] = np.array(lsts[1]).astype(int)
-    out['LST'] = '00:00'
-    out['AIRMASS'] = airmass
-    out['PARALLACTIC_ANGLE'] = parallactic_angle
-    out['MOON_PHASE'] = astroplan.moon_illumination(times)
-    out['MOON_ALT'] = moonalt
-    out['moon_rah'] =  moons.ra.hms.h.astype(int)
-    out['moon_ram'] =  moons.ra.hms.m.astype(int)
-    out['moon_decd'] =  moons.dec.dms.d.astype(int)
-    out['moon_decm'] =  moons.dec.dms.m.astype(int)
-    out['MOON_RA'] = '00:00'
-    out['MOON_DEC'] = ' 00:00'
-    out['PARALLACTIC_ANGLE'].info.format = '7.2f'
-    out['AIRMASS'].info.format = '7.2f'
-    out['MOON_ALT'].info.format = '7.2f'
-    out['MOON_PHASE'].info.format = '7.2f'
+        out=Table()
+        out['date'] = local
+        out['time'] = times
+        out['LOCAL'] = '00:00'
+        out['UT'] = '00:00'
+        out['ha_h'] = ha.hms[0].astype(int)
+        out['ha_m'] = ha.hms[1].astype(int)
+        out['HA'] = ' 00:00'
+        out['lst_h'] = np.array(lsts[0]).astype(int)
+        out['lst_m'] = np.array(lsts[1]).astype(int)
+        out['LST'] = '00:00'
+        out['AIRMASS'] = airmass
+        out['PARALLACTIC_ANGLE'] = parallactic_angle
+        out['MOON_PHASE'] = astroplan.moon_illumination(times)
+        out['MOON_ALT'] = moonalt
+        out['moon_rah'] =  moons.ra.hms.h.astype(int)
+        out['moon_ram'] =  moons.ra.hms.m.astype(int)
+        out['moon_decd'] =  moons.dec.dms.d.astype(int)
+        out['moon_decm'] =  moons.dec.dms.m.astype(int)
+        out['MOON_RA'] = '00:00'
+        out['MOON_DEC'] = ' 00:00'
+        out['PARALLACTIC_ANGLE'].info.format = '7.2f'
+        out['AIRMASS'].info.format = '7.2f'
+        out['MOON_ALT'].info.format = '7.2f'
+        out['MOON_PHASE'].info.format = '7.2f'
     
-    for line in out :
-        line['LOCAL'] = line['date'].time().strftime('%H:%M')
-        line['UT'] = line['time'].datetime.strftime('%H:%M')
-        if line['ha_m'] < 0 : sign='-'
-        else : sign=' '
-        line['HA'] = '{:s}{:02d}:{:02d}'.format(sign,abs(line['ha_h']),abs(line['ha_m']))
-        line['LST'] = '{:02d}:{:02d}'.format(line['lst_h'],line['lst_m'])
-        line['MOON_RA'] = '{:02d}:{:02d}'.format(line['moon_rah'],line['moon_ram'])
-        if line['moon_decm'] < 0 : sign='-'
-        else : sign=' '
-        line['MOON_DEC'] = '{:s}{:02d}:{:02d}'.format(sign,abs(line['moon_decd']),abs(line['moon_decm']))
+        for line in out :
+            line['LOCAL'] = line['date'].time().strftime('%H:%M')
+            line['UT'] = line['time'].datetime.strftime('%H:%M')
+            if line['ha_m'] < 0 : sign='-'
+            else : sign=' '
+            line['HA'] = '{:s}{:02d}:{:02d}'.format(sign,abs(line['ha_h']),abs(line['ha_m']))
+            line['LST'] = '{:02d}:{:02d}'.format(line['lst_h'],line['lst_m'])
+            line['MOON_RA'] = '{:02d}:{:02d}'.format(line['moon_rah'],line['moon_ram'])
+            if line['moon_decm'] < 0 : sign='-'
+            else : sign=' '
+            line['MOON_DEC'] = '{:s}{:02d}:{:02d}'.format(sign,abs(line['moon_decd']),abs(line['moon_decm']))
 
-    out.remove_column('date')
-    out.remove_column('time')
-    out.remove_column('ha_h')
-    out.remove_column('ha_m')
-    out.remove_column('lst_h')
-    out.remove_column('lst_m')
-    out.remove_column('moon_rah')
-    out.remove_column('moon_ram')
-    out.remove_column('moon_decd')
-    out.remove_column('moon_decm')
+        out.remove_column('date')
+        out.remove_column('time')
+        out.remove_column('ha_h')
+        out.remove_column('ha_m')
+        out.remove_column('lst_h')
+        out.remove_column('lst_m')
+        out.remove_column('moon_rah')
+        out.remove_column('moon_ram')
+        out.remove_column('moon_decd')
+        out.remove_column('moon_decm')
+        print(out)
 
     return out
 
@@ -319,3 +354,16 @@ def refraction(obs=None,wav=0.5,h=2000,temp=20,rh=0.25) :
     return ref
 
 
+def readtui(file) :
+    """ Opens and parses TUI-type file and returns columns 1, 2, and 3 as lists (e.g. names, ras, decs)
+    """
+    fp=open(file,'r')
+    names=[]
+    ras=[]
+    decs=[]
+    for line in fp:
+        names.append(line.split()[0])
+        ras.append(line.split()[1])
+        decs.append(line.split()[2])
+    fp.close()
+    return names, ras, decs
