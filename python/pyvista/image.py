@@ -711,7 +711,7 @@ def xcorr2d(a,b,lags=None,xlags=None,ylags=None) :
     ys = -ylags[0]
     ye = np.min([a.shape[0],b.shape[0]])-ylags[-1]
 
-    # compute x-corrleation
+    # compute x-correlation
     shift = np.zeros([len(ylags),len(xlags)])
     for i, xlag in enumerate(xlags) :
         for j, ylag in enumerate(ylags) :
@@ -719,8 +719,8 @@ def xcorr2d(a,b,lags=None,xlags=None,ylags=None) :
 
     y,x=np.meshgrid(ylags,xlags)
     yp,xp=np.unravel_index(shift.argmax(),shift.shape)
-    print(yp,xp)
-    if xp == 0 or yp == 0 or xp > len(xlags)-1 or yp > len(ylags)-1 :
+    print('yp, xp:',yp,xp,len(xlags),len(ylags))
+    if xp == 0 or yp == 0 or xp > len(xlags)-2 or yp > len(ylags)-2 :
         # peak at edge of cross correlation
         peak= (xp,yp)
     else :
