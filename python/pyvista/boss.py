@@ -646,7 +646,7 @@ def mkyaml(mjd,obs='apo') :
         fp.close()
 
 
-def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None,
+def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None, threads=8,
                   vers='test/sean/v6_1_1-tracetweak', planfile=True, backend='Agg') :
     """ Get transformations from first arc for all arcs on a given MJD
         Make plots and HTML page
@@ -689,9 +689,10 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
         channels = [0,1]
 
     if planfile :
-        if not os.path.exists('{:s}/{:s}/trace/{:d}/spPlanTrace-{:d}_{:s}.par'.format( 
-            os.environ['BOSS_SPECTRO_REDUX'],vers,mjd,mjd,obs.upper())) :
-            raise FileNotFoundError('no planfile')
+        pfile = '{:s}/{:s}/trace/{:d}/spPlanTrace-{:d}_{:s}.par'.format( 
+                 os.environ['BOSS_SPECTRO_REDUX'],vers,mjd,mjd,obs.upper())
+        if not os.path.exists(pfile) :
+            raise FileNotFoundError('no planfile: {:s}'.format(pfile))
         plan = yanny.yanny('{:s}/{:s}/trace/{:d}/spPlanTrace-{:d}_{:s}.par'.format(
                     os.environ['BOSS_SPECTRO_REDUX'],vers,mjd,mjd,obs.upper()))
         traceflat=np.where(plan['SPEXP']['flavor'] == b'TRACEFLAT')[0][0]
@@ -733,6 +734,35 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
         yt=[]
         xt.append(cam)
         xt.append(cam)
+
+        # process all of the arcs in parallel with multiprocessing pool if threads>0
+        pars=[]
+        for arc in arcs :
+            # build up input parameters
+            if planfile :
+               arcfile = plan['SPEXP']['name'][arc][channel%2].astype(str)
+            else :
+               arcfile = os.path.basename(log['FILE'][arc])
+
+            hard = '{:s}/{:d}/{:s}.png'.format( outdir,mjd,arcfile.replace('.fit.gz',''))
+            if clobber or os.path.exists(hard.replace('.png','_compare.png'))==False :
+                print(arcfile,channel)
+                im=boss.reduce(arcfile+'.gz',channel=channel)
+                pars.append((im0,im,lines,hard))
+
+        # run the solutions for each arc
+        if threads > 0 :
+            pool = mp.Pool(threads)
+            outputs = pool.map_async(transform_thread, pars).get()
+            pool.close()
+            pool.join()
+        else :
+            outputs=[]
+            for par in pars :
+                outputs.append(transform_thread(par))
+
+        # create the outputs
+        iout=0
         for arc in arcs :
             if planfile :
                arcfile = plan['SPEXP']['name'][arc][channel%2].astype(str)
@@ -740,21 +770,20 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
                arcfile = os.path.basename(log['FILE'][arc])
 
             hard = '{:s}/{:d}/{:s}.png'.format( outdir,mjd,arcfile.replace('.fit.gz',''))
-            if not clobber and  os.path.exists(hard) :
-                col1.append('{:s}'.format(os.path.basename(hard)))
-                yt.append(arcfile.split('.')[0].split('-')[2])
+            col1.append('{:s}'.format(os.path.basename(hard)))
+            yt.append(arcfile.split('.')[0].split('-')[2])
+            if not clobber and  os.path.exists(hard.replace('.png','_compare.png')) :
                 col2.append(os.path.basename(hard).replace('.png','_compare.png'))
                 continue
 
-            print(arcfile,channel)
-            im=boss.reduce(arcfile+'.gz',channel=channel)
-            col1.append(os.path.basename(hard))
-            yt.append(arcfile.split('.')[0].split('-')[2])
-
-            try: linfit = transform(im0,im,lines,hard=hard)
-            except :
-                print('failed transform....',arcfile)
+            linfit = outputs[iout]
+            im = pars[iout][1]
+            iout+=1
+            if linfit is None : 
+                print('error with {:s}'.format(arcfile))
+                col2.append('')
                 pdb.set_trace()
+                continue
 
             if planfile :
                 # calculate derived tracetable
@@ -813,6 +842,12 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
     html.htmltab(np.array(grid).T,file='{:s}/{:d}/arcs_{:d}_{:s}.html'.format(outdir,mjd,mjd,obs),
                  ytitle=yt,xtitle=xt)
 
+
+def transform_thread(pars) :
+    try :
+        return transform(pars[0],pars[1],pars[2],hard=pars[3])
+    except :
+        return None
 
 def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),hard=None,reject=1) :
     """ Get geometric transformation between images based on point sources
