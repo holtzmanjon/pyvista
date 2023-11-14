@@ -646,7 +646,7 @@ def mkyaml(mjd,obs='apo') :
         fp.close()
 
 
-def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None, threads=8,
+def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None, threads=8, cams=None, 
                   vers='test/sean/v6_1_1-tracetweak', planfile=True, backend='Agg') :
     """ Get transformations from first arc for all arcs on a given MJD
         Make plots and HTML page
@@ -681,11 +681,13 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
     grid=[]
     if obs == 'lco' :
         data_env = 'BOSS_SPECTRO_DATA_S'
-        cams = ['b2','r2']
+        if cams is None : cams = ['b2','r2']
+        elif isinstance(cams,str) : cams = [cams]
         channels = [2,3]
     else :
         data_env = 'BOSS_SPECTRO_DATA_N'
-        cams = ['b1','r1']
+        if cams is None : cams = ['b1','r1'] 
+        elif isinstance(cams,str) : cams = [cams]
         channels = [0,1]
 
     if planfile :
