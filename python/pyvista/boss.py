@@ -674,9 +674,6 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
     """
 
     matplotlib.use(backend)
-    if outdir == None : outdir='./'
-    try: os.makedirs('{:s}/{:d}'.format(outdir,mjd))
-    except: pass
 
     grid=[]
     if obs == 'lco' :
@@ -702,6 +699,10 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
         arcs=np.where(plan['SPEXP']['flavor'] == b'arc')[0]
         flats=np.where(plan['SPEXP']['flavor'] == b'flat')[0]
         outdir='{:s}/{:s}/trace/'.format(os.environ['BOSS_SPECTRO_REDUX'],vers)
+    else :
+        if outdir == None : outdir='./'
+        try: os.makedirs('{:s}/{:d}'.format(outdir,mjd))
+        except: pass
 
     boss=imred.Reducer('BOSS',dir=os.environ[data_env]+'/{:d}'.format(mjd))
     xt=[]
