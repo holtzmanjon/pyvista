@@ -646,7 +646,7 @@ def mkyaml(mjd,obs='apo') :
         fp.close()
 
 
-def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None, threads=8,
+def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None, threads=8, cams=None, 
                   vers='test/sean/v6_1_1-tracetweak', planfile=True, backend='Agg') :
     """ Get transformations from first arc for all arcs on a given MJD
         Make plots and HTML page
@@ -674,18 +674,17 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
     """
 
     matplotlib.use(backend)
-    if outdir == None : outdir='./'
-    try: os.makedirs('{:s}/{:d}'.format(outdir,mjd))
-    except: pass
 
     grid=[]
     if obs == 'lco' :
         data_env = 'BOSS_SPECTRO_DATA_S'
-        cams = ['b2','r2']
+        if cams is None : cams = ['b2','r2']
+        elif isinstance(cams,str) : cams = [cams]
         channels = [2,3]
     else :
         data_env = 'BOSS_SPECTRO_DATA_N'
-        cams = ['b1','r1']
+        if cams is None : cams = ['b1','r1'] 
+        elif isinstance(cams,str) : cams = [cams]
         channels = [0,1]
 
     if planfile :
@@ -700,6 +699,10 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
         arcs=np.where(plan['SPEXP']['flavor'] == b'arc')[0]
         flats=np.where(plan['SPEXP']['flavor'] == b'flat')[0]
         outdir='{:s}/{:s}/trace/'.format(os.environ['BOSS_SPECTRO_REDUX'],vers)
+    else :
+        if outdir == None : outdir='./'
+        try: os.makedirs('{:s}/{:d}'.format(outdir,mjd))
+        except: pass
 
     boss=imred.Reducer('BOSS',dir=os.environ[data_env]+'/{:d}'.format(mjd))
     xt=[]
