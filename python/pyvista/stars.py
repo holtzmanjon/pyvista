@@ -19,6 +19,7 @@ from photutils import CircularAperture, CircularAnnulus,aperture_photometry
 from photutils.aperture import ApertureStats
 from photutils.detection import DAOStarFinder
 from holtztools import plots,html
+from pyvista import bitmask
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from astroquery.sdss import SDSS
@@ -201,7 +202,7 @@ def add_coord(data,stars,wcs=None) :
         stars['DEC'] = dec
 
 @support_nddata
-def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,display=None,
+def photom(data,stars,uncertainty=None,mask=None,rad=[3],skyrad=None,display=None,
            gain=1,rn=0,mag=True,utils=True) :
     """ Aperture photometry of input image with current star list
     """
@@ -216,6 +217,12 @@ def photom(data,stars,uncertainty=None,rad=[3],skyrad=None,display=None,
         uncertainty_data = uncertainty.array
     else :
         uncertainty_data = np.sqrt(data/gain + rn**2/gain**2)
+
+    # bad pixels from bitmask
+    if mask is not None :
+        pixmask = bitmask.PixMask()
+        bd = np.where(mask & pixmask.badpix())
+        data[bd[0],bd[1]] = np.nan
         
     # Add new output columns to table, removing them first if they exist already
     emptycol = Column( np.empty(len(stars))*np.nan )
