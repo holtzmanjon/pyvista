@@ -3,6 +3,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from matplotlib.widgets  import RectangleSelector
 import matplotlib
 import scipy.stats
 from astropy.wcs import wcs
@@ -633,7 +634,28 @@ class TV:
                           ls=ls,lw=lw))
         plt.draw()
 
-    def tvbox(self,x,y,box=None,size=3,color='m',ls=None,lw=None) :
+    def intbox(self) :
+        def box_callback(eclick,erelease) :
+            global x1, y1, x2, y2
+            x1, y1 = eclick.xdata, eclick.ydata
+            x2, y2 = erelease.xdata, erelease.ydata
+
+            #rect = plt.Rectangle( (min(x1,x2),min(y1,y2)), np.abs(x1-x2), np.abs(y1-y2),fill=False )
+            #self.ax.add_patch(rect)
+            self.fig.canvas.stop_event_loop(0)
+
+        usezoom = self.usezoom
+        self.usezoom=False
+        rs = RectangleSelector(self.ax, box_callback,
+                       useblit=False, button=[1], 
+                       minspanx=5, minspany=5, spancoords='pixels', 
+                       interactive=False)
+        self.fig.canvas.start_event_loop(0)
+        self.usezoom = usezoom
+        return image.BOX(sc=int(min(x1,x2)),sr=int(min(y1,y2)),nc=int(np.abs(x1-x2)),nr=int(np.abs(y1-y2)))
+
+
+    def tvbox(self,x=0,y=0,box=None,size=3,color='m',ls=None,lw=None) :
         """
         displays a patch (box by default) on an image
 
