@@ -642,7 +642,7 @@ class TV:
 
             #rect = plt.Rectangle( (min(x1,x2),min(y1,y2)), np.abs(x1-x2), np.abs(y1-y2),fill=False )
             #self.ax.add_patch(rect)
-            self.fig.canvas.stop_event_loop(0)
+            self.fig.canvas.stop_event_loop()
 
         usezoom = self.usezoom
         self.usezoom=False
