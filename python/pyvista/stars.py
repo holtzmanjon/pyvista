@@ -43,7 +43,8 @@ def find(data,fwhm=4,thresh=4000,sharp=[0.,1.],round=[-2.,2.]) :
         round  : optional, [float,float]
                  Low and high bounds for roundness, default=[-2.,2]
     """
-    daofind = DAOStarFinder(fwhm=fwhm,threshold=thresh,sharplo=sharp[0],sharphi=sharp[1],roundlo=round[0],roundhi=round[1])
+    daofind = DAOStarFinder(fwhm=fwhm,threshold=thresh,sharplo=sharp[0],sharphi=sharp[1],roundlo=round[0],roundhi=round[1],
+                            exclude_border=True)
     sources=daofind(data)
     sources.rename_column('xcentroid','x')
     sources.rename_column('ycentroid','y')
