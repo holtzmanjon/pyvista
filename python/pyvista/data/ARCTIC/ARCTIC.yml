@@ -4,6 +4,7 @@ formstr   : ['{:04d}.f*']
 gain      : [2.0]
 rn        : [3.7]
 scale     : .228
+saturation : [60000]
 flip      : False
 biastype  : 1
 crbox     : 'lacosmic'

@@ -321,10 +321,23 @@ def gfit2d(data,x0,y0,size=5,fwhm=3.,sub=True,plot=None,fig=1,scale=1,pafixed=Fa
         # translate parameters to xfwhm,yfwhm,theta
         amp,x0,y0,a,b,c,back=g[0]
         theta=0.5*np.arctan(b/(a-c))
-        xfwhm=np.sqrt(1/(2*a*np.cos(theta)**2+2*b*np.cos(theta)*np.sin(theta)+2*c*np.sin(theta)**2))*sig2fwhm
-        yfwhm=np.sqrt(1/(2*a*np.sin(theta)**2-2*b*np.cos(theta)*np.sin(theta)+2*c*np.cos(theta)**2))*sig2fwhm
+        xfwhm=np.sqrt(1/(2*a*np.cos(theta)**2+2*b*np.cos(theta)*np.sin(theta)+2*c*np.sin(theta)**2))*sig2fwhm*scale
+        yfwhm=np.sqrt(1/(2*a*np.sin(theta)**2-2*b*np.cos(theta)*np.sin(theta)+2*c*np.cos(theta)**2))*sig2fwhm*scale
+        fwhm=np.sqrt(xfwhm*yfwhm)
         print('xFWHM:{:8.2f}   yFWHM:{:8.2f}   FWHM:{:8.2f}  SCALE:{:8.2f}  PA:{:8.2f}'.format(
                xfwhm,yfwhm,np.sqrt(xfwhm*yfwhm),scale,(theta%(2*np.pi))*180/np.pi))
+        if plot is not None:
+            xc=x0
+            yc=y0
+            xsig = xfwhm/2.355
+            ysig = yfwhm/2.355
+            r = np.sqrt((y-yc)**2 + (x-xc)**2)
+            plots.plotp(plot,r,z,xt='R(pixels)',yt='Intensity')
+            r = np.arange(0.,5*fwhm/sig2fwhm/scale,0.1)
+            plot.plot(r,amp*np.exp(-np.power(r, 2.) / (2 * np.power(xsig, 2.)))+back)
+            plot.plot(r,amp*np.exp(-np.power(r, 2.) / (2 * np.power(ysig, 2.)))+back)
+            plot.text(0.9,0.9,'x: {:7.1f} y: {:7.1f} fw: {:8.2f}'.format(xc,yc,fwhm),transform=plot.transAxes,ha='right')
+            plt.draw()
         if sub :
             data[ycen-size:ycen+size,xcen-size:xcen+size]-=gauss2d(np.array([x,y]),*g[0]).reshape(-2*size,2*size)
         return np.array([amp,x0,y0,xfwhm,yfwhm,theta,back])
