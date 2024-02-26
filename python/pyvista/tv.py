@@ -613,6 +613,7 @@ class TV:
         # following fails on Windows QT
         try: self.fig.canvas.motion_notify_event(x,y)
         except : pass
+        self.fig.canvas.flush_events()
 
     def tvtext(self,x,y,text,color='m',ha='center',va='center') :
         """ Annotates with text
