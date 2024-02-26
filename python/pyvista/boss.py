@@ -933,6 +933,7 @@ def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),hard=None,re
         else :
             plt.draw()
             plt.show()
+            pdb.set_trace()
         plt.close()
 
     return lin
