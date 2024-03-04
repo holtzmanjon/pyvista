@@ -677,6 +677,7 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, rad=2,
     matplotlib.use(backend)
 
     grid=[]
+    cams2channel = {'b1':0,'r1':1,'b2':2,'r2':3}
     if obs == 'lco' :
         data_env = 'BOSS_SPECTRO_DATA_S'
         if cams is None : cams = ['b2','r2']
@@ -687,6 +688,7 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, rad=2,
         if cams is None : cams = ['b1','r1'] 
         elif isinstance(cams,str) : cams = [cams]
         channels = [0,1]
+    channels = [cams2channel[cam] for cam in cams]
 
     if planfile :
         pfile = '{:s}/{:s}/trace/{:d}/spPlanTrace-{:d}_{:s}.par'.format( 
@@ -962,5 +964,7 @@ def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),
         else :
             plt.draw()
             plt.show()
+            pdb.set_trace()
+        plt.close()
 
     return lin,rot

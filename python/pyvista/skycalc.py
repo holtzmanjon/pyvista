@@ -9,7 +9,7 @@ from astroplan import Observer, time_grid_from_range
 from astroplan import FixedTarget
 from astroplan.plots import plot_airmass
 from astroplan.plots import plot_parallactic
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import SkyCoord, EarthLocation
 from astropy.time import Time
 from astropy.coordinates import get_moon, get_sun
 from astropy import coordinates as coord
@@ -332,7 +332,39 @@ def parang(hd,obs='apo',tz='US/Mountain') :
     print(obj)
     return site.parallactic_angle(time,obj).deg
 
+def zd(h,dec,site='APO') :
+    """ Calculate zenith distance from HA, DEC, site
 
+    Parameters
+    ----------
+    ha : hour angle, hrs
+    dec : declination, degrees
+    site : str, site name, default='APO'
+
+    Returns
+    -------
+    zenith distance in degrees
+    """
+    phi = EarthLocation.of_site(site).lat.value*np.pi/180.
+    z = (np.sin(phi)*np.sin(dec*np.pi/180.)+np.cos(phi)*np.cos(dec*np.pi/180)*np.cos(h*15*np.pi/180))
+    return np.arccos(z)*180/np.pi
+
+def pa(h,dec,site='APO') :
+    """ Calculate parallactic angle from HA, DEC, site
+
+    Parameters
+    ----------
+    ha : hour angle, hrs
+    dec : declination, degrees
+    site : str, site name, default='APO'
+
+    Returns
+    -------
+    parallactic angle in degrees
+    """
+    phi=EarthLocation.of_site(site).lat.value*np.pi/180.
+    pa = np.arcsin(np.cos(phi)*np.sin(h*15*np.pi/180)/np.sin(zd(h,dec,site)*np.pi/180))
+    return pa*180/np.pi
 
 def refraction(obs=None,wav=0.5,h=2000,temp=20,rh=0.25) :
     """ Calculate coefficient of refraction
