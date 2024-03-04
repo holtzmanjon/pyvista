@@ -646,12 +646,8 @@ def mkyaml(mjd,obs='apo') :
         fp.close()
 
 
-<<<<<<< HEAD
-def arc_transform(mjd,obs='lco',refarc=None,thresh=400,nskip=40, clobber=False, outdir=None, threads=8, cams=None, 
-=======
-def arc_transform(mjd,obs='lco',refarc=None,nskip=40, rad=2,
+def arc_transform(mjd,obs='lco',refarc=None,thresh=400,nskip=40, rad=2,
                   clobber=False, outdir=None, threads=8, cams=None, 
->>>>>>> b5487f14ef1f3b44ec02768459a9ae4df7073ce1
                   vers='test/sean/v6_1_1-tracetweak', planfile=True, backend='Agg') :
     """ Get transformations from first arc for all arcs on a given MJD
         Make plots and HTML page
