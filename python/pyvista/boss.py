@@ -646,7 +646,7 @@ def mkyaml(mjd,obs='apo') :
         fp.close()
 
 
-def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None, threads=8, cams=None, 
+def arc_transform(mjd,obs='lco',refarc=None,thresh=400,nskip=40, clobber=False, outdir=None, threads=8, cams=None, 
                   vers='test/sean/v6_1_1-tracetweak', planfile=True, backend='Agg') :
     """ Get transformations from first arc for all arcs on a given MJD
         Make plots and HTML page
@@ -724,7 +724,7 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
 
         im0=boss.reduce(reffile,channel=channel)
         print('finding lines in reference: ', reffile)
-        lines0=stars.find(im0.data,thresh=400,sharp=[0,0.5],round=[-0.25,0.75])[::nskip]
+        lines0=stars.find(im0.data,thresh=thresh,sharp=[0,0.5],round=[-0.25,0.75])[::nskip]
         print('automarking lines in reference: ', reffile)
         lines=stars.automark(im0.data,lines0,rad=2,dx=0,dy=0,background=False,func='marginal_gfit')
 
