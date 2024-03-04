@@ -224,7 +224,7 @@ def gauss2d_binned(X, amp, x0, y0, a, b, c, back) :
 def gauss2d(X, amp, x0, y0, a, b, c, back, binned=False) :
     """ Evaluate Gaussian 2D function  
 
-        Form: amp*exp(-a(x-x0)**2 - b(x-x0)*(y-y0) - c(y-y0)**2) + consth
+        Form: amp*exp(-a(x-x0)**2 - b(x-x0)*(y-y0) - c(y-y0)**2) + const
 
         Parameters
         ----------
@@ -243,6 +243,46 @@ def gauss2d(X, amp, x0, y0, a, b, c, back, binned=False) :
         out= (amp/100.*(np.exp(-a*(xx-x0)**2-b*(xx-x0)*(yy-y0)-c*(yy-y0)**2))).reshape(x.shape[0],10,y.shape[0],10).sum(3).sum(1)+back
     else :
         out= amp*(np.exp(-a*(x-x0)**2-b*(x-x0)*(y-y0)-c*(y-y0)**2))+back
+
+    return out.flatten()
+
+def gh2d_wrapper(X, N, *args) :
+    gpars = args[0][:5]
+    hpars = np.array(args[0][5:5+N**2]).reshape(N,N)
+    back = args[0][-1]
+    return gh2d(X, gpars, hpars, back)
+
+def gh2d(X, gpars, hpars, back, binned=False) :
+    """ Evaluate Gauss-Hermite 2D function  
+
+        Form: exp(-a(x-x0)**2 - b(x-x0)*(y-y0) - c(y-y0)**2) + const
+
+        Parameters
+        ----------
+        X : arraylike [2,npts]
+            x,y positions to evaluate at
+        x0, y0, a, b, c, back : float
+            coefficients of function
+    """
+    x = X[0]
+    y = X[1]
+
+    x0, y0, a, b, c = gpars
+    if len(hpars) > 0 :
+        #p = np.polynomial.hermite.hermval2d((x-x0),(y-y0),hpars)
+        nherm = len(hpars)
+        p=0
+        for iy in range(nherm) :
+            for ix in range(nherm) :
+                p+=hpars[iy,ix]*scipy.special.eval_hermitenorm(ix,x-x0)*scipy.special.eval_hermitenorm(iy,y-y0)
+    else :
+        p = 1
+    if binned :
+        # use 10x10 sub-bins
+        yy,xx=np.mgrid[y.min()-0.5:y.max()+0.5:0.1,x.min()-0.5:x.max()+0.5:0.1]
+        out= (p/100.*(np.exp(-a*(xx-x0)**2-b*(xx-x0)*(yy-y0)-c*(yy-y0)**2))).reshape(x.shape[0],10,y.shape[0],10).sum(3).sum(1)+back
+    else :
+        out= p*(np.exp(-a*(x-x0)**2-b*(x-x0)*(y-y0)-c*(y-y0)**2))+back
 
     return out.flatten()
 
@@ -275,7 +315,7 @@ def gfit2d(data,x0,y0,size=5,fwhm=3.,sub=True,plot=None,fig=1,scale=1,pafixed=Fa
     # use initial guess to get peak
     z=data[int(y0)-size:int(y0)+size+1,int(x0)-size:int(x0)+size+1]
     # refine subarray around peak
-    xcen,ycen=np.unravel_index(np.argmax(z),z.shape)
+    ycen,xcen=np.unravel_index(np.argmax(z),z.shape)
     xcen+=(int(x0)-size)
     ycen+=(int(y0)-size)
 
@@ -307,7 +347,7 @@ def gfit2d(data,x0,y0,size=5,fwhm=3.,sub=True,plot=None,fig=1,scale=1,pafixed=Fa
             plot.text(0.9,0.9,'x: {:7.1f} y: {:7.1f} fw: {:8.2f}'.format(xc,yc,fwhm),transform=plot.transAxes,ha='right')
             plt.draw()
         if sub :
-            data[ycen-size:ycen+size,xcen-size:xcen+size]-=g[0](x,y)
+            data[ycen-size:ycen+size+1,xcen-size:xcen+size+1]-=g[0](x,y)
        
         return g
 
@@ -339,21 +379,74 @@ def gfit2d(data,x0,y0,size=5,fwhm=3.,sub=True,plot=None,fig=1,scale=1,pafixed=Fa
             plot.text(0.9,0.9,'x: {:7.1f} y: {:7.1f} fw: {:8.2f}'.format(xc,yc,fwhm),transform=plot.transAxes,ha='right')
             plt.draw()
         if sub :
-            data[ycen-size:ycen+size,xcen-size:xcen+size]-=gauss2d(np.array([x,y]),*g[0]).reshape(-2*size,2*size)
+            data[ycen-size:ycen+size+1,xcen-size:xcen+size+1]-=gauss2d(np.array([x,y]),*g[0]).reshape(-2*size+1,2*size+1)
         return np.array([amp,x0,y0,xfwhm,yfwhm,theta,back])
+
+def ghfit2d_thread(pars) :
+    """ 
+    Wrapper for ghfit2d for multithreading, with just a single argument
+    """
+    data,x0,y0,size,binned,nherm =  pars
+    return ghfit2d(data,x0,y0,size=size,binned=binned,nherm=nherm)
+
+def ghfit2d(data,x0,y0,size=5,fwhm=3.,nherm=6,sub=True,plot=None,fig=1,scale=1,pafixed=False,binned=False,
+            p0=None, bounds=None) :
+    """ 
+    Does 2D Gauss-Hermite fit to input data given initial xcen,ycen
+    """
+
+    # use initial guess to get peak
+    z=data[int(y0)-size:int(y0)+size+1,int(x0)-size:int(x0)+size+1]
+    # refine subarray around peak
+    ycen,xcen=np.unravel_index(np.argmax(z),z.shape)
+    xcen+=(int(x0)-size)
+    ycen+=(int(y0)-size)
+
+    # set up input data and fit
+    y,x=np.mgrid[ycen-size:ycen+size+1,xcen-size:xcen+size+1]
+    z=data[ycen-size:ycen+size+1,xcen-size:xcen+size+1]
+
+    if p0 is None :
+        p0=np.array([xcen,ycen,1./(2*(fwhm/sig2fwhm)**2),0.3,1./(2*(fwhm/sig2fwhm)**2)]+[data[ycen,xcen]]+(nherm*nherm-1)*[0.]+[0.])
+    if bounds is None :
+        bounds=([0.,0.,0.,0.,0.,0.]+(nherm*nherm-1)*[-np.inf]+[-np.inf],
+                [2048.,2048.,np.inf,np.inf,np.inf,np.inf]+(nherm*nherm-1)*[np.inf]+[np.inf])
+    X = np.array([x.flatten(),y.flatten()])
+    if binned :
+        g=curve_fit(gh2d_binned,X,z.flatten(), p0=p0)
+    else :
+        try : g,cov,info,mesg,ier=curve_fit(lambda X, *params : gh2d_wrapper(X, nherm, params),X,z.flatten(), p0=p0, bounds=bounds,full_output=True)
+        except : 
+            g=p0
+            cov=None
+            info={}
+
+    # translate parameters to xfwhm,yfwhm,theta
+    x0,y0,a,b,c=g[:5]
+    theta=0.5*np.arctan(b/(a-c))
+    xfwhm=np.sqrt(1/(2*a*np.cos(theta)**2+2*b*np.cos(theta)*np.sin(theta)+2*c*np.sin(theta)**2))*sig2fwhm
+    yfwhm=np.sqrt(1/(2*a*np.sin(theta)**2-2*b*np.cos(theta)*np.sin(theta)+2*c*np.cos(theta)**2))*sig2fwhm
+    print('xFWHM:{:8.2f}   yFWHM:{:8.2f}   FWHM:{:8.2f}  SCALE:{:8.2f}  PA:{:8.2f}'.format(
+           xfwhm,yfwhm,np.sqrt(xfwhm*yfwhm),scale,(theta%(2*np.pi))*180/np.pi))
+    if sub :
+        try :data[ycen-size:ycen+size+1,xcen-size:xcen+size+1]-=gh2d_wrapper(np.array([x,y]),nherm,g).reshape(2*size+1,2*size+1)
+        except : pass
+    return np.array(g),cov,info
 
 def fit2d(X,Y,Z) :
     """ Fit 2D quadratic surface
     """
     gd=np.where(np.isfinite(Z))
-    A = np.array([X[gd]*0+1, X[gd], Y[gd], X[gd]**2, X[gd]**2*Y[gd], X[gd]**2*Y[gd]**2, Y[gd]**2, X[gd]*Y[gd]**2, X[gd]*Y[gd]]).T
+    #A = np.array([X[gd]*0+1, X[gd], Y[gd], X[gd]**2, X[gd]**2*Y[gd], X[gd]**2*Y[gd]**2, Y[gd]**2, X[gd]*Y[gd]**2, X[gd]*Y[gd]]).T
+    A = np.array([X[gd]*0+1, X[gd], Y[gd], X[gd]**2, X[gd]*Y[gd], Y[gd]**2]).T
     coeff, r, rank, s = np.linalg.lstsq(A, Z[gd])
     return coeff
 
 def mk2d(X,Y,coeff) :
     """ Return 2D surface given input points and coefficients
     """
-    A = np.array([X*0+1, X, Y, X**2, X**2*Y, X**2*Y**2, Y**2, X*Y**2, X*Y]).T
+    #A = np.array([X*0+1, X, Y, X**2, X**2*Y, X**2*Y**2, Y**2, X*Y**2, X*Y]).T
+    A = np.array([X*0+1, X, Y, X**2, X*Y, Y**2]).T
     return np.dot(A,coeff)
 
 def window(hdu,box) :
@@ -730,7 +823,8 @@ def xcorr2d(a,b,lags=None,xlags=None,ylags=None) :
         for j, ylag in enumerate(ylags) :
             shift[j,i] = np.sum(a.data[ys:ye,xs:xe]*b.data[ys+ylag:ye+ylag,xs+xlag:xe+xlag])
 
-    y,x=np.meshgrid(ylags,xlags)
+    #y,x=np.meshgrid(ylags,xlags)
+    x,y=np.meshgrid(xlags,ylags)
     yp,xp=np.unravel_index(shift.argmax(),shift.shape)
     print('yp, xp:',yp,xp,len(xlags),len(ylags))
     if xp == 0 or yp == 0 or xp > len(xlags)-2 or yp > len(ylags)-2 :
@@ -778,7 +872,7 @@ def minmax(data,mask=None, low=3,high=10):
    
         Args:
             img : input CCDData
-            low : number of MADs below median to retunr
+            low : number of MADs below median to return
             high : number of MADs above median to retunr
 
         Returns:
