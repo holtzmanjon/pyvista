@@ -1,6 +1,7 @@
 from astropy.io import fits
 from astropy.table import Table
 from astropy.time import Time
+from astropy.nddata import support_nddata
 import astropy.units as u
 import esutil
 import glob
@@ -13,7 +14,7 @@ from pyvista.dataclass import Data
 import matplotlib.pyplot as plt
 import multiprocessing as mp
 import yaml
-from pyvista import imred, spectra,sdss,stars,image
+from pyvista import imred, spectra,sdss,stars,image,refcorr
 
 def unzip(file,dark=None) :
     """ Read APOGEE .apz file, get CDS image
@@ -43,12 +44,12 @@ def unzip(file,dark=None) :
           raw = hd[ext].data
         if read == 1 :
           data = np.copy(raw)
-          data3d=np.zeros([nreads,2048,2048],dtype=np.int16)
-          data3d[0]=data[0:2048,0:2048]
+          data3d=np.zeros([nreads,2048,2560],dtype=np.int16)
+          data3d[0]=data[0:2048,0:2560]
         else :
           data = np.add(data,raw,dtype=np.int16)
           data = np.add(data,avg_dcounts,dtype=np.int16)
-          data3d[read-1]=data[0:2048,0:2048]
+          data3d[read-1]=data[0:2048,0:2560]
 
         ext += 1
 
@@ -67,6 +68,17 @@ def cds(file,dark=None) :
             pdb.set_trace()
     out= (cube[-1,0:2048,0:2048].astype(np.float32) - cube[1,0:2048,0:2048].astype(np.float32) )
     return Data(data=vert(out),header=header,unit=u.dimensionless_unscaled)
+
+def utr(file,dark=None) :
+    header = fits.open(file)[1].header
+    cube = unzip(file)
+    #cube,mask,readmask=refcorr.refcorr(cube,header)
+    nreads=len(cube)
+    x=np.arange(nreads-1)
+    fit = np.polyfit(x,cube[1:,:,0:2048].reshape(nreads-1,2048*2048),deg=1)
+    out=fit[0,:].reshape(2048,2048)*nreads-1
+    return Data(data=out,header=header,unit=u.dimensionless_unscaled)
+
 
 def vert(data) :
     """ Vertical bias subtraction from reference pixels
@@ -269,40 +281,122 @@ def mkyaml(mjd,obs='apo') :
                 fp.write('  singlename: none\n')
         fp.close()
 
-def fit_lines(data,display=None,skip=10,thresh=3000,binned=False) :
+@support_nddata
+def test_fit_lines(data,coeffs,skip=10,thresh=3000,binned=False,sub=False,size=4,nherm=4,threads=0) :
     """ Fit 2D gaussians to 'arc' frame and get surface fits of parameters
     """
     lines = stars.find(data,thresh=thresh)[::skip]
+    for i,(x,y) in enumerate(zip(lines['x'],lines['y'])) :
+        p0=[x,y]
+        low=[0.,0.]
+        high=[2048.,2048.]
+        for coeff in coeffs :
+            val=image.mk2d(x,y,coeff)
+            p0.extend(image.mk2d(x,y,val))
+            low.extend(0.999*val)
+            high.extend(1.001*val)
+        p0.extend(0.)
+        low.extend(-np.inf)
+        high.extend(-np.inf)
+        p0=np.array(p0)
+        low=np.array(low)
+        high=np.array(high)
+        low[5] = 0.
+        high[5] = np.inf
+        
+        image.ghfit2d(data,x,y,size=size,nherm=nherm,p0=p0,bounds=(low,high))
+
+
+@support_nddata
+def fit_lines(data,uncertainty=None,display=None,skip=10,thresh=3000,binned=False,sub=False,size=5,nherm=1,threads=0) :
+    """ Fit PSF function to 'arc' frame and get surface fits of parameters
+    """
+
+    # find objects to fit
+    lines = stars.find(data,thresh=thresh)[::skip]
     print(len(lines),' lines found')
-    params=[]
+
+    # set up input parameters
+    pars=[]
     for i,(x,y) in enumerate(zip(lines['x'],lines['y'])) :
         print(i)
-        try: params.append(image.gfit2d(data,x,y,astropy=False,sub=False,binned=binned))
+        pars.append((data,x,y,size,binned,nherm))
+
+    # run them all, with multithreading if desired
+    if threads > 0 :
+        pool = mp.Pool(threads)
+        outputs = pool.map_async(image.ghfit2d_thread, pars).get()
+        pool.close()
+        pool.join()
+    else :
+        outputs=[]
+        for par in pars :
+            try : outputs.append(image.ghfit2d_thread(par))
+            except :
+                print('error with fit: ', x,y)
+
+    # subtract fits from frame if requested. Can't do in ghfit2d if multithreaded
+    if sub :
+        for par,output in zip(pars,outputs) :
+            param=output[0]
+            x0,y0=par[1],par[2]
+            # use initial guess to get peak
+            z=data[int(y0)-size:int(y0)+size+1,int(x0)-size:int(x0)+size+1]
+            # refine subarray around peak
+            ycen,xcen=np.unravel_index(np.argmax(z),z.shape)
+            xcen+=(int(x0)-size)
+            ycen+=(int(y0)-size)
+            y,x=np.mgrid[ycen-size:ycen+size+1,xcen-size:xcen+size+1]
+            try :data[ycen-size:ycen+size+1,xcen-size:xcen+size+1]-=image.gh2d_wrapper(np.array([x,y]),nherm,param).reshape(2*size+1,2*size+1)
+            except : pass
+
+    # load up output parameters and residuals
+    params=[]
+    res=[]
+    for output in outputs : 
+        try :
+            res.append((output[2]['fvec']**2).sum())
+            params.append(output[0])
         except : pass
     params=np.array(params)
-    gd=np.where((params[:,3] < 5) & (params[:,4] < 5))[0]
-    coeff3=image.fit2d(params[gd,1],params[gd,2],params[gd,3])
-    coeff4=image.fit2d(params[gd,1],params[gd,2],params[gd,4])
-    coeff5=image.fit2d(params[gd,1],params[gd,2],params[gd,5])
+    res=np.array(res)
+
+    # select good fits and do quadratic fits to the parameters
+    gd=np.where((params[:,0] > 0) & (params[:,0]<2048) & (params[:,1] > 0) & (params[:,1] < 2048) &
+                (np.abs(params[:,2]) < 1) & (np.abs(params[:,4]) < 1) & (res<1.e6) )[0]
     y,x=np.mgrid[0:2048,0:2048]
-    fit3 = image.mk2d(x,y,coeff3)
-    fit4 = image.mk2d(x,y,coeff4)
-    fit5 = image.mk2d(x,y,coeff5)
-    fig,ax=plots.multi(3,1,figsize=(12,4),hspace=0.001,wspace=0.001)
-    ax[0].imshow(fit3,vmin=1,vmax=3)
-    ax[1].imshow(fit4,vmin=1,vmax=3)
-    ax[2].imshow(fit5,vmin=0,vmax=360)
+
+    coeffs=[]
+    fig,ax=plots.multi(3,1,figsize=(12,4),hspace=0.001,wspace=0.001,sharex=True,sharey=True)
+    fit=[2,3,4]
+    for i,ifit in enumerate(fit) :
+        c=image.fit2d(params[gd,0],params[gd,1],params[gd,ifit])
+        surf = image.mk2d(x.flatten(),y.flatten(),c).reshape(2048,2048)
+        min,max=image.minmax(params[gd,ifit],low=3,high=3)
+        ax[i].imshow(surf,vmin=min,vmax=max,origin='lower')
+        ax[i].scatter(params[gd,0],params[gd,1],c=params[gd,ifit],vmin=min,vmax=max,s=2)
+        coeffs.append(c)
+
+    fig,ax=plots.multi(nherm,nherm,figsize=(12,12),hspace=0.001,wspace=0.001,sharex=True,sharey=True)
+    for i,ifit in enumerate(range(nherm*nherm)) :
+        vals=params[gd,5+ifit]/params[gd,5]
+        c=image.fit2d(params[gd,0],params[gd,1],vals)
+        surf = image.mk2d(x.flatten(),y.flatten(),c).reshape(2048,2048)
+        min,max=image.minmax(vals,low=3,high=3)
+        ax[i//nherm,i%nherm].imshow(surf,vmin=min,vmax=max,origin='lower')
+        ax[i//nherm,i%nherm].scatter(params[gd,0],params[gd,1],c=vals,vmin=min,vmax=max,s=2)
+        coeffs.append(c)
 
     if display is not None :
         display.tv(data)
-        plots.plotc(display.ax,params[:,1],params[:,2],params[:,3],size=30,zr=[1,3])
+        plots.plotc(display.ax,params[:,0],params[:,1],params[:,2],size=30,zr=[1,3])
         pdb.set_trace()
-        plots.plotc(display.ax,params[:,1],params[:,2],params[:,4],size=30,zr=[1,3])
+        plots.plotc(display.ax,params[:,0],params[:,1],params[:,3],size=30,zr=[1,3])
         pdb.set_trace()
-        plots.plotc(display.ax,params[:,1],params[:,2],params[:,5],size=30)
+        plots.plotc(display.ax,params[:,0],params[:,1],params[:,4],size=30)
         pdb.set_trace()
 
-    return params
+    return params, coeffs
 
 def get_fiberind(lines,trace) :
     """ Get associated fiber with every line, given a Trace stobject

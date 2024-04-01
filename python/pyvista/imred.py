@@ -421,7 +421,7 @@ class Reducer() :
                crbox=None,crsig=5,objlim=5,sigfrac=0.3,
                bias=None,dark=None,flat=None,
                scat=None,badpix=None,solve=False,return_list=False,display=None,
-               trim=True,seeing=2) :
+               trim=True,seeing=2,utr=False) :
         """ Reads data from disk, and performs reduction steps as determined from command line parameters
 
         Parameters
@@ -457,7 +457,7 @@ class Reducer() :
         seeing :
 
         """
-        im=self.rd(num,dark=dark,channel=channel)
+        im=self.rd(num,dark=dark,channel=channel,utr=utr)
         self.overscan(im,display=display,channel=channel)
         im=self.bias(im,superbias=bias)
         im=self.dark(im,superdark=dark)
@@ -473,7 +473,7 @@ class Reducer() :
         if return_list and type(im) is not list : im=[im]
         return im
 
-    def rd(self,num, ext=0, dark=None, channel=None) :
+    def rd(self,num, ext=0, dark=None, channel=None, utr=False) :
         """ Read an image
 
         Parameters
@@ -507,8 +507,10 @@ class Reducer() :
                 pdb.set_trace()
             file=glob.glob(search)
             if len(file) == 0 : 
-                raise ValueError('cannot find file matching: '+search)
-                return
+                file=glob.glob(search+'.gz')
+                if len(file) == 0 :
+                    raise ValueError('cannot find file matching: '+search,num)
+                    return
             elif len(file) > 1 : 
                 if self.verbose : print('more than one match found, using first!',file)
             file=file[0]
@@ -516,7 +518,8 @@ class Reducer() :
             # read the file into a Data object
             if self.verbose : print('  Reading file: {:s}'.format(file)) 
             if 'APOGEE' in self.inst :
-                im=apogee.cds(file,dark=dark)
+                if utr : im=apogee.utr(file,dark=dark)
+                else : im=apogee.cds(file,dark=dark)
             else :
                 try : im=Data.read(file,hdu=ext,unit=u.dimensionless_unscaled)
                 except : raise RuntimeError('Error reading file: {:s}'.format(file))
@@ -1067,7 +1070,7 @@ class Reducer() :
         for f in glob.glob(os.path.basename(tmpfile[1])+'*') : os.remove(f)
         return im
 
-    def noise(self,pairs,rows=None,cols=None,nbox=200,display=None,channel=None,levels=None) :
+    def noise(self,pairs,rows=None,cols=None,nbox=200,display=None,channel=None,levels=None,skip=1) :
         """ Noise characterization from image pairs
         """
         title=''
@@ -1080,8 +1083,8 @@ class Reducer() :
             title+='[{:s},{:s}]'.format(str(pair[0]),str(pair[1]))
             a=self.reduce(pair[0],channel=channel)
             b=self.reduce(pair[1],channel=channel)
-            diff=a.data-b.data
-            avg=(a.data+b.data)/2
+            diff=a.data[::skip,::skip]-b.data[::skip,::skip]
+            avg=(a.data[::skip,::skip]+b.data[::skip,::skip])/2
             if display != None :
                 display.tv(avg)
                 display.tv(diff)
