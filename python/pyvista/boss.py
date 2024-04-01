@@ -9,10 +9,8 @@ from pyvista import imred, spectra, sdss, gaia, bitmask, stars, image
 try :import gaiaxpy
 except : print('no gaiaxpy...!')
 from pyvista.dataclass import Data
-from skimage.transform import SimilarityTransform, AffineTransform
 from holtztools import match,plots,html
 from scipy.ndimage import median_filter
-from scipy.signal import convolve
 import multiprocessing as mp
 from astropy.table import Table
 from astropy.io import fits
@@ -785,14 +783,14 @@ def arc_transform(mjd,obs='lco',refarc=None,thresh=400,nskip=40, rad=2,
                 col2.append(os.path.basename(hard).replace('.png','_compare.png'))
                 continue
 
+            if outputs[iout] is None : 
+                print('error with {:s}'.format(arcfile))
+                col2.append('')
+                continue
+
             linfit = outputs[iout][0]
             im = pars[iout][1]
             iout+=1
-            if linfit is None : 
-                print('error with {:s}'.format(arcfile))
-                col2.append('')
-                pdb.set_trace()
-                continue
 
             if planfile :
                 # calculate derived tracetable
@@ -854,117 +852,7 @@ def arc_transform(mjd,obs='lco',refarc=None,thresh=400,nskip=40, rad=2,
 
 def transform_thread(pars) :
     try :
-        return transform(pars[0],pars[1],pars[2],hard=pars[3])
+        return image.transform(pars[0],pars[1],pars[2],hard=pars[3])
     except :
         return None
 
-def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),
-              rad=2,scale=20,hard=None,reject=1) :
-    """ Get geometric transformation between images based on point sources
-
-    Parameters
-    ----------
-        im0 : Data or array-like
-              Reference image
-        im : Data or array-like
-              Target image
-        lines0 : Table
-              Table with reference object positions ('x' and 'y')
-        xcoerr_shift : range
-              Range of cross-correlation shifts to try, default is range(-10,11)
-        hard : None or char
-              if char, make tranformation plots ('' to display, otherwise save to specified file name)
-    """
-
-    nr,nc=im.data.shape
-
-    # 2D cross correlation
-    peak,shift=image.xcorr2d(im0,im,xlags=xlags,ylags=ylags)
-
-    # smooth cross correlation by by 3x3 kernel in case there are multiple
-    # peaks and the wrong one happens to match pixel centering better
-    # Just use integer peak
-    kernel=np.ones([3,3])
-    indices=np.unravel_index(
-              convolve(shift,kernel,mode='same').argmax(),shift.shape)
-    dy=indices[0]+ylags[0]
-    dx=indices[1]+xlags[0]
-    print('xcorr shifts: ',dx,dy)
-    print('automarking...',len(lines0))
-    lines=stars.automark(im.data,lines0,rad=rad,dx=dx,dy=dy,
-                         background=False,func='marginal_gfit')
-
-    dx=np.nanmean(lines['x']-lines0['x'])
-    dy=np.nanmean(lines['y']-lines0['y'])
-    print('average shifts:',dx,dy)
-
-    print('fitting...')
-    lin=AffineTransform()
-    rot=SimilarityTransform()
-    gd = np.where((np.isfinite(lines0['x']))&(np.isfinite(lines['x'])))[0]
-    src=np.array([lines0['x'][gd]-nc//2,lines0['y'][gd]-nr//2]).T
-    dest=np.array([lines['x'][gd]-nc//2,lines['y'][gd]-nr//2]).T
-    lin.estimate(src,dest)
-    res=lin(src)-dest
-    #rot.estimate(src,dest)
-    #res=rot(src)-dest
-    # reject points with >1 pixel residual
-    gd=np.where((np.abs(res[:,0])<reject)&(np.abs(res[:,1])<reject))[0]
-    bd=np.where((np.abs(res[:,0])>reject)|(np.abs(res[:,1])>reject))[0]
-    print(len(gd),len(res))
-    rot.estimate(src[gd],dest[gd])
-    lin.estimate(src[gd],dest[gd])
-
-    if hard is not None :
-        fig,ax=plots.multi(4,1,figsize=(24,6),wspace=0.001)
-        ax[0].quiver(src[gd,0]+nc//2,src[gd,1]+nr//2,
-                     dest[gd,0]-src[gd,0],dest[gd,1]-src[gd,1],
-                     scale=scale,width=0.005)
-        ax[0].quiver(src[bd,0]+nc//2,src[bd,1]+nr//2,
-                     dest[bd,0]-src[bd,0]-dx,dest[bd,1]-src[bd,1]-dy,
-                     scale=scale,width=0.005,color='r')
-        ax[1].quiver(src[gd,0]+nc//2,src[gd,1]+nr//2,
-                     dest[gd,0]-src[gd,0]-dx,dest[gd,1]-src[gd,1]-dy,
-                     scale=scale,width=0.005)
-        ax[1].quiver(src[bd,0]+nc//2,src[bd,1]+nr//2,
-                     dest[bd,0]-src[bd,0]-dx,dest[bd,1]-src[bd,1]-dy,
-                     scale=scale,width=0.005,color='r')
-        ax[1].set_title('dx: {:.2f} dy: {:.2f}'.format(dx,dy))
-        res=rot(src)-dest
-        ax[2].quiver(src[gd,0]+nc//2,src[gd,1]+nr//2,res[gd,0],res[gd,1],
-                     scale=scale,width=0.005)
-        ax[2].quiver(src[bd,0]+nc//2,src[bd,1]+nr//2,res[bd,0],res[bd,1],
-                     scale=scale,width=0.005,color='r')
-        plots.plotc(ax[2],src[gd,0]+nc//2,src[gd,1]+nr//2,
-                    np.sqrt(res[gd,0]**2+res[gd,1]**2),
-                    size=10,zr=[0,0.5],cmap='viridis')
-        ax[2].set_title('sc: {:.6} rot: {:.2f} dx: {:.2f} dy: {:.2f} res: {:.3f}'.format(
-                    rot.scale,rot.rotation*180/np.pi,*rot.translation,res.std()))
-        res=lin(src)-dest
-        ax[3].quiver(src[gd,0]+nc//2,src[gd,1]+nr//2,res[gd,0],res[gd,1],
-                     scale=scale,width=0.005)
-        ax[3].quiver(src[bd,0]+nc//2,src[bd,1]+nr//2,res[bd,0],res[bd,1],
-                     scale=scale,width=0.005,color='r')
-        cbar=plots.plotc(ax[3],src[gd,0]+nc//2,src[gd,1]+nr//2,
-                     np.sqrt(res[gd,0]**2+res[gd,1]**2),
-                     size=10,zr=[0,0.5],cmap='viridis')
-        ax[3].set_title('Full affine: {:.3f}'.format(res.std()))
-        for i in range(4) :
-            ax[i].set_xlim(0,nc)
-            ax[i].set_ylim(0,nr)
-            ax[i].quiver(nc//2,250,1,0,color='g',scale=scale,width=0.005)
-
-        fig.subplots_adjust(right=0.85)
-        cbar_ax = fig.add_axes([0.9, 0.15, 0.05, 0.7])
-        fig.colorbar(cbar, cax=cbar_ax)
-
-        if hard != '' :
-            fig.savefig(hard)
-            plt.close()
-        else :
-            plt.draw()
-            plt.show()
-            pdb.set_trace()
-        plt.close()
-
-    return lin,rot
