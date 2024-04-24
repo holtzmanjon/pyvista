@@ -68,6 +68,14 @@ def cds(file,dark=None) :
     out= (cube[-1,0:2048,0:2048].astype(np.float32) - cube[1,0:2048,0:2048].astype(np.float32) )
     return Data(data=vert(out),header=header,unit=u.dimensionless_unscaled)
 
+def utr(file,dark=None) :
+    header = fits.open(file)[1].header
+    cube = unzip(file)
+    nreads=len(cube)
+    x=np.range(nreads-1)
+    fit = np.polyfit(x,cube[1:,:,:].reshape(nreads-1,2048*2048))
+    out=fit[0,:].reshape(2048,2048)*nreads-1
+
 def vert(data) :
     """ Vertical bias subtraction from reference pixels
     """ 
