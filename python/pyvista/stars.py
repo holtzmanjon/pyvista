@@ -785,3 +785,134 @@ def diffphot(tab,aper='aper35.0',yr=0.1,title=None,hard=None) :
     #plt.close()
 
     return x,dat
+
+"""
+Routines for calculating radial asymmetry centroid
+   rasym_centroid()
+   rprof()
+
+Adapted from Russell Owen's PyGuide (e.g., https://github.com/ApachePointObservatory/PyGuide)
+which in turn are adapted from implementation by Jim Gunn
+
+asymm     measure of asymmetry:
+              sum over radindex of var(radindex)^2 / weight(radindex)
+          where weight is the expected sigma of var(rad) due to pixel noise:
+              weight(radindex) = pixNoise(radindex) * sqrt(2(numPix(radindex) - 1))/numPix(radindex)
+              pixNoise(radindex) = sqrt((readNoise/ccdGain)^2 + (meanVal(rad)-bias)/ccdGain)
+"""
+
+def rasym_centroid(data,x0,y0,rad=25,weight=False,mask=None,verbose=False) :
+    """ Get centroid via calculation of minimum asymmetry
+
+    Parameters
+    ----------
+    data : array-like
+           Input data array
+    x0, y0 : float
+           Initial position guess
+    rad : integer, default=25
+           Maximum extent to calculate radial profile and sum asymmetry over
+    """
+
+    # we will iterate 3x3 calculation of minimum asymmetry until minimum is at central point
+    iter = 0
+    while True :
+        if verbose : print('iter: ', iter)
+        minasym=1.e10
+        asym = np.zeros([3,3])
+        for dy in [-1,0,1] :
+            for dx in [-1,0,1] :
+                asym[dy+1,dx+1]=rprof(data,x0+dx,y0+dy,rad=rad,weight=weight,mask=mask,verbose=verbose)[0]
+                if verbose : print(x0+dx,y0+dy,asym)
+                if asym[dy+1,dx+1]<minasym :
+                    # if this is lowest asymmetry, save point
+                    x1 = x0+dx
+                    y1 = y0+dy
+                    minasym=asym[dy+1,dx+1]
+        # if central point hasn't changed, we are done
+        if x1==x0 and y1==y0 : 
+            # if central point hasn't changed, we are done
+            break
+        else : 
+            # otherwise, update central point
+            x0=x1
+            y0=y1
+            iter+=1
+
+    # now do parabolic fit to get fractional centroid
+    ai = 0.5 * (asym[2,1] - 2*asym[1,1] + asym[0,1])
+    bi = 0.5 * (asym[2,1] - asym[0,1])
+    aj = 0.5 * (asym[1,2] - 2*asym[1,1] + asym[1,0])
+    bj = 0.5 * (asym[1,2] - asym[1,0])
+    di = -0.5*bi/ai
+    dj = -0.5*bj/aj
+    print(x1,y1)
+    print(x1+dj,y1+di)
+
+    return x1+dj, y1+di
+
+
+def rprof(data,x0,y0,rad=25,weight=False,mask=None,gain=1,rn=0,bias=0,verbose=False) :
+    """ Calculate asymmetry profile and total asymmetry
+
+    Parameters
+    ----------
+    data : array-like
+           Input data array
+    x0, y0 : integer
+           Pixel position to calculate asymmetry around
+    rad : integer
+          Maximum radius
+    """
+
+    # calculate r**2 array of distances from input center
+    y,x = np.mgrid[0:data.shape[0],0:data.shape[1]]
+    r2 = (x-x0)**2 + (y-y0)**2
+
+    # determine the radius index array that we will use to
+    #   determine the pixels that go into each "radius"
+
+    # Algorithm (Mirage convention?) is
+    #   radial index[rad**2] = 0, 1, 2, int(sqrt(rad**2)+1.5) for rad**2>2\n
+
+    rind = np.zeros_like(r2).astype(int)
+    j=np.where(r2==0)
+    rind[j]=0
+    j=np.where(r2==1)
+    rind[j]=1
+    j=np.where(r2==2)
+    rind[j]=2
+    for r in range(3,rad**2) :
+        j=np.where(r2==r)
+        rind[j]=int(np.sqrt(r)+1.5)
+
+    if mask is not None :
+        j=np.where(mask)
+        rind[j] = -1
+
+    # Now loop over all radial indices, and determine mean and variance 
+    #   over all pixels at each index. Sum the variances into asym
+    mean=[]
+    var=[]
+    asym=0
+    for r in range(rad) :
+        j=np.where(rind==r)
+        npix = len(j[0])
+        if npix > 3 :
+            m = data[j].mean()
+            v=data[j].var()
+            mean.append(m)
+            var.append(v)
+            if weight :
+                noise=np.sqrt((rn/gain)**2 + (np.max([m-bias,0.1]))/gain)
+                w = noise*np.sqrt(2*(npix-1))/npix
+                if verbose : print(noise,w,v**2/w)
+            else :
+                w = 1
+            asym+=v**2/w
+
+    mean=np.array(mean)
+    var=np.array(var)
+
+    # Return total asymmetry, and mean and variance profiles
+    return asym, mean, var
