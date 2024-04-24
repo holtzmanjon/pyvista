@@ -9,10 +9,8 @@ from pyvista import imred, spectra, sdss, gaia, bitmask, stars, image
 try :import gaiaxpy
 except : print('no gaiaxpy...!')
 from pyvista.dataclass import Data
-from skimage.transform import SimilarityTransform, AffineTransform
 from holtztools import match,plots,html
 from scipy.ndimage import median_filter
-from scipy.signal import convolve
 import multiprocessing as mp
 from astropy.table import Table
 from astropy.io import fits
@@ -646,7 +644,8 @@ def mkyaml(mjd,obs='apo') :
         fp.close()
 
 
-def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None, threads=8, cams=None, 
+def arc_transform(mjd,obs='lco',refarc=None,thresh=400,nskip=40, rad=2,
+                  clobber=False, outdir=None, threads=8, cams=None, 
                   vers='test/sean/v6_1_1-tracetweak', planfile=True, backend='Agg') :
     """ Get transformations from first arc for all arcs on a given MJD
         Make plots and HTML page
@@ -724,14 +723,17 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
 
         im0=boss.reduce(reffile,channel=channel)
         print('finding lines in reference: ', reffile)
-        lines0=stars.find(im0.data,thresh=400,sharp=[0,0.5],round=[-0.25,0.75])[::nskip]
+        lines0=stars.find(im0.data,thresh=thresh,
+                          sharp=[0,0.5],round=[-0.25,0.75])[::nskip]
         print('automarking lines in reference: ', reffile)
-        lines=stars.automark(im0.data,lines0,rad=2,dx=0,dy=0,background=False,func='marginal_gfit')
+        lines=stars.automark(im0.data,lines0,rad=rad,dx=0,dy=0,
+                             background=False,func='marginal_gfit')
 
         if not planfile :
             log = boss.log(channel=cam)
             if len(log) == 0 : return
-            arcs = np.where((log['FLAVOR'] == 'arc') & (log['HARTMANN'] == 'Out'))[0]
+            arcs = np.where((log['FLAVOR'] == 'arc') & 
+                            (log['HARTMANN'] == 'Out'))[0]
             if len(arcs) <= 1 : return
 
         col1=[]
@@ -781,14 +783,14 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
                 col2.append(os.path.basename(hard).replace('.png','_compare.png'))
                 continue
 
-            linfit = outputs[iout]
-            im = pars[iout][1]
-            iout+=1
-            if linfit is None : 
+            if outputs[iout] is None : 
                 print('error with {:s}'.format(arcfile))
                 col2.append('')
-                pdb.set_trace()
                 continue
+
+            linfit = outputs[iout][0]
+            im = pars[iout][1]
+            iout+=1
 
             if planfile :
                 # calculate derived tracetable
@@ -850,92 +852,7 @@ def arc_transform(mjd,obs='lco',refarc=None,nskip=40, clobber=False, outdir=None
 
 def transform_thread(pars) :
     try :
-        return transform(pars[0],pars[1],pars[2],hard=pars[3])
+        return image.transform(pars[0],pars[1],pars[2],hard=pars[3])
     except :
         return None
 
-def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),hard=None,reject=1) :
-    """ Get geometric transformation between images based on point sources
-
-    Parameters
-    ----------
-        im0 : Data or array-like
-              Reference image
-        im : Data or array-like
-              Target image
-        lines0 : Table
-              Table with reference object positions ('x' and 'y')
-        xcoerr_shift : range
-              Range of cross-correlation shifts to try, default is range(-10,11)
-        hard : None or char
-              if char, make tranformation plots ('' to display, otherwise save to specified file name)
-    """
-
-    # 2D cross correlation
-    peak,shift=image.xcorr2d(im0,im,xlags=xlags,ylags=ylags)
-
-    # smooth cross correlation by by 3x3 kernel in case there are multiple peaks and the wrong one 
-    # happens to match pixel centering better
-    # Just use integer peak
-    kernel=np.ones([3,3])
-    indices=np.unravel_index(convolve(shift,kernel,mode='same').argmax(),shift.shape)
-    dy=indices[0]+ylags[0]
-    dx=indices[1]+xlags[0]
-    print('xcorr shifts: ',dx,dy)
-    print('automarking...',len(lines0))
-    lines=stars.automark(im.data,lines0,rad=2,dx=dx,dy=dy,background=False,func='marginal_gfit')
-
-    dx=np.nanmean(lines['x']-lines0['x'])
-    dy=np.nanmean(lines['y']-lines0['y'])
-    print('average shifts:',dx,dy)
-
-    print('fitting...')
-    lin=AffineTransform()
-    rot=SimilarityTransform()
-    gd = np.where((np.isfinite(lines0['x']))&(np.isfinite(lines['x'])))[0]
-    src=np.array([lines0['x'][gd]-2048,lines0['y'][gd]-2048]).T
-    dest=np.array([lines['x'][gd]-2048,lines['y'][gd]-2048]).T
-    lin.estimate(src,dest)
-    res=lin(src)-dest
-    #rot.estimate(src,dest)
-    #res=rot(src)-dest
-    # reject points with >1 pixel residual
-    gd=np.where((np.abs(res[:,0])<reject)&(np.abs(res[:,1])<reject))[0]
-    bd=np.where((np.abs(res[:,0])>reject)|(np.abs(res[:,1])>reject))[0]
-    print(len(gd),len(res))
-    rot.estimate(src[gd],dest[gd])
-    lin.estimate(src[gd],dest[gd])
-
-    if hard is not None :
-        fig,ax=plots.multi(3,1,figsize=(24,8),wspace=0.001)
-        ax[0].quiver(src[gd,0]+2048,src[gd,1]+2048,dest[gd,0]-src[gd,0]-dx,dest[gd,1]-src[gd,1]-dy,scale=20,width=0.005)
-        ax[0].quiver(src[bd,0]+2048,src[bd,1]+2048,dest[bd,0]-src[bd,0]-dx,dest[bd,1]-src[bd,1]-dy,scale=20,width=0.005,color='r')
-        ax[0].set_title('dx: {:.2f} dy: {:.2f}'.format(dx,dy))
-        res=rot(src)-dest
-        ax[1].quiver(src[gd,0]+2048,src[gd,1]+2048,res[gd,0],res[gd,1],scale=20,width=0.005)
-        ax[1].quiver(src[bd,0]+2048,src[bd,1]+2048,res[bd,0],res[bd,1],scale=20,width=0.005,color='r')
-        plots.plotc(ax[1],src[gd,0]+2048,src[gd,1]+2048,np.sqrt(res[gd,0]**2+res[gd,1]**2),size=10,zr=[0,0.5],cmap='viridis')
-        ax[1].set_title('sc: {:.6} rot: {:.2f} dx: {:.2f} dy: {:.2f}'.format(rot.scale,rot.rotation*180/np.pi,*rot.translation))
-        res=lin(src)-dest
-        ax[2].quiver(src[gd,0]+2048,src[gd,1]+2048,res[gd,0],res[gd,1],scale=20,width=0.005)
-        ax[2].quiver(src[bd,0]+2048,src[bd,1]+2048,res[bd,0],res[bd,1],scale=20,width=0.005,color='r')
-        cbar=plots.plotc(ax[2],src[gd,0]+2048,src[gd,1]+2048,np.sqrt(res[gd,0]**2+res[gd,1]**2),size=10,zr=[0,0.5],cmap='viridis')
-        ax[2].set_title('Full affine')
-        for i in range(3) :
-            ax[i].set_xlim(0,4095)
-            ax[i].set_ylim(0,4095)
-            ax[i].quiver(2000,250,1,0,color='g',scale=20,width=0.005)
-
-        fig.subplots_adjust(right=0.85)
-        cbar_ax = fig.add_axes([0.9, 0.15, 0.05, 0.7])
-        fig.colorbar(cbar, cax=cbar_ax)
-
-        if hard != '' :
-            fig.savefig(hard)
-        else :
-            plt.draw()
-            plt.show()
-            pdb.set_trace()
-        plt.close()
-
-    return lin

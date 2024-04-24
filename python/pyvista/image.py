@@ -5,11 +5,12 @@ from holtztools import plots
 from astropy import units as u
 from astropy.io import fits, ascii
 from astropy.modeling import models, fitting
-from astropy.convolution import convolve, Box1DKernel
 from astropy.nddata import StdDevUncertainty, support_nddata
+from pyvista import stars
 import scipy.signal
 import scipy.ndimage
 from scipy.optimize import curve_fit
+from skimage.transform import SimilarityTransform, AffineTransform
 import matplotlib.pyplot as plt
 import glob
 import bz2
@@ -224,7 +225,7 @@ def gauss2d_binned(X, amp, x0, y0, a, b, c, back) :
 def gauss2d(X, amp, x0, y0, a, b, c, back, binned=False) :
     """ Evaluate Gaussian 2D function  
 
-        Form: amp*exp(-a(x-x0)**2 - b(x-x0)*(y-y0) - c(y-y0)**2) + consth
+        Form: amp*exp(-a(x-x0)**2 - b(x-x0)*(y-y0) - c(y-y0)**2) + const
 
         Parameters
         ----------
@@ -243,6 +244,46 @@ def gauss2d(X, amp, x0, y0, a, b, c, back, binned=False) :
         out= (amp/100.*(np.exp(-a*(xx-x0)**2-b*(xx-x0)*(yy-y0)-c*(yy-y0)**2))).reshape(x.shape[0],10,y.shape[0],10).sum(3).sum(1)+back
     else :
         out= amp*(np.exp(-a*(x-x0)**2-b*(x-x0)*(y-y0)-c*(y-y0)**2))+back
+
+    return out.flatten()
+
+def gh2d_wrapper(X, N, *args) :
+    gpars = args[0][:5]
+    hpars = np.array(args[0][5:5+N**2]).reshape(N,N)
+    back = args[0][-1]
+    return gh2d(X, gpars, hpars, back)
+
+def gh2d(X, gpars, hpars, back, binned=False) :
+    """ Evaluate Gauss-Hermite 2D function  
+
+        Form: exp(-a(x-x0)**2 - b(x-x0)*(y-y0) - c(y-y0)**2) + const
+
+        Parameters
+        ----------
+        X : arraylike [2,npts]
+            x,y positions to evaluate at
+        x0, y0, a, b, c, back : float
+            coefficients of function
+    """
+    x = X[0]
+    y = X[1]
+
+    x0, y0, a, b, c = gpars
+    if len(hpars) > 0 :
+        #p = np.polynomial.hermite.hermval2d((x-x0),(y-y0),hpars)
+        nherm = len(hpars)
+        p=0
+        for iy in range(nherm) :
+            for ix in range(nherm) :
+                p+=hpars[iy,ix]*scipy.special.eval_hermitenorm(ix,x-x0)*scipy.special.eval_hermitenorm(iy,y-y0)
+    else :
+        p = 1
+    if binned :
+        # use 10x10 sub-bins
+        yy,xx=np.mgrid[y.min()-0.5:y.max()+0.5:0.1,x.min()-0.5:x.max()+0.5:0.1]
+        out= (p/100.*(np.exp(-a*(xx-x0)**2-b*(xx-x0)*(yy-y0)-c*(yy-y0)**2))).reshape(x.shape[0],10,y.shape[0],10).sum(3).sum(1)+back
+    else :
+        out= p*(np.exp(-a*(x-x0)**2-b*(x-x0)*(y-y0)-c*(y-y0)**2))+back
 
     return out.flatten()
 
@@ -275,7 +316,7 @@ def gfit2d(data,x0,y0,size=5,fwhm=3.,sub=True,plot=None,fig=1,scale=1,pafixed=Fa
     # use initial guess to get peak
     z=data[int(y0)-size:int(y0)+size+1,int(x0)-size:int(x0)+size+1]
     # refine subarray around peak
-    xcen,ycen=np.unravel_index(np.argmax(z),z.shape)
+    ycen,xcen=np.unravel_index(np.argmax(z),z.shape)
     xcen+=(int(x0)-size)
     ycen+=(int(y0)-size)
 
@@ -307,7 +348,7 @@ def gfit2d(data,x0,y0,size=5,fwhm=3.,sub=True,plot=None,fig=1,scale=1,pafixed=Fa
             plot.text(0.9,0.9,'x: {:7.1f} y: {:7.1f} fw: {:8.2f}'.format(xc,yc,fwhm),transform=plot.transAxes,ha='right')
             plt.draw()
         if sub :
-            data[ycen-size:ycen+size,xcen-size:xcen+size]-=g[0](x,y)
+            data[ycen-size:ycen+size+1,xcen-size:xcen+size+1]-=g[0](x,y)
        
         return g
 
@@ -339,21 +380,74 @@ def gfit2d(data,x0,y0,size=5,fwhm=3.,sub=True,plot=None,fig=1,scale=1,pafixed=Fa
             plot.text(0.9,0.9,'x: {:7.1f} y: {:7.1f} fw: {:8.2f}'.format(xc,yc,fwhm),transform=plot.transAxes,ha='right')
             plt.draw()
         if sub :
-            data[ycen-size:ycen+size,xcen-size:xcen+size]-=gauss2d(np.array([x,y]),*g[0]).reshape(-2*size,2*size)
+            data[ycen-size:ycen+size+1,xcen-size:xcen+size+1]-=gauss2d(np.array([x,y]),*g[0]).reshape(-2*size+1,2*size+1)
         return np.array([amp,x0,y0,xfwhm,yfwhm,theta,back])
+
+def ghfit2d_thread(pars) :
+    """ 
+    Wrapper for ghfit2d for multithreading, with just a single argument
+    """
+    data,x0,y0,size,binned,nherm =  pars
+    return ghfit2d(data,x0,y0,size=size,binned=binned,nherm=nherm)
+
+def ghfit2d(data,x0,y0,size=5,fwhm=3.,nherm=6,sub=True,plot=None,fig=1,scale=1,pafixed=False,binned=False,
+            p0=None, bounds=None) :
+    """ 
+    Does 2D Gauss-Hermite fit to input data given initial xcen,ycen
+    """
+
+    # use initial guess to get peak
+    z=data[int(y0)-size:int(y0)+size+1,int(x0)-size:int(x0)+size+1]
+    # refine subarray around peak
+    ycen,xcen=np.unravel_index(np.argmax(z),z.shape)
+    xcen+=(int(x0)-size)
+    ycen+=(int(y0)-size)
+
+    # set up input data and fit
+    y,x=np.mgrid[ycen-size:ycen+size+1,xcen-size:xcen+size+1]
+    z=data[ycen-size:ycen+size+1,xcen-size:xcen+size+1]
+
+    if p0 is None :
+        p0=np.array([xcen,ycen,1./(2*(fwhm/sig2fwhm)**2),0.3,1./(2*(fwhm/sig2fwhm)**2)]+[data[ycen,xcen]]+(nherm*nherm-1)*[0.]+[0.])
+    if bounds is None :
+        bounds=([0.,0.,0.,0.,0.,0.]+(nherm*nherm-1)*[-np.inf]+[-np.inf],
+                [2048.,2048.,np.inf,np.inf,np.inf,np.inf]+(nherm*nherm-1)*[np.inf]+[np.inf])
+    X = np.array([x.flatten(),y.flatten()])
+    if binned :
+        g=curve_fit(gh2d_binned,X,z.flatten(), p0=p0)
+    else :
+        try : g,cov,info,mesg,ier=curve_fit(lambda X, *params : gh2d_wrapper(X, nherm, params),X,z.flatten(), p0=p0, bounds=bounds,full_output=True)
+        except : 
+            g=p0
+            cov=None
+            info={}
+
+    # translate parameters to xfwhm,yfwhm,theta
+    x0,y0,a,b,c=g[:5]
+    theta=0.5*np.arctan(b/(a-c))
+    xfwhm=np.sqrt(1/(2*a*np.cos(theta)**2+2*b*np.cos(theta)*np.sin(theta)+2*c*np.sin(theta)**2))*sig2fwhm
+    yfwhm=np.sqrt(1/(2*a*np.sin(theta)**2-2*b*np.cos(theta)*np.sin(theta)+2*c*np.cos(theta)**2))*sig2fwhm
+    print('xFWHM:{:8.2f}   yFWHM:{:8.2f}   FWHM:{:8.2f}  SCALE:{:8.2f}  PA:{:8.2f}'.format(
+           xfwhm,yfwhm,np.sqrt(xfwhm*yfwhm),scale,(theta%(2*np.pi))*180/np.pi))
+    if sub :
+        try :data[ycen-size:ycen+size+1,xcen-size:xcen+size+1]-=gh2d_wrapper(np.array([x,y]),nherm,g).reshape(2*size+1,2*size+1)
+        except : pass
+    return np.array(g),cov,info
 
 def fit2d(X,Y,Z) :
     """ Fit 2D quadratic surface
     """
     gd=np.where(np.isfinite(Z))
-    A = np.array([X[gd]*0+1, X[gd], Y[gd], X[gd]**2, X[gd]**2*Y[gd], X[gd]**2*Y[gd]**2, Y[gd]**2, X[gd]*Y[gd]**2, X[gd]*Y[gd]]).T
+    #A = np.array([X[gd]*0+1, X[gd], Y[gd], X[gd]**2, X[gd]**2*Y[gd], X[gd]**2*Y[gd]**2, Y[gd]**2, X[gd]*Y[gd]**2, X[gd]*Y[gd]]).T
+    A = np.array([X[gd]*0+1, X[gd], Y[gd], X[gd]**2, X[gd]*Y[gd], Y[gd]**2]).T
     coeff, r, rank, s = np.linalg.lstsq(A, Z[gd])
     return coeff
 
 def mk2d(X,Y,coeff) :
     """ Return 2D surface given input points and coefficients
     """
-    A = np.array([X*0+1, X, Y, X**2, X**2*Y, X**2*Y**2, Y**2, X*Y**2, X*Y]).T
+    #A = np.array([X*0+1, X, Y, X**2, X**2*Y, X**2*Y**2, Y**2, X*Y**2, X*Y]).T
+    A = np.array([X*0+1, X, Y, X**2, X*Y, Y**2]).T
     return np.dot(A,coeff)
 
 def window(hdu,box) :
@@ -730,7 +824,8 @@ def xcorr2d(a,b,lags=None,xlags=None,ylags=None) :
         for j, ylag in enumerate(ylags) :
             shift[j,i] = np.sum(a.data[ys:ye,xs:xe]*b.data[ys+ylag:ye+ylag,xs+xlag:xe+xlag])
 
-    y,x=np.meshgrid(ylags,xlags)
+    #y,x=np.meshgrid(ylags,xlags)
+    x,y=np.meshgrid(xlags,ylags)
     yp,xp=np.unravel_index(shift.argmax(),shift.shape)
     print('yp, xp:',yp,xp,len(xlags),len(ylags))
     if xp == 0 or yp == 0 or xp > len(xlags)-2 or yp > len(ylags)-2 :
@@ -778,7 +873,7 @@ def minmax(data,mask=None, low=3,high=10):
    
         Args:
             img : input CCDData
-            low : number of MADs below median to retunr
+            low : number of MADs below median to return
             high : number of MADs above median to retunr
 
         Returns:
@@ -788,9 +883,123 @@ def minmax(data,mask=None, low=3,high=10):
         gd = np.where(np.isfinite(data) & ~mask)
     else :
         gd = np.where(np.isfinite(data))
-    #std=scipy.stats.median_absolute_deviation(data[gd])
     std=np.median(np.abs(data[gd]-np.median(data[gd])))
     min = np.median(data[gd])-low*std
     max = np.median(data[gd])+high*std
     return min,max
 
+
+def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),
+              rad=2,scale=20,hard=None,reject=1) :
+    """ Get geometric transformation between images based on point sources
+
+    Parameters
+    ----------
+        im0 : Data or array-like
+              Reference image
+        im : Data or array-like
+              Target image
+        lines0 : Table
+              Table with reference object positions ('x' and 'y')
+        xlags, ylags : range
+              Range of cross-correlation shifts to try, default is range(-11,12) and (-17,18)
+        rad : float, default=2
+              radius for automark
+        scale : integer, default=20
+              scale for quiver plots
+        hard : None or char
+              if char, make tranformation plots ('' to display, otherwise save to specified file name)
+    """
+
+    nr,nc=im.data.shape
+
+    # 2D cross correlation
+    peak,shift=xcorr2d(im0,im,xlags=xlags,ylags=ylags)
+
+    # smooth cross correlation by by 3x3 kernel in case there are multiple
+    # peaks and the wrong one happens to match pixel centering better
+    # Just use integer peak
+    kernel=np.ones([3,3])
+    indices=np.unravel_index(
+              scipy.signal.convolve(shift,kernel,mode='same').argmax(),shift.shape)
+    dy=indices[0]+ylags[0]
+    dx=indices[1]+xlags[0]
+    print('xcorr shifts: ',dx,dy)
+    print('automarking...',len(lines0))
+    lines=stars.automark(im.data,lines0,rad=rad,dx=dx,dy=dy,
+                         background=False,func='marginal_gfit')
+
+    dx=np.nanmean(lines['x']-lines0['x'])
+    dy=np.nanmean(lines['y']-lines0['y'])
+    print('average shifts:',dx,dy)
+
+    print('fitting...')
+    lin=AffineTransform()
+    rot=SimilarityTransform()
+    gd = np.where((np.isfinite(lines0['x']))&(np.isfinite(lines['x'])))[0]
+    src=np.array([lines0['x'][gd]-nc//2,lines0['y'][gd]-nr//2]).T
+    dest=np.array([lines['x'][gd]-nc//2,lines['y'][gd]-nr//2]).T
+    lin.estimate(src,dest)
+    res=lin(src)-dest
+    #rot.estimate(src,dest)
+    #res=rot(src)-dest
+    # reject points with >1 pixel residual
+    gd=np.where((np.abs(res[:,0])<reject)&(np.abs(res[:,1])<reject))[0]
+    bd=np.where((np.abs(res[:,0])>reject)|(np.abs(res[:,1])>reject))[0]
+    print(len(gd),len(res))
+    rot.estimate(src[gd],dest[gd])
+    lin.estimate(src[gd],dest[gd])
+
+    if hard is not None :
+        fig,ax=plots.multi(4,1,figsize=(24,6),wspace=0.001)
+        ax[0].quiver(src[gd,0]+nc//2,src[gd,1]+nr//2,
+                     dest[gd,0]-src[gd,0],dest[gd,1]-src[gd,1],
+                     scale=scale,width=0.005)
+        ax[0].quiver(src[bd,0]+nc//2,src[bd,1]+nr//2,
+                     dest[bd,0]-src[bd,0]-dx,dest[bd,1]-src[bd,1]-dy,
+                     scale=scale,width=0.005,color='r')
+        ax[1].quiver(src[gd,0]+nc//2,src[gd,1]+nr//2,
+                     dest[gd,0]-src[gd,0]-dx,dest[gd,1]-src[gd,1]-dy,
+                     scale=scale,width=0.005)
+        ax[1].quiver(src[bd,0]+nc//2,src[bd,1]+nr//2,
+                     dest[bd,0]-src[bd,0]-dx,dest[bd,1]-src[bd,1]-dy,
+                     scale=scale,width=0.005,color='r')
+        ax[1].set_title('dx: {:.2f} dy: {:.2f}'.format(dx,dy))
+        res=rot(src)-dest
+        ax[2].quiver(src[gd,0]+nc//2,src[gd,1]+nr//2,res[gd,0],res[gd,1],
+                     scale=scale,width=0.005)
+        ax[2].quiver(src[bd,0]+nc//2,src[bd,1]+nr//2,res[bd,0],res[bd,1],
+                     scale=scale,width=0.005,color='r')
+        plots.plotc(ax[2],src[gd,0]+nc//2,src[gd,1]+nr//2,
+                    np.sqrt(res[gd,0]**2+res[gd,1]**2),
+                    size=10,zr=[0,0.5],cmap='viridis')
+        ax[2].set_title('sc: {:.6} rot: {:.2f} dx: {:.2f} dy: {:.2f} res: {:.3f}'.format(
+                    rot.scale,rot.rotation*180/np.pi,*rot.translation,res.std()))
+        res=lin(src)-dest
+        ax[3].quiver(src[gd,0]+nc//2,src[gd,1]+nr//2,res[gd,0],res[gd,1],
+                     scale=scale,width=0.005)
+        ax[3].quiver(src[bd,0]+nc//2,src[bd,1]+nr//2,res[bd,0],res[bd,1],
+                     scale=scale,width=0.005,color='r')
+        cbar=plots.plotc(ax[3],src[gd,0]+nc//2,src[gd,1]+nr//2,
+                     np.sqrt(res[gd,0]**2+res[gd,1]**2),
+                     size=10,zr=[0,0.5],cmap='viridis')
+        ax[3].set_title('Full affine: {:.3f}'.format(res.std()))
+        for i in range(4) :
+            ax[i].set_xlim(0,nc)
+            ax[i].set_ylim(0,nr)
+            ax[i].quiver(nc//2,250,1,0,color='g',scale=scale,width=0.005)
+
+        fig.subplots_adjust(right=0.85)
+        cbar_ax = fig.add_axes([0.9, 0.15, 0.05, 0.7])
+        fig.colorbar(cbar, cax=cbar_ax)
+
+        if hard != '' :
+            fig.savefig(hard)
+            plt.close()
+        else :
+            plt.draw()
+            plt.show()
+            pdb.set_trace()
+        plt.close()
+
+    return lin,rot

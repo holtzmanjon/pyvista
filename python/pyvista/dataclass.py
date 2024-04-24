@@ -18,7 +18,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import pdb
-from pyvista import bitmask, image
+from pyvista import bitmask
 try : from linetools.spectra.xspectrum1d import XSpectrum1D
 except: pass
 
@@ -264,7 +264,7 @@ class Data(CCDData) :
             #matplotlib.use('Agg')
             if imshow :
                 fig=plt.figure(figsize=(12,9))
-                vmin,vmax=image.minmax(self.data)
+                vmin,vmax=minmax(self.data)
                 plt.imshow(self.data,vmin=vmin,vmax=vmax,
                        cmap='Greys_r',interpolation='nearest',origin='lower')
                 plt.colorbar(shrink=0.8)
@@ -473,4 +473,24 @@ def transpose(im) :
                    uncertainty=StdDevUncertainty(im.uncertainty.array.T),
                    bitmask=im.bitmask.T,unit=u.dimensionless_unscaled)
 
+
+def minmax(data,mask=None, low=3,high=10):
+    """ Return min,max scaling factors for input data using median, and MAD
+
+        Args:
+            img : input CCDData
+            low : number of MADs below median to return
+            high : number of MADs above median to retunr
+
+        Returns:
+            min,max : low and high scaling factors
+    """
+    if mask is not None :
+        gd = np.where(np.isfinite(data) & ~mask)
+    else :
+        gd = np.where(np.isfinite(data))
+    std=np.median(np.abs(data[gd]-np.median(data[gd])))
+    min = np.median(data[gd])-low*std
+    max = np.median(data[gd])+high*std
+    return min,max
 
