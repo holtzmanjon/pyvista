@@ -227,8 +227,10 @@ def mkyaml(mjd,obs='apo') :
 
     if obs == 'apo' :
         red=imred.Reducer('APOGEE',dir=os.environ['APOGEE_DATA_N']+'/'+str(mjd))
+        obj0=-1  # image to use to match flat
     else :
         red=imred.Reducer('APOGEES',dir=os.environ['APOGEE_DATA_S']+'/'+str(mjd))
+        obj0=0   # image to use to match flat
 
     if mjd > 59600 :
         files = red.log(cols=['DATE-OBS','FIELDID','EXPTYPE','CONFIGID'],ext='apz',hdu=1,channel='-b-')
@@ -258,14 +260,14 @@ def mkyaml(mjd,obs='apo') :
 
         # get QUARTZFLAT nearest in time for psfid
         flats = np.where((files['EXPTYPE'] == 'QUARTZFLAT'))[0]
-        jmin= np.argmin(np.abs(Time(files['DATE-OBS'][flats])-Time(files['DATE-OBS'][obj[0]])))
+        jmin= np.argmin(np.abs(Time(files['DATE-OBS'][flats])-Time(files['DATE-OBS'][obj[obj0]])))
         expno=files[flats[jmin]]['FILE'].split('-')[2].replace('.apz','')
         psfid=expno
         fp.write('psfid: {:s}\n'.format(psfid))
 
         # get DOMEFLAT nearest in time for fluxid
         flats = np.where((files['EXPTYPE'] == 'DOMEFLAT'))[0]
-        jmin= np.argmin(np.abs(Time(files['DATE-OBS'][flats])-Time(files['DATE-OBS'][obj[0]])))
+        jmin= np.argmin(np.abs(Time(files['DATE-OBS'][flats])-Time(files['DATE-OBS'][obj[obj0]])))
         expno=files[flats[jmin]]['FILE'].split('-')[2].replace('.apz','')
         fluxid=expno
         fp.write('fluxid: {:s}\n'.format(expno))
