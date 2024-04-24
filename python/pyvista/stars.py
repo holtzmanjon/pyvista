@@ -801,7 +801,7 @@ asymm     measure of asymmetry:
               pixNoise(radindex) = sqrt((readNoise/ccdGain)^2 + (meanVal(rad)-bias)/ccdGain)
 """
 
-def rasym_centroid(data,x0,y0,rad=25,weight=False,mask=None,verbose=False) :
+def rasym_centroid(data,x0,y0,rad=25,weight=False,mask=None,verbose=False,skyrad=None,maxiter=10) :
     """ Get centroid via calculation of minimum asymmetry
 
     Parameters
@@ -814,21 +814,33 @@ def rasym_centroid(data,x0,y0,rad=25,weight=False,mask=None,verbose=False) :
            Maximum extent to calculate radial profile and sum asymmetry over
     """
 
+    if skyrad is not None :
+        pix = np.mgrid[0:data.shape[0],0:data.shape[1]]
+        ypix = pix[0]
+        xpix = pix[1]
+        dist2 = (xpix-x0)**2 + (ypix-y0)**2
+        gd = np.where((dist2 > skyrad[0]**2) & 
+                      (dist2 < skyrad[1]**2) ) 
+        sky,skysig,skyskew,nsky = mmm.mmm(data[gd[0],gd[1]].flatten())
+        sigsq=skysig**2/nsky
+
     # we will iterate 3x3 calculation of minimum asymmetry until minimum is at central point
     iter = 0
     while True :
         if verbose : print('iter: ', iter)
-        minasym=1.e10
+        minasym=1.e100
         asym = np.zeros([3,3])
         for dy in [-1,0,1] :
             for dx in [-1,0,1] :
-                asym[dy+1,dx+1]=rprof(data,x0+dx,y0+dy,rad=rad,weight=weight,mask=mask,verbose=verbose)[0]
+                prof=rprof(data-sky,x0+dx,y0+dy,rad=rad,weight=weight,mask=mask,verbose=verbose)
+                asym[dy+1,dx+1]=prof[0]
                 if verbose : print(x0+dx,y0+dy,asym)
                 if asym[dy+1,dx+1]<minasym :
                     # if this is lowest asymmetry, save point
                     x1 = x0+dx
                     y1 = y0+dy
                     minasym=asym[dy+1,dx+1]
+                    minprof=prof[1]
         # if central point hasn't changed, we are done
         if x1==x0 and y1==y0 : 
             # if central point hasn't changed, we are done
@@ -838,6 +850,9 @@ def rasym_centroid(data,x0,y0,rad=25,weight=False,mask=None,verbose=False) :
             x0=x1
             y0=y1
             iter+=1
+            if iter>maxiter: 
+                print('exceeded {:d} iterations'.format(maxiter))
+                return -1,-1, minprof
 
     # now do parabolic fit to get fractional centroid
     ai = 0.5 * (asym[2,1] - 2*asym[1,1] + asym[0,1])
@@ -846,13 +861,14 @@ def rasym_centroid(data,x0,y0,rad=25,weight=False,mask=None,verbose=False) :
     bj = 0.5 * (asym[1,2] - asym[1,0])
     di = -0.5*bi/ai
     dj = -0.5*bj/aj
-    print(x1,y1)
-    print(x1+dj,y1+di)
+    if verbose : 
+        print(iter,x1,y1)
+        print(x1+dj,y1+di)
 
-    return x1+dj, y1+di
+    return x1+dj, y1+di, minprof
 
 
-def rprof(data,x0,y0,rad=25,weight=False,mask=None,gain=1,rn=0,bias=0,verbose=False) :
+def rprof(indata,x0,y0,rad=25,weight=False,mask=None,gain=1,rn=0,bias=0,verbose=False) :
     """ Calculate asymmetry profile and total asymmetry
 
     Parameters
@@ -865,9 +881,13 @@ def rprof(data,x0,y0,rad=25,weight=False,mask=None,gain=1,rn=0,bias=0,verbose=Fa
           Maximum radius
     """
 
+    # subarray needed for speed!
+    data = indata[int(y0-rad-2):int(y0+rad+2),int(x0-rad-2):int(x0+rad+2)]
+
     # calculate r**2 array of distances from input center
     y,x = np.mgrid[0:data.shape[0],0:data.shape[1]]
-    r2 = (x-x0)**2 + (y-y0)**2
+    #r2 = (x-int(x0))**2 + (y-int(y0))**2
+    r2 = (x-(rad+2))**2 + (y-(rad+2))**2
 
     # determine the radius index array that we will use to
     #   determine the pixels that go into each "radius"
@@ -899,16 +919,17 @@ def rprof(data,x0,y0,rad=25,weight=False,mask=None,gain=1,rn=0,bias=0,verbose=Fa
         j=np.where(rind==r)
         npix = len(j[0])
         if npix > 3 :
-            m = data[j].mean()
-            v=data[j].var()
+            m = np.nanmean(data[j])
+            v=np.nanvar(data[j])
             mean.append(m)
             var.append(v)
             if weight :
                 noise=np.sqrt((rn/gain)**2 + (np.max([m-bias,0.1]))/gain)
                 w = noise*np.sqrt(2*(npix-1))/npix
-                if verbose : print(noise,w,v**2/w)
+                if verbose : print(r,npix,noise,w,v**2/w)
             else :
                 w = 1
+                if verbose : print(r,npix,v**2)
             asym+=v**2/w
 
     mean=np.array(mean)
