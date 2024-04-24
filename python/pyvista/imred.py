@@ -72,7 +72,7 @@ class Reducer() :
 
 
     """
-    def __init__(self,inst=None,conf='',dir='./',root='*',formstr='{04d}',
+    def __init__(self,inst=None,conf='',dir='./',root='*',formstr='{:04d}.f*',
                  gain=1,rn=0.,saturation=2**32,verbose=True,nfowler=1) :
         """  Initialize reducer with information about how to reduce
         """
@@ -86,6 +86,11 @@ class Reducer() :
         self.transpose=None
         self.scale=1
         self.biastype=-1
+        self.biasbox=[]
+        self.trimbox=[]
+        self.normbox=[]
+        self.ext='fits'
+        self.inst='generic'
 
         # we will allow for instruments to have multiple channels, so everything goes in lists
         self.channels=['']
@@ -495,7 +500,7 @@ class Reducer() :
             rn = self.rn[chan]
 
             # find the files that match the directory/format
-            if type(num) is int :
+            if isinstance(num,(int,np.int64)) :
                 search=self.dir+'/'+self.root+form.format(num)
             elif type(num) is str or type(num) is np.str_ :
                 if num.find('/') >= 0 :
