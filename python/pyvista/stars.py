@@ -823,6 +823,8 @@ def rasym_centroid(data,x0,y0,rad=25,weight=False,mask=None,verbose=False,skyrad
                       (dist2 < skyrad[1]**2) ) 
         sky,skysig,skyskew,nsky = mmm.mmm(data[gd[0],gd[1]].flatten())
         sigsq=skysig**2/nsky
+    else :
+        sky=0
 
     # we will iterate 3x3 calculation of minimum asymmetry until minimum is at central point
     iter = 0
@@ -832,7 +834,7 @@ def rasym_centroid(data,x0,y0,rad=25,weight=False,mask=None,verbose=False,skyrad
         asym = np.zeros([3,3])
         for dy in [-1,0,1] :
             for dx in [-1,0,1] :
-                prof=rprof(data-sky,x0+dx,y0+dy,rad=rad,weight=weight,mask=mask,verbose=verbose)
+                prof=rprof(data-sky,x0+dx,y0+dy,rad=rad,weight=weight,inmask=mask,verbose=verbose)
                 asym[dy+1,dx+1]=prof[0]
                 if verbose : print(x0+dx,y0+dy,asym)
                 if asym[dy+1,dx+1]<minasym :
@@ -840,7 +842,8 @@ def rasym_centroid(data,x0,y0,rad=25,weight=False,mask=None,verbose=False,skyrad
                     x1 = x0+dx
                     y1 = y0+dy
                     minasym=asym[dy+1,dx+1]
-                    minprof=prof[1]
+                    tot=prof[1]
+                    minprof=prof[2]
         # if central point hasn't changed, we are done
         if x1==x0 and y1==y0 : 
             # if central point hasn't changed, we are done
@@ -852,7 +855,7 @@ def rasym_centroid(data,x0,y0,rad=25,weight=False,mask=None,verbose=False,skyrad
             iter+=1
             if iter>maxiter: 
                 print('exceeded {:d} iterations'.format(maxiter))
-                return -1,-1, minprof
+                return -1,-1, minprof, tot
 
     # now do parabolic fit to get fractional centroid
     ai = 0.5 * (asym[2,1] - 2*asym[1,1] + asym[0,1])
@@ -865,10 +868,10 @@ def rasym_centroid(data,x0,y0,rad=25,weight=False,mask=None,verbose=False,skyrad
         print(iter,x1,y1)
         print(x1+dj,y1+di)
 
-    return x1+dj, y1+di, minprof
+    return x1+dj, y1+di, minprof, tot
 
 
-def rprof(indata,x0,y0,rad=25,weight=False,mask=None,gain=1,rn=0,bias=0,verbose=False) :
+def rprof(indata,x0,y0,rad=25,weight=False,inmask=None,gain=1,rn=0,bias=0,verbose=False) :
     """ Calculate asymmetry profile and total asymmetry
 
     Parameters
@@ -883,6 +886,8 @@ def rprof(indata,x0,y0,rad=25,weight=False,mask=None,gain=1,rn=0,bias=0,verbose=
 
     # subarray needed for speed!
     data = indata[int(y0-rad-2):int(y0+rad+2),int(x0-rad-2):int(x0+rad+2)]
+    if inmask is not None :
+        mask = inmask[int(y0-rad-2):int(y0+rad+2),int(x0-rad-2):int(x0+rad+2)]
 
     # calculate r**2 array of distances from input center
     y,x = np.mgrid[0:data.shape[0],0:data.shape[1]]
@@ -915,6 +920,7 @@ def rprof(indata,x0,y0,rad=25,weight=False,mask=None,gain=1,rn=0,bias=0,verbose=
     mean=[]
     var=[]
     asym=0
+    tot=0
     for r in range(rad) :
         j=np.where(rind==r)
         npix = len(j[0])
@@ -931,9 +937,10 @@ def rprof(indata,x0,y0,rad=25,weight=False,mask=None,gain=1,rn=0,bias=0,verbose=
                 w = 1
                 if verbose : print(r,npix,v**2)
             asym+=v**2/w
+            tot+=data[j]
 
     mean=np.array(mean)
     var=np.array(var)
 
     # Return total asymmetry, and mean and variance profiles
-    return asym, mean, var
+    return asym, tot, mean, var
