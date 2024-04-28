@@ -63,7 +63,7 @@ def automark(data,stars,rad=3,func='centroid',plot=None,dx=0,dy=0,verbose=False,
     new=copy.deepcopy(stars)
     for i,star in enumerate(new) :
         try :
-            x,y = center(data,star['x']+dx,star['y']+dy,rad,plot=plot,verbose=verbose,background=background)
+            x,y,tot = center(data,star['x']+dx,star['y']+dy,rad,plot=plot,verbose=verbose,background=background)
             new[i]['x'] = x
             new[i]['y'] = y
         except :
@@ -120,7 +120,7 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False,
                 stars['MJD'].info.format = '.6f'
             except: pass
             for star in stars :
-                x,y = center(tv.img,star['x'],star['y'],rad)
+                x,y,tot = center(tv.img,star['x'],star['y'],rad)
                 star['x'] = x
                 star['y'] = y
                 if dateobs is not None : star['MJD'] = dateobs.mjd
@@ -147,10 +147,10 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False,
             y = round(y)
         elif key == 'c' :
             # centroid around marked position
-            x,y = centroid(tv.img,x,y,rad)
+            x,y,tot = centroid(tv.img,x,y,rad)
         elif key == 'g' :
             # gaussian fit to marginal distribution around marked position
-            x,y= gfit2(tv.img,x,y,rad,plot=tv)
+            x,y,tot= gfit2(tv.img,x,y,rad,plot=tv)
             print(x,y)
         elif key == 'n' :
             j=np.argmin((x-stars['x'])**2+(y-stars['y'])**2)
@@ -386,7 +386,7 @@ def centroid(data,x,y,r,verbose=False,plot=None,background=True) :
         if verbose: print(iter,x,y)
         iter+=1
     if iter > 9 : print('possible centroiding convergence issues, consider using a larger radius?')
-    return x,y
+    return x,y,norm
 
 def marginal_gfit(data,x,y,rad,verbose=False,background=True,plot=False) :
     """ Gaussian fit to marginal distribution
@@ -399,8 +399,10 @@ def marginal_gfit(data,x,y,rad,verbose=False,background=True,plot=False) :
         y0=int(y)
         coeff = spectra.gfit(data[y0-rad:y0+rad+1,x0-2*rad:x0+2*rad+1].sum(axis=0),rad*2,sig=rad/2.,rad=rad,back=background)
         x = coeff[1]+x0-2*rad
+        xtot = coeff[0]*np.sqrt(2*np.pi*coeff[2])
         coeff = spectra.gfit(data[y0-2*rad:y0+2*rad+1,x0-rad:x0+rad+1].sum(axis=1),rad*2,sig=rad/2.,rad=rad,back=background)
         y = coeff[1]+y0-2*rad
+        ytot = coeff[0]*np.sqrt(2*np.pi*coeff[2])
         if round(x) == xold and round(y) == yold : break
         xold = round(x)
         yold = round(y)
@@ -409,18 +411,7 @@ def marginal_gfit(data,x,y,rad,verbose=False,background=True,plot=False) :
 
     if iter > 9 : print('possible centroiding convergence issues, consider using a larger radius?')
 
-    return x, y
-
-    xx = np.arange(x0-rad,x0+rad+1)
-    yy = data[x0-rad:x0+rad+1]
-    peak=yy.argmax()+x0-rad
-    xx = np.arange(peak-rad,peak+rad+1)
-    yy = data[peak-rad:peak+rad+1]
-    if back == None : p0 = [data[peak],peak,sig]
-    else : p0 = [data[peak],peak,sig,back]
-
-    coeff, var_matrix = curve_fit(gauss, xx, yy, p0=p0)
-    fit = gauss(xx,*coeff)
+    return x, y, (xtot+ytot)/2.
 
 def gauss3(x,*p) :
     if len(p) == 10 : A, mu, sigma, B, Bmu, Bsigma, C, Cmu, Csigma, back = p
@@ -542,7 +533,7 @@ def gfit2(data,x,y,rad,verbose=False,plot=None,background=True) :
         print(ycoeff)
         plt.show()
 
-    return x, y
+    return x, y, 0.
 
 def process_all(files,red,tab,bias=None,dark=None,flat=None,threads=8, display=None, solve=True,
             seeing=15,rad=[3,5,7],skyrad=[10,15],cards=['EXPTIME','FILTER','AIRMASS']):
@@ -834,18 +825,18 @@ def rasym_centroid(data,x0,y0,rad=25,weight=False,mask=None,verbose=False,skyrad
         asym = np.zeros([3,3])
         for dy in [-1,0,1] :
             for dx in [-1,0,1] :
-                prof=rprof(data-sky,x0+dx,y0+dy,rad=rad,weight=weight,inmask=mask,verbose=verbose)
+                prof=rprof(data-sky,round(x0)+dx,round(y0)+dy,rad=rad,weight=weight,inmask=mask,verbose=verbose)
                 asym[dy+1,dx+1]=prof[0]
-                if verbose : print(x0+dx,y0+dy,asym)
+                if verbose : print(round(x0)+dx,round(y0)+dy,asym)
                 if asym[dy+1,dx+1]<minasym :
                     # if this is lowest asymmetry, save point
-                    x1 = x0+dx
-                    y1 = y0+dy
+                    x1 = round(x0)+dx
+                    y1 = round(y0)+dy
                     minasym=asym[dy+1,dx+1]
                     tot=prof[1]
                     minprof=prof[2]
         # if central point hasn't changed, we are done
-        if x1==x0 and y1==y0 : 
+        if x1==round(x0) and y1==round(y0) : 
             # if central point hasn't changed, we are done
             break
         else : 
