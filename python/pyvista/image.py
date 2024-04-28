@@ -50,8 +50,8 @@ class BOX() :
             print('You much specify nc= with nr=')
 
         if cr is not None and cc is not None :
-            sr=cr-nr/2
-            sc=cc-nr/2
+            sr=cr-nr//2
+            sc=cc-nr//2
 
         if xr is not None :
             self.xmin=xr[0]
