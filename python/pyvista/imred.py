@@ -392,7 +392,7 @@ class Reducer() :
 
         return tab
 
-    def movie(self,ims,display=None,out='movie.gif',channel=0) :
+    def movie(self,ims,display=None,out='movie.gif',channel=0,min=None, max=None) :
         """
         Create animated gif of images
 
@@ -407,11 +407,11 @@ class Reducer() :
 
         files = []
         for im in ims :
-            a=self.rd(im,channel=channel)
-            display.tv(a)
-            y,x=a.data.shape
             display.clear()
-            display.tvtext(x//2,y//2,'{:d} {:f}'.format(im,a.header['EXPTIME']),color='r')
+            a=self.rd(im,channel=channel)
+            display.tv(a,min=min,max=max)
+            y,x=a.data.shape
+            display.tvtext(x//2,y*3//4,'{:d} {:f}'.format(im,a.header['EXPTIME']),color='r')
             display.savefig('tmpimage{:d}.png'.format(im))
             files.append('tmpimage{:d}.png'.format(im))
 
