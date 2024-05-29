@@ -52,6 +52,7 @@ def find(data,fwhm=4,thresh=4000,sharp=[0.,1.],round=[-2.,2.],brightest=None) :
                             roundlo=round[0],roundhi=round[1],
                             exclude_border=True)
     sources=daofind(data)
+    if sources is None : return sources
     sources.rename_column('xcentroid','x')
     sources.rename_column('ycentroid','y')
     return sources
