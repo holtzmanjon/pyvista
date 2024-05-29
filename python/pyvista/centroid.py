@@ -52,6 +52,16 @@ def centroid(data,x,y,r,verbose=False,plot=None,background=True,header=None) :
     return center
 
 @support_nddata
+def peak(data,x,y) :
+    """ Return location of peak
+    """
+    sky,skysig,skyskew,nsky = mmm.mmm(data.flatten())
+    yp,xp=np.unravel_index(np.argmax(data-sky),data.shape)
+    center=Center(xp,y,np.max(data-sky),None,None)
+    return center
+
+
+@support_nddata
 def marginal_gfit(data,x,y,rad,verbose=False,background=True,plot=False) :
     """ Gaussian fit to marginal distribution
     """
