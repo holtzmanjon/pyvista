@@ -50,8 +50,8 @@ class BOX() :
             print('You much specify nc= with nr=')
 
         if cr is not None and cc is not None :
-            sr=cr-nr/2
-            sc=cc-nr/2
+            sr=cr-nr//2
+            sc=cc-nr//2
 
         if xr is not None :
             self.xmin=xr[0]
@@ -450,17 +450,19 @@ def mk2d(X,Y,coeff) :
     A = np.array([X*0+1, X, Y, X**2, X*Y, Y**2]).T
     return np.dot(A,coeff)
 
-def window(hdu,box) :
+@support_nddata
+def window(data,box,header=None) :
     """
     Reduce size of image and header accordingly
     """
-    hdu.header['CRVAL1'] = box.xmin
-    hdu.header['CRVAL2'] = box.ymin
-    hdu.header['NAXIS1'] = box.ncol()
-    hdu.header['NAXIS2'] = box.nrow()
-    box.show()
-    new = fits.PrimaryHDU(hdu.data[box.ymin:box.ymax+1,box.xmin:box.xmax+1],hdu.header)
-    return new
+    if header is None :
+        return data[box.ymin:box.ymax+1,box.xmin:box.xmax+1]
+    else :
+        header['CRVAL1'] = box.xmin
+        header['CRVAL2'] = box.ymin
+        header['NAXIS1'] = box.ncol()
+        header['NAXIS2'] = box.nrow()
+        return fits.PrimaryHDU(data[box.ymin:box.ymax+1,box.xmin:box.xmax+1],header)
 
 def stretch(a,ncol=None,nrow=None) :
     """ 

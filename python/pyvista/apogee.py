@@ -79,7 +79,6 @@ def utr(file,dark=None) :
     out=fit[0,:].reshape(2048,2048)*nreads-1
     return Data(data=out,header=header,unit=u.dimensionless_unscaled)
 
-
 def vert(data) :
     """ Vertical bias subtraction from reference pixels
     """ 

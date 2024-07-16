@@ -19,15 +19,19 @@ from photutils import CircularAperture, CircularAnnulus,aperture_photometry
 from photutils.aperture import ApertureStats
 from photutils.detection import DAOStarFinder
 from holtztools import plots,html
-from pyvista import bitmask
+from pyvista import bitmask, centroid
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from astroquery.sdss import SDSS
 from astropy import coordinates as coord
 import astropy.units as u
 
+
+from collections import namedtuple
+Center = namedtuple('Center', ['x', 'y', 'tot', 'meanprof','varprof'])
+
 @support_nddata
-def find(data,fwhm=4,thresh=4000,sharp=[0.,1.],round=[-2.,2.]) :
+def find(data,fwhm=4,thresh=4000,sharp=[0.,1.],round=[-2.,2.],brightest=None) :
     """ Star finding using DAOStarfinder
 
         Parameters
@@ -43,11 +47,16 @@ def find(data,fwhm=4,thresh=4000,sharp=[0.,1.],round=[-2.,2.]) :
         round  : optional, [float,float]
                  Low and high bounds for roundness, default=[-2.,2]
     """
-    daofind = DAOStarFinder(fwhm=fwhm,threshold=thresh,sharplo=sharp[0],sharphi=sharp[1],roundlo=round[0],roundhi=round[1],
+    daofind = DAOStarFinder(fwhm=fwhm,threshold=thresh,brightest=brightest,
+                            sharplo=sharp[0],sharphi=sharp[1],
+                            roundlo=round[0],roundhi=round[1],
                             exclude_border=True)
-    sources=daofind(data)
-    sources.rename_column('xcentroid','x')
-    sources.rename_column('ycentroid','y')
+    try :
+        sources=daofind(data)
+        sources.rename_column('xcentroid','x')
+        sources.rename_column('ycentroid','y')
+    except : 
+        return None
     return sources
 
 @support_nddata
@@ -55,17 +64,17 @@ def automark(data,stars,rad=3,func='centroid',plot=None,dx=0,dy=0,verbose=False,
     """ Recentroid existing star list on input data array
     """
     if func == 'centroid' : 
-        center = centroid
+        center = centroid.centroid
     elif func == 'marginal_gfit' :
-        center = marginal_gfit
+        center = centroid.marginal_gfit
     elif func == 'gfit2' :
-        center = gfit2
+        center = centroid.gfit2
     new=copy.deepcopy(stars)
     for i,star in enumerate(new) :
         try :
-            x,y = center(data,star['x']+dx,star['y']+dy,rad,plot=plot,verbose=verbose,background=background)
-            new[i]['x'] = x
-            new[i]['y'] = y
+            cent = center(data,star['x']+dx,star['y']+dy,rad,plot=plot,verbose=verbose,background=background)
+            new[i]['x'] = cent.x
+            new[i]['y'] = cent.y
         except :
             new[i]['x'] = np.nan
             new[i]['y'] = np.nan
@@ -83,11 +92,11 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False,
     """
 
     if func == 'centroid' : 
-        center = centroid
+        center = centroid.centroid
     elif func == 'marginal_gfit' :
-        center = marginal_gfit
+        center = centroid.marginal_gfit
     elif func == 'gfit2' :
-        center = gfit2
+        center = centroid.gfit2
 
     # clear display and mark current star list( if not new)
     if new: tv.tvclear()
@@ -120,9 +129,9 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False,
                 stars['MJD'].info.format = '.6f'
             except: pass
             for star in stars :
-                x,y = center(tv.img,star['x'],star['y'],rad)
-                star['x'] = x
-                star['y'] = y
+                cent = center(tv.img,star['x'],star['y'],rad)
+                star['x'] = cent.x
+                star['y'] = cent.y
                 if dateobs is not None : star['MJD'] = dateobs.mjd
                 for icard,card in enumerate(cards) :
                     try: star[card] = tv.hdr[card]
@@ -147,11 +156,14 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False,
             y = round(y)
         elif key == 'c' :
             # centroid around marked position
-            x,y = centroid(tv.img,x,y,rad)
+            cent = centroid.centroid(tv.img,x,y,rad)
+            x = cent.x
+            y = cent.x
         elif key == 'g' :
             # gaussian fit to marginal distribution around marked position
-            x,y= gfit2(tv.img,x,y,rad,plot=tv)
-            print(x,y)
+            cent = centroid.gfit2(tv.img,x,y,rad,plot=tv)
+            x = cent.x
+            y = cent.x
         elif key == 'n' :
             j=np.argmin((x-stars['x'])**2+(y-stars['y'])**2)
             print(j)
@@ -169,10 +181,6 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False,
         for icard,card in enumerate(cards) :
             try: stars[len(stars)-1][card] = tv.hdr[card]
             except: pass
-        #if exptime is not None :
-        #    stars[len(stars)-1]['EXPTIME'] = exptime
-        #if filt is not None :
-        #    stars[len(stars)-1]['FILTER'] = filt
         istar+=1
 
     return stars
@@ -348,201 +356,6 @@ def get(file) :
 def save(file,stars) :
     """ Save internal photometry list to FITS table"""
     stars.write(file,overwrite=True)
-
-def centroid(data,x,y,r,verbose=False,plot=None,background=True) :
-    """ Get centroid in input data around input position, with given radius
-    """
-    # create arrays of pixel numbers for centroiding
-    ys=int(y-2*r)
-    ye=int(y+2*r)
-    xs=int(x-2*r)
-    xe=int(x+2*r)
-    tmpdata=data[ys:ye,xs:xe]
-    pix = np.mgrid[0:tmpdata.shape[0],0:tmpdata.shape[1]]
-    ypix = pix[0]+ys
-    xpix = pix[1]+xs
-
-    xold=0
-    yold=0
-    iter=0
-    while iter<10 :
-        dist2 = (xpix-round(x))**2 + (ypix-round(y))**2
-        # get pixels to use for background, and get background
-        if background :
-            gd = np.where((dist2 > r**2) & (dist2 < (r+1)**2))
-            back = np.nanmedian(tmpdata[gd[0],gd[1]])
-        else :
-            back = 0.
-        # get the centroid
-        gd = np.where(dist2 < r**2)
-        norm=np.sum(tmpdata[gd[0],gd[1]]-back)
-        if verbose: print(iter,x,y,back,norm)
-        x = np.sum((tmpdata[gd[0],gd[1]]-back)*xpix[gd[0],gd[1]]) / norm
-        y = np.sum((tmpdata[gd[0],gd[1]]-back)*ypix[gd[0],gd[1]]) / norm
-
-        if round(x) == xold and round(y) == yold : break
-        xold = round(x)
-        yold = round(y)
-        if verbose: print(iter,x,y)
-        iter+=1
-    if iter > 9 : print('possible centroiding convergence issues, consider using a larger radius?')
-    return x,y
-
-def marginal_gfit(data,x,y,rad,verbose=False,background=True,plot=False) :
-    """ Gaussian fit to marginal distribution
-    """
-    xold=0
-    yold=0
-    iter=0
-    while iter<10 :
-        x0=int(x)
-        y0=int(y)
-        coeff = spectra.gfit(data[y0-rad:y0+rad+1,x0-2*rad:x0+2*rad+1].sum(axis=0),rad*2,sig=rad/2.,rad=rad,back=background)
-        x = coeff[1]+x0-2*rad
-        coeff = spectra.gfit(data[y0-2*rad:y0+2*rad+1,x0-rad:x0+rad+1].sum(axis=1),rad*2,sig=rad/2.,rad=rad,back=background)
-        y = coeff[1]+y0-2*rad
-        if round(x) == xold and round(y) == yold : break
-        xold = round(x)
-        yold = round(y)
-        iter += 1
-        if verbose: print(iter,x,y)
-
-    if iter > 9 : print('possible centroiding convergence issues, consider using a larger radius?')
-
-    return x, y
-
-    xx = np.arange(x0-rad,x0+rad+1)
-    yy = data[x0-rad:x0+rad+1]
-    peak=yy.argmax()+x0-rad
-    xx = np.arange(peak-rad,peak+rad+1)
-    yy = data[peak-rad:peak+rad+1]
-    if back == None : p0 = [data[peak],peak,sig]
-    else : p0 = [data[peak],peak,sig,back]
-
-    coeff, var_matrix = curve_fit(gauss, xx, yy, p0=p0)
-    fit = gauss(xx,*coeff)
-
-def gauss3(x,*p) :
-    if len(p) == 10 : A, mu, sigma, B, Bmu, Bsigma, C, Cmu, Csigma, back = p
-    elif len(p) == 7 : 
-        A, mu, sigma, B, Bmu, Bsigma, back = p
-        C, Cmu, Csigma = 0., 0., 1.
-    elif len(p) == 4 : 
-        A, mu, sigma, back = p
-        B, Bmu, Bsigma = 0., 0., 1.
-        C, Cmu, Csigma = 0., 0., 1.
-    return (A*np.exp(-(x-mu)**2/(2.*sigma**2))+
-            B*np.exp(-(x-Bmu)**2/2.*Bsigma**2)+
-            C*np.exp(-(x-Cmu)**2/2.*Csigma**2)+
-            back)
-
-    
-def gfit2(data,x,y,rad,verbose=False,plot=None,background=True) :
-    """ Gaussian fit to marginal distribution
-    """
-    xold=0
-    yold=0
-    iter=0
-    while iter<1 :
-        x0=int(x)
-        y0=int(y)
-        xdata=data[y0-rad:y0+rad+1,x0-2*rad:x0+2*rad+1].sum(axis=0)
-        back=xdata[0]
-        peak=xdata.argmax()
-        xx=np.arange(4*rad+1)
-        p0=[xdata[peak]-back,peak,1.,
-           (xdata[peak]-back)/10.,peak-3,2.,
-           (xdata[peak]-back)/10.,peak+3,2.,back]
-        ok = True
-        ngx=3
-        try: 
-            xcoeff, var_matrix = curve_fit(gauss3, xx, xdata, p0=p0)
-            j=np.argmax(xcoeff[0:9:3]/np.sqrt(np.abs(xcoeff[2:11:3])))
-            x = xcoeff[j*3+1]+x0-2*rad
-        except: ok = False
-        if not ok or np.abs(xcoeff[1]-xcoeff[4]) < 1 :
-            p0=[xdata[peak]-back,peak,1.,
-               (xdata[peak]-back)/10.,peak-3,2.,
-               back]
-            ok = True
-            ngx=2
-            try: 
-                xcoeff, var_matrix = curve_fit(gauss3, xx, xdata, p0=p0)
-                j=np.argmax(xcoeff[0:6:3]/np.sqrt(np.abs(xcoeff[2:8:3])))
-                x = xcoeff[j*3+1]+x0-2*rad
-            except: ok= False
-            if not ok or np.abs(xcoeff[1]-xcoeff[4]) < 1 :
-                p0=[xdata[peak]-back,peak,1., back]
-                ngx=1
-                try: xcoeff, var_matrix = curve_fit(gauss3, xx, xdata, p0=p0)
-                except: 
-                    xcoeff=p0
-                    ngx=0
-                x = xcoeff[1]+x0-2*rad
-
-        ydata=data[y0-2*rad:y0+2*rad+1,x0-rad:x0+rad+1].sum(axis=1)
-        peak=ydata.argmax()
-        xx=np.arange(4*rad+1)
-        back=ydata[0]
-        peak=ydata.argmax()
-        p0=[ydata[peak]-back,peak,1.,
-            (ydata[peak]-back)/3.,peak-5,2.,
-            (ydata[peak]-back)/3.,peak+5,2.,back]
-        ok = True
-        ngy=3
-        try: 
-            ycoeff, var_matrix = curve_fit(gauss3, xx, ydata, p0=p0)
-            j=np.argmax(ycoeff[0:9:3]/np.sqrt(np.abs(ycoeff[2:11:3])))
-            y = ycoeff[j*3+1]+y0-2*rad
-        except: ok = False
-        if not ok or np.abs(ycoeff[1]-ycoeff[4]) < 1 :
-            p0=[ydata[peak]-back,peak,1.,
-               (ydata[peak]-back)/10.,peak-3,2.,
-               back]
-            ok = True
-            ngy=2
-            try: 
-                ycoeff, var_matrix = curve_fit(gauss3, xx, ydata, p0=p0)
-                j=np.argmax(ycoeff[0:6:3]/np.sqrt(np.abs(ycoeff[2:8:3])))
-                y = ycoeff[j*3+1]+y0-2*rad
-            except: ok= False
-            if not ok or np.abs(ycoeff[1]-ycoeff[4]) < 1 :
-                ngy=1
-                p0=[ydata[peak]-back,peak,1., back]
-                try: ycoeff, var_matrix = curve_fit(gauss3, xx, ydata, p0=p0)
-                except: 
-                    ycoeff=p0
-                    ngy=0
-                y = ycoeff[1]+y0-2*rad
-
-        if round(x) == xold and round(y) == yold : break
-        xold = round(x)
-        yold = round(y)
-        if verbose: print(iter,x,y)
-        iter+=1
-
-    print(ngx,ngy)
-    if plot is not None :
-        xx=np.arange(4*rad+1)
-        plot.plotax1.plot(xx,data[y0-rad:y0+rad+1,x0-2*rad:x0+2*rad+1].sum(axis=0))
-        plot.plotax1.plot(xx,gauss3(xx,*xcoeff))
-        plot.plotax1.cla()
-        for i in range(0,9,3) :
-            try: plot.plotax1.plot([xcoeff[i+1],xcoeff[i+1]],[0,xcoeff[i]])
-            except: pass
-        print(xcoeff)
-
-        xx=np.arange(4*rad+1)
-        plot.plotax2.cla()
-        plot.plotax2.plot(xx,data[y0-2*rad:y0+2*rad+1,x0-rad:x0+rad+1].sum(axis=1))
-        plot.plotax2.plot(xx,gauss3(xx,*ycoeff))
-        for i in range(0,9,3) :
-            try: plot.plotax2.plot([ycoeff[i+1],ycoeff[i+1]],[0,ycoeff[i]])
-            except: pass
-        print(ycoeff)
-        plt.show()
-
-    return x, y
 
 def process_all(files,red,tab,bias=None,dark=None,flat=None,threads=8, display=None, solve=True,
             seeing=15,rad=[3,5,7],skyrad=[10,15],cards=['EXPTIME','FILTER','AIRMASS']):
@@ -785,3 +598,4 @@ def diffphot(tab,aper='aper35.0',yr=0.1,title=None,hard=None) :
     #plt.close()
 
     return x,dat
+

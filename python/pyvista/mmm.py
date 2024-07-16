@@ -110,7 +110,7 @@ def mmm( sky_vector,
     if nsky < minsky:
         sigma=-1.0 ;  skew = 0.0; skymod = np.nan
         print('ERROR -Input vector must contain at least '+str(minsky)+' elements')
-        return(skymod,sigma,skew)
+        return(skymod,sigma,skew,nsky)
  
     nlast = nsky-1                        #Subscript of last pixel in SKY array
     if debug:
@@ -136,7 +136,7 @@ def mmm( sky_vector,
         sigma=-1.0 ;  skew = 0.0; skymod = 0.0   
         print('ERROR - No sky values fall within ' + str(cut1) + \
 	   ' and ' + str(cut2))
-        return(skymod,sigma,skew)
+        return(skymod,sigma,skew,nsky)
   
     delta = sky[good] - skymid  #Subtract median to improve arithmetic accuracy
     sum = np.sum(delta.astype('float64'))
@@ -173,14 +173,14 @@ def mmm( sky_vector,
             print('ERROR - Too many ('+str(mxiter) + ') iterations,' + \
                       ' unable to compute sky')
 #            import pdb; pdb.set_trace()
-            return(skymod,sigma,skew)
+            return(skymod,sigma,skew,nsky)
 
         if ( maximm-minimm < minsky ):    #Error? 
 
             sigma = -1.0 ;  skew = 0.0   
             print('ERROR - Too few ('+str(maximm-minimm) +  \
                       ') valid sky elements, unable to compute sky')
-            return(skymod,sigma,skew)
+            return(skymod,sigma,skew,nsky)
 
         # Compute Chauvenet rejection criterion.
 
@@ -255,7 +255,7 @@ def mmm( sky_vector,
         if ( nsky < minsky ): # error?
             sigma = -1.0 ;  skew = 0.0   
             print('ERROR - Outlier rejection left too few sky elements')
-            return(skymod,sigma,skew)
+            return(skymod,sigma,skew,nsky)
 
         skymn = sum/nsky
         var = sumsq/nsky - skymn**2

@@ -633,6 +633,7 @@ class TV:
         """
         self.ax.add_patch(patches.Circle((x,y),rad,fill=False,color=color,
                           ls=ls,lw=lw))
+        self.fig.canvas.flush_events()
         plt.draw()
 
     def intbox(self) :
@@ -681,6 +682,7 @@ class TV:
             y0=y-size/2
             ysize=size
         self.ax.add_patch(patches.Rectangle((x0,y0),xsize,ysize,fill=False,color=color,ls=ls,lw=lw))
+        self.fig.canvas.flush_events()
         plt.draw()
 
     def clear(self) :
@@ -715,6 +717,7 @@ class TV:
         reserved=['r','p','v','left','right','up','down','-','+','=','%','#','$'] 
         if self.event.key in reserved : self.tvmark()
         self.light(self.lgt1,'Asynchronous','r')
+        self.fig.canvas.flush_events()
         return self.event.key, self.event.xdata, self.event.ydata
 
     def light(self,ax,text,color) :
@@ -756,6 +759,7 @@ class TV:
             yg,xg=np.mgrid[y-size:y+size,x-size:x+size]
             plotax.cla()
             plotax.plot_surface(xg, yg, self.img[y-size:y+size,x-size:x+size],cmap='jet')
+            self.fig.canvas.flush_events()
 
     def savefig(self,name) :
         """ hardcopy of only display Axes
