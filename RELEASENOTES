@@ -1,0 +1,61 @@
+0.3.1 --> 0.4.1, July 2024
+
+apogee.py : include reference array in unzip
+            add utr() 
+            mkyaml() : use last matching flat at APO, first at LCO
+            add initial implementation of refcorr()
+            add some test routines for PSF fits
+
+boss.py : change default crbox to None
+          html() --> mkhtml()
+          allow to specify backend rather than forcing 'Agg'
+          mkyaml() use -b1 to construct par files for older 2 spectrograph data (doesn't include b2/r2!)
+          add arc_transform() routine
+
+centroid.py : new module, move centering routines from stars here
+          add radial asymmetry centering
+
+dataclass.py : include minmax() here
+
+image.py : more precise sig2fwhm
+           use integer dividsion in box
+           add bin() method to box
+           significant mods to gaussian fits
+           add implementation of Gauss-Hermite fits (not complete?)
+           add fit2d(), mk2d()
+           include header modification in window()
+           allow separate x,y lags in xcorr2d()
+           add transform() routine
+
+imred.py : change default for filename template to include '.f*'
+           add defaults for boxes
+           add headerbox, boxfromheader()
+           add min=, max= in movie()
+           add utr option for APOGEE
+           modifications to noise()
+
+mmm.py : add return of nsky
+         np.int --> intA
+
+skycalc.py : add plot option for airmass()
+             significant mods to airmas()
+             add zd() calculation
+             add pa() calculation
+             add readtui()
+
+spectra.py : more precise sig2fwhm
+             np.int --> int
+
+stars.py : move centering routines to centroid module
+           add brightest= to DAOFind
+           implement Center namedtuple
+           add mask= for photom()
+
+tv.py : implement interactive box selector with intbox()
+        more precise sig2fwhm
+        add flush_events()
+        add 3d plot for imexam()
+
+      
+
+
