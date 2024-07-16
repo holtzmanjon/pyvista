@@ -18,6 +18,8 @@ from astropy.time import Time
 from astropy.io.votable import parse_single_table
 import scipy.interpolate
 
+crbox=None
+
 def visit(planfile,clobber=False,maxobj=None,threads=12,flux=True, docombine=True) :
     """ Reduce BOSS visit
 
@@ -113,7 +115,7 @@ def visit_channel(planfile=None,channel=0,clobber=False,threads=12,plot=True,
         if os.path.exists(outdir+name.replace('sdR','sp1D')) and not clobber : 
             out=Data.read(outdir+name.replace('sdR','sp1D'))
         else :
-            im=red.reduce(name,channel=channel,trim=True,crbox='lacosmic',crsig=10)
+            im=red.reduce(name,channel=channel,trim=True,crbox=crbox,crsig=10)
             trace=copy.deepcopy(trace0)
             if channel > 1 :
                 trace.rows=[0,2048]
@@ -189,7 +191,7 @@ def skysubtract(out,skyfibers,display=None,dmax=100,nfibers=500) :
             ax[1].cla()
 
 
-def mktrace(red,name,channel=0,clobber=False,nfibers=500,threads=0,display=None,skip=40,bundle=20,diff=11,outdir='./',new=True) :
+def mktrace(red,name,channel=0,clobber=False,nfibers=500,threads=0,display=None,skip=100,bundle=20,diff=11,outdir='./',new=True) :
     """ Create spTrace and spFlat1D files or read if they already exist
     """
 
@@ -202,7 +204,7 @@ def mktrace(red,name,channel=0,clobber=False,nfibers=500,threads=0,display=None,
         flat1d=Data.read(outname.replace('spTrace','spFlat1D'))
     else :
         print('creating Trace')
-        flat=red.reduce(name,trim=True,channel=channel,crbox='lacosmic',crsig=10)
+        flat=red.reduce(name,trim=True,channel=channel,crbox=crbox,crsig=10)
 
         if new :
             trace=spectra.Trace(transpose=red.transpose,rad=3,lags=np.arange(-3,4),sc0=2048,rows=[10,4090],degree=4)
@@ -240,12 +242,12 @@ def mkwave(red,trace,name,channel=0,threads=0,clobber=False,display=None,plot=Fa
         #    wav= spectra.WaveCal(w.data)
         #    wavs.append(wav)
         #    rows.append(wav.index)
-        im=red.reduce(name,channel=channel,trim=True,crbox='lacosmic',crsig=10)
+        im=red.reduce(name,channel=channel,trim=True,crbox=crbox,crsig=10)
         wave= wav.wave(image=(nfibers,im.data.shape[0]))
         #arcec=trace.extract(im,threads=threads,nout=nfibers,display=display)
     else :
         print('creating WaveCal')
-        im=red.reduce(name,channel=channel,trim=True,crbox='lacosmic',crsig=10)
+        im=red.reduce(name,channel=channel,trim=True,crbox=crbox,crsig=10)
         arcec=trace.extract(im,threads=threads,nout=nfibers,display=display)
         wav0=spectra.WaveCal('BOSS/BOSS_{:s}_waves.fits'.format(chan[channel]))
         ngd=len(np.where(wav0.weights >0)[0])
@@ -593,7 +595,7 @@ def mkyaml(mjd,obs='apo') :
     if obs == 'apo' :
         red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_N']+'/'+str(mjd))
         if mjd < 59600 :
-            files = red.log(cols=['DATE-OBS','PLATEID','FLAVOR','EXPTIME','HARTMANN','MAPID','NAME'],channel='-b')
+            files = red.log(cols=['DATE-OBS','PLATEID','FLAVOR','EXPTIME','HARTMANN','MAPID','NAME'],channel='-b1')
             files['CONFID'] = files['NAME']
             files['FIELDID'] = files['PLATEID']
         else :
