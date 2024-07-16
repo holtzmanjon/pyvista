@@ -1,4 +1,4 @@
-# routines to deal with stellar images
+# routines to deal with getting positions of stellar images
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,9 +11,26 @@ from collections import namedtuple
 Center = namedtuple('Center', ['x', 'y', 'tot', 'meanprof','varprof'])
 
 @support_nddata
-def centroid(data,x,y,r,verbose=False,plot=None,background=True,header=None) :
+def centroid(data,x,y,r,verbose=False,plot=None,background=True) :
     """ Get centroid in input data around input position, with given radius
+
+        Parameters
+        ----------
+        data : array-like
+               Input data
+        x,y  : float
+               Initial position guess
+        r    : float
+               Radius to use for centroid  
+        background : bool, option
+               Subtract background value from perimeter first, default=True
+        plot  : not used
+
+        Returns
+        -------
+        Center namedtuple 
     """
+
     # create arrays of pixel numbers for centroiding
     ys=int(y-2*r)
     ye=int(y+2*r)
@@ -52,18 +69,53 @@ def centroid(data,x,y,r,verbose=False,plot=None,background=True,header=None) :
     return center
 
 @support_nddata
-def peak(data,x,y) :
-    """ Return location of peak
+def peak(data,x,y,rad) :
+    """ Return location of peak in input data
+
+        Parameters
+        ----------
+        data : array-like
+               Input data
+        x,y  : float
+               Initial position guess
+        rad  : float
+               radius to search in
+
+        Returns
+        -------
+        Center namedtuple 
     """
+
     sky,skysig,skyskew,nsky = mmm.mmm(data.flatten())
-    yp,xp=np.unravel_index(np.argmax(data-sky),data.shape)
-    center=Center(xp,y,np.max(data-sky),None,None)
+    ys=int(y-r)
+    ye=int(y+r)+1
+    xs=int(x-r)
+    xe=int(x+r)+1
+    yp,xp=np.unravel_index(np.argmax(data[ys:ye,xs:xe]-sky),data.shape)
+    center=Center(xp+xs,yp+ys,np.max(data-sky),None,None)
     return center
 
 
 @support_nddata
 def marginal_gfit(data,x,y,rad,verbose=False,background=True,plot=False) :
-    """ Gaussian fit to marginal distribution
+    """ Get position from Gaussian fit to marginal distribution
+
+        Parameters
+        ----------
+        data : array-like
+               Input data
+        x,y  : float
+               Initial position guess
+        rad  : float
+               radius to search in
+        background : bool, option
+               Subtract background value from perimeter first, default=True
+        plot  : not used
+       
+
+        Returns
+        -------
+        Center namedtuple 
     """
     xold=0
     yold=0
@@ -88,18 +140,35 @@ def marginal_gfit(data,x,y,rad,verbose=False,background=True,plot=False) :
     return center
 
 def gauss3(x,*p) :
-    if len(p) == 10 : A, mu, sigma, B, Bmu, Bsigma, C, Cmu, Csigma, back = p
+    """ Evaluates 1D Gaussian function at input position(s)
+
+        Parameters
+        ----------
+        x : float
+            position(s) to evaluate Gaussian at
+        p : array-like
+            Gaussian parameters
+            if len(p) == 10 : 3 gaussians + background
+            if len(p) == 7 : 2 gaussians + background
+            if len(p) == 4 : 1 gaussians + background
+    """
+
+
+    if len(p) == 10 : 
+        A, mu, sigma, B, Bmu, Bsigma, C, Cmu, Csigma, back = p
+        return (A*np.exp(-(x-mu)**2/(2.*sigma**2))+
+                B*np.exp(-(x-Bmu)**2/2.*Bsigma**2)+
+                C*np.exp(-(x-Cmu)**2/2.*Csigma**2)+
+                back)
     elif len(p) == 7 : 
         A, mu, sigma, B, Bmu, Bsigma, back = p
-        C, Cmu, Csigma = 0., 0., 1.
+        return (A*np.exp(-(x-mu)**2/(2.*sigma**2))+
+                B*np.exp(-(x-Bmu)**2/2.*Bsigma**2)+
+                back)
     elif len(p) == 4 : 
         A, mu, sigma, back = p
-        B, Bmu, Bsigma = 0., 0., 1.
-        C, Cmu, Csigma = 0., 0., 1.
-    return (A*np.exp(-(x-mu)**2/(2.*sigma**2))+
-            B*np.exp(-(x-Bmu)**2/2.*Bsigma**2)+
-            C*np.exp(-(x-Cmu)**2/2.*Csigma**2)+
-            back)
+        return (A*np.exp(-(x-mu)**2/(2.*sigma**2))+
+                back)
     
 @support_nddata
 def gfit2(data,x,y,rad,verbose=False,plot=None,background=True) :
