@@ -1214,7 +1214,10 @@ class Reducer() :
             allnorm = []
             for im in range(nframe) :
                 if normalize :
-                    norm=self.normbox[chip].mean(allcube[im][chip].data)
+                    try:
+                        norm=self.normbox[chip].mean(allcube[im][chip].data)
+                    except:
+                        norm=np.nanmean(allcube[im][chip].data)
                     allnorm.append(norm)
                     allcube[im][chip].data /= norm
                     allcube[im][chip].uncertainty.array /= norm
