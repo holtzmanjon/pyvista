@@ -89,6 +89,8 @@ class Reducer() :
         self.biasbox=[]
         self.trimbox=[]
         self.normbox=[]
+        self.outbox=[]
+        self.headerbox=False
         self.ext='fits'
         self.inst='generic'
 
@@ -422,7 +424,7 @@ class Reducer() :
                 os.remove(filename)
                 writer.append_data(image)
 
-    def reduce(self,num,channel=None,
+    def reduce(self,num,channel=None,ext=0,
                crbox=None,crsig=5,objlim=5,sigfrac=0.3,
                bias=None,dark=None,flat=None,
                scat=None,badpix=None,solve=False,return_list=False,display=None,
@@ -462,7 +464,7 @@ class Reducer() :
         seeing :
 
         """
-        im=self.rd(num,dark=dark,channel=channel,utr=utr)
+        im=self.rd(num,dark=dark,channel=channel,utr=utr,ext=ext)
         self.overscan(im,display=display,channel=channel)
         im=self.bias(im,superbias=bias)
         im=self.dark(im,superdark=dark)
@@ -573,7 +575,7 @@ class Reducer() :
     def overscan(self,im,display=None,channel=None) :
         """ Overscan subtraction
         """
-        if self.biastype < 0 : return
+        if self.biastype < 0 : return im
 
         if type(im) is not list : ims=[im]
         else : ims = im
@@ -1195,7 +1197,7 @@ class Reducer() :
 
         return self.combine(ims,type='sum',return_list=return_list,**kwargs)
 
-    def combine(self,ims, normalize=False,display=None,div=True,
+    def combine(self,ims,normalize=False,display=None,div=True,
                 return_list=False, type='median',sigreject=5,**kwargs) :
         """ Combine images from list of images 
         """
@@ -1303,11 +1305,11 @@ class Reducer() :
             bias[i].header['OBJECT'] = 'Combined bias'
         return bias
 
-    def mkdark(self,ims,bias=None,display=None,scat=None,trim=False,
+    def mkdark(self,ims,ext=0,bias=None,display=None,scat=None,trim=False,
                type='median',sigreject=5,clip=None) :
         """ Driver for superdark combination (no normalization)
         """
-        dark= self.combine(ims,bias=bias,display=display,trim=trim,
+        dark= self.combine(ims,ext=ext,bias=bias,display=display,trim=trim,
                             div=False,scat=scat,type=type,sigreject=sigreject)
         for i,f in enumerate(dark) :
             dark[i].header['OBJECT'] = 'Combined dark'
@@ -1317,8 +1319,8 @@ class Reducer() :
             dark.data[low] = 0.
         return dark
 
-    def mkflat(self,ims,bias=None,dark=None,scat=None,display=None,trim=False,
-               type='median',sigreject=5,spec=False,width=101,littrow=False,
+    def mkflat(self,ims,bias=None,dark=None,scat=None,display=None,trim=False,ext=0,
+               type='median',sigreject=5,spec=False,width=101,littrow=False,normalize=True,
                snmin=50) :
         """ Driver for superflat combination, with superbias if specified, normalize to normbox
 
@@ -1351,7 +1353,7 @@ class Reducer() :
         -------
             Data object with combined flat
         """
-        flat= self.combine(ims,bias=bias,dark=dark,normalize=True,trim=trim,
+        flat= self.combine(ims,ext=ext,bias=bias,dark=dark,normalize=normalize,trim=trim,
                  scat=scat,display=display,type=type,sigreject=sigreject)
         for i,f in enumerate(flat) :
             flat[i].header['OBJECT'] = 'Combined flat'
