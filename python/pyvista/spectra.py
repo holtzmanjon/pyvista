@@ -1863,7 +1863,8 @@ class FluxCal() :
         out.uncertainty.array /=corr
         return out
 
-    def addstar(self,hd,wave,pixelmask=None,file=None,stdflux=None,extinct=True,badval=None) :
+    def addstar(self,hd,wave,pixelmask=None,file=None,stdflux=None,
+                exptime='EXPTIME',extinct=True,badval=None) :
         """ Derive flux calibration vector from standard star
 
             Parameters 
@@ -1876,8 +1877,10 @@ class FluxCal() :
                  with format='ascii'
             stdflux : astropy Table, optional
                  Table with calibrated fluxes in columns 'wave','flux','bin'
-            extinct : boo, default=Ture
+            extinct : bool, default=True
                  Use mean extinction curve to correct for atmospheric extinction
+            exptime : str, default='EXPTIME'
+                 Card name to use for exptime normalization, set to None for no norm
         """
         # any bad pixels?
         if pixelmask is not None :
@@ -1900,6 +1903,9 @@ class FluxCal() :
 
         if extinct : extcorr = self.extinct(hd,wave)
         else : extcorr=copy.deepcopy(hd)
+        if exptime is not None : 
+            extcorr.data /= hd.header[exptime]
+            extcorr.uncertainty.array /= hd.header[exptime]
         obs=[]
         obscorr=[]
         w=[]
@@ -1962,7 +1968,7 @@ class FluxCal() :
         des=[]
         rhs=[]
         if plot : 
-            fig,ax=plots.multi(1,3,hspace=0.001)
+            fig,ax=plots.multi(1,3,hspace=0.001,sharex=True)
         for istar,(wav,obs,true,weight,name) in enumerate(
                zip(self.waves,self.obscorr,self.true,self.weights,self.name)) :
             gd=np.where(weight > 0.)[0]
@@ -1981,14 +1987,14 @@ class FluxCal() :
 
             if plot :
                 line,=ax[0].plot(wav,-2.5*np.log10(obs/true),lw=1)
-                ax[0].plot(wav[gd],-2.5*np.log10(obs[gd]/true[gd]),
-                        lw=0,marker='o',color=line.get_color(),
-                        markersize=2, label='{:s}'.format(name))
-                ax[1].plot(wav,-2.5*np.log10(obs),
-                        lw=1,color=line.get_color(),
+                ax[0].scatter(wav[gd],-2.5*np.log10(obs[gd]/true[gd]),
+                        marker='o',color=line.get_color(),
+                        s=2, label='{:s}'.format(name))
+                ax[1].scatter(wav,-2.5*np.log10(obs),
+                        s=2,color=line.get_color(),
                         label='{:s}'.format(name))
-                ax[2].plot(wav,-2.5*np.log10(true),
-                        lw=1,color=line.get_color(),
+                ax[2].scatter(wav,-2.5*np.log10(true),
+                        s=2,color='k',
                         label='{:s}'.format(name))
                 ax[2].set_xlabel('Wavelength')
                 ax[0].set_ylabel('-2.5 log(obs/true )')
@@ -2002,16 +2008,8 @@ class FluxCal() :
             design=np.vstack(des)
             rhs=np.hstack(rhs)
             out=np.linalg.solve(np.dot(design.T,design),np.dot(design.T,rhs))
-            self.coeffs = np.append(out[0:self.degree],0.)
-            if plot :
-                plt.gca().set_prop_cycle(None)
-                for istar,wav in enumerate(self.waves) :
-                    if istar>0 : 
-                        vec = np.append(out[0:self.degree],out[self.degree+istar-1])
-                    else :
-                        vec = np.append(out[0:self.degree],0.)
-                        self.coeffs = vec
-                    ax[0].plot(wav,np.polyval(vec,wav))
+            self.coeffs = np.append(out[0:self.degree],np.mean(out[self.degree:]))
+            self.response_curve=np.polyval(self.coeffs,wav)
         else :
             for wav in self.waves :
                 if not np.array_equal(wav,self.waves[0]) : 
@@ -2027,18 +2025,19 @@ class FluxCal() :
                 self.response_curve = np.nanmedian(-2.5*np.log10(allobs/alltrue),axis=0)
             if medfilt is not None :
                 self.response_curve = median_filter(self.response_curve,size=medfilt)
-            if plot :
-                for istar,wav in enumerate(self.waves) :
-                    ax[2].plot(wav,-2.5*np.log10(obs/10.**(-0.4*self.response_curve)))
-                ax[0].plot(wav,self.response_curve,lw=5,color='k',label='response curve')
-                if legend : ax[0].legend(fontsize='xx-small')
-                plt.draw()
+        if plot :
+            for istar,(wav,obs,true,weight,name) in enumerate(
+                zip(self.waves,self.obscorr,self.true,self.weights,self.name)) :
+                ax[2].plot(wav,-2.5*np.log10(obs/10.**(-0.4*self.response_curve)))
+            ax[0].plot(wav,self.response_curve,lw=5,color='k',label='response curve')
+            if legend : ax[0].legend(fontsize='xx-small')
+            plt.draw()
 
         if plot and hard is not None : 
             print('saving: ', hard)
             fig.savefig(hard)
 
-    def correct(self,hd,waves,extinct=True) :
+    def correct(self,hd,waves,extinct=True,exptime='EXPTIME') :
         """ Apply flux correction to input spectrum
 
             Parameters 
@@ -2047,8 +2046,18 @@ class FluxCal() :
                  Input image
             waves : array-like
                  Wavelength array for hd (separate from hd to allow slicing of hd)
+            extinct : bool, default=True
+                 Apply atmospheric extinction correction
+            exptime : str, default='EXPTIME'
+                 Card name to use for exptime normalization, set to None for no norm
         """
-        if extinct : extcorr = self.extinct(hd,waves)
+        if extinct : 
+            extcorr = self.extinct(hd,waves)
+            hd.data = extcorr.data
+            hd.uncertainty.array = extcorr.uncertainty.array
+        if exptime is not None: 
+            hd.data /= hd.header[exptime]
+            hd.uncertainty.array /= hd.header[exptime]
         if self.degree >= 0 :
             for irow,row in enumerate(hd.data) :
                 corr = 10.**(-0.4*np.polyval(self.coeffs,waves))
