@@ -45,6 +45,8 @@ skycalc.py : add plot option for airmass()
 
 spectra.py : more precise sig2fwhm
              np.int --> int
+             add keywords to extract() : back_percentile= and method=
+             extract returns background spectrum, which is stored in sky attribute
 
 stars.py : move centering routines to centroid module
            add brightest= to DAOFind
@@ -56,6 +58,8 @@ tv.py : implement interactive box selector with intbox()
         add flush_events()
         add 3d plot for imexam()
 
-      
+data :  update ARCES_wave.fits using degree=5      
 
+doc/notebooks: update KOSMOS for better FluxCal and to demonstrate writing/reading WaveCal
 
+ 
