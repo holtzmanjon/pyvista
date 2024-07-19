@@ -764,7 +764,7 @@ class WaveCal() :
                    if True, allow for dispersion to be ajusted as well as wavelength zeropoint 
                    requires at least two sky lines!
             file : str, default='skyline.dat'
-                   file with sky lines to look for, if you want to override default:w
+                   file with sky lines to look for, if you want to override default
         """
 
         if hd.wave is None :
@@ -1269,6 +1269,7 @@ class Trace() :
         self.trace(hd,srows,plot=plot,thresh=thresh,gaussian=gaussian,skip=skip,index=self.index)
     
     def findpeak(self,hd,sc0=None,width=100,thresh=50,plot=False,sort=False,
+                 back_percentile=10,method='linear',
                  smooth=5,diff=10000,bundle=10000,verbose=False) :
         """ Find peaks in spatial profile for subsequent tracing
 
@@ -1312,7 +1313,7 @@ class Trace() :
         if self.rows is None : self.rows=[0,nrows]
 
         back =np.percentile(im.data[self.rows[0]:self.rows[1],
-                                    sc0-width:sc0+width],10)
+                                    sc0-width:sc0+width],back_percentile,method=method)
         sig =np.median(im.uncertainty.array[self.rows[0]:self.rows[1],
                                     sc0-width:sc0+width])/np.sqrt(2*width)
 
@@ -1508,10 +1509,12 @@ class Trace() :
             spec = np.zeros([nout,hd.data.shape[1]])
             sig = np.zeros([nout,hd.data.shape[1]])
             bitmask = np.zeros([nout,hd.data.shape[1]],dtype=np.uintc)
+            background_spec = np.zeros([nout,hd.data.shape[1]])
         else :
             spec = np.zeros([len(self.model),hd.data.shape[1]])
             sig = np.zeros([len(self.model),hd.data.shape[1]])
             bitmask = np.zeros([len(self.model),hd.data.shape[1]],dtype=np.uintc)
+            background_spec = np.zeros([len(self.model),hd.data.shape[1]])
 
         pars=[]
         if threads == 0 : 
@@ -1546,6 +1549,7 @@ class Trace() :
                 spec[self.index,col:col+nc] = out[0]
                 sig[self.index,col:col+nc] = out[1]
                 bitmask[self.index,col:col+nc] = out[2]
+                background_spec[self.index,col:col+nc] = out[3]
                 col+=skip
         else :
             col=0
@@ -1558,6 +1562,7 @@ class Trace() :
                 spec[self.index,col:col+skip] = out[0]
                 sig[self.index,col:col+skip] = out[1]
                 bitmask[self.index,col:col+skip] = out[2]
+                background_spec[self.index,col:col+skip] = out[3]
                 col+=skip
 
         if plot is not None:
@@ -1594,7 +1599,7 @@ class Trace() :
                 pass
         print("")
         return Data(spec,uncertainty=StdDevUncertainty(sig),
-                    bitmask=bitmask,header=hd.header)
+                    bitmask=bitmask,header=hd.header,sky=background_spec)
 
   
     def extract2d(self,im,rows=None,plot=None,display=None) :
@@ -2326,6 +2331,7 @@ def extract_col(pars) :
     spec = np.zeros([len(models),len(cols)])
     sig2 = np.zeros([len(models),len(cols)])
     mask = np.zeros([len(models),len(cols)],dtype=np.uintc)
+    background_spec = np.zeros([len(models),len(cols)])
     ny=data.shape[0]
     ncol=data.shape[1]
     y,x = np.mgrid[0:data.shape[0],0:data.shape[1]]
@@ -2373,8 +2379,9 @@ def extract_col(pars) :
 
             spec[i,:] -= np.nanmedian(background,axis=0)*2*rad
             sig2[i,:] += np.nansum(background_err,axis=0)/nback*(2*rad)
+            background_spec[i,:] = np.nanmedian(background,axis=0)*2*rad
 
-    return spec, np.sqrt(sig2), mask
+    return spec, np.sqrt(sig2), mask, background_spec
 
 class Model() :
     def __init__(self,func=None,apers=None,coeff=None,xdegree=1,ydegree=0,xdomain=[-1,1],ydomain=[-1,1]) :
