@@ -1839,7 +1839,8 @@ class FluxCal() :
         """
         tab=Table()
         for tag in ['nstars','waves','weights','obs','obscorr',
-                'true','name','degree','median','mean','response_curve'] :
+                'true','name','degree','median','mean','coeffs',
+                'response_curve'] :
             tab[tag] = [getattr(self,tag)]
         if append :
             tab.write(file,append=True)
