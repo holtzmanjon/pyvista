@@ -79,7 +79,6 @@ class Reducer() :
         self.dir=dir
         self.root=root
         self.verbose=verbose
-        self.inst=inst
         self.badpix=None
         self.scat=None
         self.bitmask=None
@@ -107,6 +106,7 @@ class Reducer() :
        
         # Read instrument configuation from YAML configuration file 
         if inst is not None :
+            self.inst=inst
             if inst.find('/') < 0 :
                 config = yaml.load(open(importlib_resources.files(DATA).joinpath(inst+'/'+inst+
                               conf+'.yml'),'r'), Loader=yaml.FullLoader)
