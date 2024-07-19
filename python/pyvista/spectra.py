@@ -1313,7 +1313,8 @@ class Trace() :
         if self.rows is None : self.rows=[0,nrows]
 
         back =np.percentile(im.data[self.rows[0]:self.rows[1],
-                                    sc0-width:sc0+width],back_percentile,method=method)
+                            sc0-width:sc0+width],back_percentile,
+                            method=method)
         sig =np.median(im.uncertainty.array[self.rows[0]:self.rows[1],
                                     sc0-width:sc0+width])/np.sqrt(2*width)
 
