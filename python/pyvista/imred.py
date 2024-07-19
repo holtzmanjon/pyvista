@@ -283,7 +283,10 @@ class Reducer() :
               print('file {:s} does not have DATE-OBS'.format(file))
               date.append('')
           for col in cols :
-              if 'OBJ' in col : objs.append(header[col])
+              try: 
+                  if 'OBJ' in col : objs.append(header[col])
+              except: 
+                  objs.append('?')
         date=np.array(date)
         sort=np.argsort(date)
 
