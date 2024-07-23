@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name="astro-pyvista"
-version="0.3.1"   
+version="0.4.0.a1"   
 authors=[
   { name="Jon Holtzman", email="holtzmanjon@gmail.com" },
 ]
