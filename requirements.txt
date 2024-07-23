@@ -12,3 +12,8 @@ astroplan
 astroquery
 astroscrappy
 scikit-learn
+bokeh
+astroml
+pydl
+photutils
+psycopg2
