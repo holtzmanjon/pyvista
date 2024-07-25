@@ -48,7 +48,7 @@ def centroid(data,x,y,r,verbose=False,plot=None,background=True) :
         dist2 = (xpix-round(x))**2 + (ypix-round(y))**2
         # get pixels to use for background, and get background
         if background :
-            gd = np.where((dist2 > r**2) & (dist2 < (r+1)**2))
+            gd = np.where((dist2 > (2*r)**2) & (dist2 < (2*r+1)**2))
             back = np.nanmedian(tmpdata[gd[0],gd[1]])
         else :
             back = 0.
