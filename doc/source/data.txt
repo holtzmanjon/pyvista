@@ -16,6 +16,11 @@ as slicing and arithmetic, drop the new attributes. So beware
 using those! Internally in pyvista, uncertainties are propagated in the 
 code rather than using the nddata functions.
 
+The Data class includes a write() method to write all of the different
+attributes to different extentsions in a FITS file. The read() method 
+will read FITS files with these multiple extensions and populate the
+attributes of a Data object.
+
 
 dataclass functions
 ===================
