@@ -158,16 +158,19 @@ def mark(tv,stars=None,rad=3,auto=False,color='m',new=False,exit=False,id=False,
             # centroid around marked position
             cent = centroid.centroid(tv.img,x,y,rad)
             x = cent.x
-            y = cent.x
+            y = cent.y
         elif key == 'g' :
             # gaussian fit to marginal distribution around marked position
             cent = centroid.gfit2(tv.img,x,y,rad,plot=tv)
             x = cent.x
-            y = cent.x
+            y = cent.y
         elif key == 'n' :
             j=np.argmin((x-stars['x'])**2+(y-stars['y'])**2)
             print(j)
             print('Star: {:d} at ({:f},{:f})'.format(j,stars['x'][j],stars['y'][j]))
+            continue
+        else :
+            print('unimplemented key: ', key,' Try again')
             continue
 
         # add blank row, recognizing that we may have added other columns
