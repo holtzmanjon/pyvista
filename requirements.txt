@@ -21,4 +21,3 @@ psycopg2
 scikit-learn
 scikit-image
 esutil
-sphinx<7.4
