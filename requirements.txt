@@ -1,4 +1,6 @@
 docutils<0.18
+ipython
+jupyter
 matplotlib
 numpy
 scipy
@@ -11,9 +13,11 @@ pyyaml
 astroplan
 astroquery
 astroscrappy
-scikit-learn
 bokeh
 astroml
 pydl
 photutils
 psycopg2
+scikit-learn
+scikit-image
+esutil
