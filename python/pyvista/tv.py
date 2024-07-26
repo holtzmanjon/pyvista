@@ -717,8 +717,9 @@ class TV:
         reserved=['r','p','v','left','right','up','down','-','+','=','%','#','$'] 
         if self.event.key in reserved : self.tvmark()
         self.light(self.lgt1,'Asynchronous','r')
+        key,x,y = self.event.key,self.event.xdata,self.event.ydata
         self.fig.canvas.flush_events()
-        return self.event.key, self.event.xdata, self.event.ydata
+        return key,x,y
 
     def light(self,ax,text,color) :
         ax.cla()
