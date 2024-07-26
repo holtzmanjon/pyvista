@@ -78,6 +78,13 @@ set to a pyvista TV object, then frames will be displayed as they
 are processed, and user input is requested to proceed from step
 to step, to allow the user to look at the frames.
 
+Processed data can be written to FITS file(s) on disk using the
+write() method, which is just a wrapper to the pyvista Data object
+write() method, but allows for multiple channels in an instrument
+(which would be written to multiple files).
+
+Processed data should be read using the pyvista Data.read() method; 
+the Reducer object would NOT be used to read processed data!
 
 Attributes:
 
@@ -113,6 +120,8 @@ Methods (see below for full description with keywords) :
     structure along columns using spectral signature calculated from
     a boxcar filter of a central set of rows, to produce a flat
     field with spectral signature removed
+  - write : writes out Data object(s) to fits file(s) (more than
+    one if multiple channels), using pyvista dataclass.Data.write()
 
 Making a new instrument configuration file
 
