@@ -26,6 +26,7 @@ One uses a bitmask by instantiating an object, e.g.,
    pixmask = bitmask.PixelBitMask()
 
 
+
 This then has methods for associating a bit with a name (getname() and getval()) and 
 for checking whether a given bitmask value denotes that the pixel is bad. For example,
 

@@ -20,7 +20,7 @@ pyvista.yml file
 
 
 Editable installation into Python distribution
--------------------------------------
+----------------------------------------------
 
 If you may be editing the code, you can download pyvista from github, and
 do an editable install:
