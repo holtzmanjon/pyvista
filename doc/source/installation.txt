@@ -2,16 +2,29 @@ Installation
 ============
 
 Versions of pyvista are available through PyPI as astro-pyvista (pyvista is the name of another product!).
+Python >=3.9 is required (largely to encourage people not to use unsupported Python versions).
 
-We recommend that you create a new virtual environment for pyvista to avoid issues with package
-conflicts. If you are working in the Anaconda environment, you should download the YAML conda configuration
-file `pyvista.yml <https://github.com/holtzmanjon/pyvista/blob/main/pyvista.yml?raw=true>`_ (right click to download).
-Then you can:
+.. code-block:: csh
+   pip install astro-pyvista
+
+However, we recommend that you create a new virtual environment for pyvista to avoid issues with package
+conflicts.  If you are using Anaconda, you can create a new virtual environment with:
 
 .. code-block:: csh
 
-   conda env create -f pyvista.yml
+   conda env create -f pyvista.yml python=3.12
    conda activate pyvista
+
+Alternatively, you can use Python venv:
+
+.. code-block:: csh
+
+   python -m venv pyvista
+   source pyvista/bin/activate  (in bash)
+
+Once you have activated your virtual environment:
+
+.. code-block:: csh
    pip install astro-pyvista
 
 If you are using Anaconda Navigator, you can use the Environments section on 
