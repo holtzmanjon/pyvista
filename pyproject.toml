@@ -39,7 +39,6 @@ dependencies =[
     "sphinx",
     "numpy",
     "scipy",
-    "psycopg2",
     "scikit-learn",
     "scikit-image",
     "esutil",
