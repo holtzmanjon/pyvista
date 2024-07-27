@@ -17,7 +17,6 @@ bokeh
 astroml
 pydl
 photutils
-psycopg2
 scikit-learn
 scikit-image
 esutil
