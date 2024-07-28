@@ -5,6 +5,7 @@ Versions of pyvista are available through PyPI as astro-pyvista (pyvista is the 
 Python >=3.9 is required (largely to encourage people not to use unsupported Python versions).
 
 .. code-block:: csh
+
    pip install astro-pyvista
 
 However, we recommend that you create a new virtual environment for pyvista to avoid issues with package
@@ -25,6 +26,7 @@ Alternatively, you can use Python venv:
 Once you have activated your virtual environment:
 
 .. code-block:: csh
+
    pip install astro-pyvista
 
 If you are using Anaconda Navigator, you can use the Environments section on 
