@@ -1,7 +1,8 @@
 IMAGE module
 ************
 
-image is the pyvista module that implements basic image arithmetic, VISTA-style
+image is the pyvista module that implements some general image processing 
+including basic image arithmetic, VISTA-style, and VISTA-style boxes
 
 image functions:
 ================
