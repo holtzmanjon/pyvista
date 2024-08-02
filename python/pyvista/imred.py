@@ -469,6 +469,7 @@ class Reducer() :
         """
         im=self.rd(num,dark=dark,channel=channel,utr=utr,ext=ext)
         self.overscan(im,display=display,channel=channel)
+        im=self.trim(im,trimimage=trim)
         im=self.bias(im,superbias=bias)
         im=self.dark(im,superdark=dark)
         im=self.crrej(im,crbox=crbox,crsig=crsig,objlim=objlim,sigfrac=sigfrac,
@@ -477,7 +478,7 @@ class Reducer() :
         im=self.flat(im,superflat=flat,display=display)
         self.badpix_fix(im,val=badpix)
         if trim and display is not None: display.tvclear()
-        im=self.trim(im,trimimage=trim)
+        #im=self.trim(im,trimimage=trim)
         if solve : 
             im=self.platesolve(im,display=display,scale=self.scale,seeing=seeing)
         if return_list and type(im) is not list : im=[im]
@@ -643,12 +644,12 @@ class Reducer() :
                     ax.plot(np.arange(databox.ymin,databox.ymax+1),
                             over,color='k')
                     ax.set_xlabel('Row')
-                over=image.stretch(over,ncol=databox.ncol())
+                over2d=image.stretch(over,ncol=databox.ncol())
                 if self.verbose: print('  subtracting overscan vector ')
                 im.data[databox.ymin:databox.ymax+1,
                         databox.xmin:databox.xmax+1] = \
                     im.data[databox.ymin:databox.ymax+1,
-                            databox.xmin:databox.xmax+1].astype(np.float32) - over
+                            databox.xmin:databox.xmax+1].astype(np.float32) - over2d
               # if we have separate gains, multiply by them here
               if isinstance(gain,list) :
                 print('  multiplying by gain: ', gain[ibias])
@@ -1304,7 +1305,16 @@ class Reducer() :
     def mkbias(self,ims,display=None,scat=None,type='median',sigreject=5,
                trim=False) :
         """ Driver for superbias combination (no superbias subtraction no normalization)
+
+        ims : list of frames to combine
+        display : TV object, default= None
+                  if specified, displays bias and individual frames-bias for inspection
+        type : str, default='median'
+              combine method
+        sigreject : float
+              rejection threshold for combine type='reject', otherwise ignored
         """
+
         bias= self.combine(ims,display=display,div=False,scat=scat,trim=trim,
                             type=type,sigreject=sigreject)
         for i,f in enumerate(bias) :
@@ -1314,7 +1324,22 @@ class Reducer() :
     def mkdark(self,ims,ext=0,bias=None,display=None,scat=None,trim=False,
                type='median',sigreject=5,clip=None) :
         """ Driver for superdark combination (no normalization)
+
+        Parameters
+        ----------
+        ims : list of frames to combine
+        display : TV object, default= None
+                  if specified, displays dark and individual frames-dark for inspection
+        bias : Data object, default=None
+              if specified, superbias to subtract before combining darks
+        type : str, default='median'
+              combine method
+        sigreject : float
+              rejection threshold for combine type='reject', otherwise ignored
+        clip : float, default=None
+              if specified, set all values in output dark < clip*uncertainty to zero in master dark
         """
+
         dark= self.combine(ims,ext=ext,bias=bias,display=display,trim=trim,
                             div=False,scat=scat,type=type,sigreject=sigreject)
         for i,f in enumerate(dark) :
@@ -1322,12 +1347,12 @@ class Reducer() :
         if clip != None:
             low = np.where(dark.data < clip*dark.uncertainty.array)
             dark.data[low] = 0.
-            dark.data[low] = 0.
+           
         return dark
 
     def mkflat(self,ims,bias=None,dark=None,scat=None,display=None,trim=False,ext=0,
                type='median',sigreject=5,spec=False,width=101,littrow=False,normalize=True,
-               snmin=50) :
+               snmin=50,clip=None) :
         """ Driver for superflat combination, with superbias if specified, normalize to normbox
 
         Parameters
@@ -1343,15 +1368,14 @@ class Reducer() :
         type : str, default='median'
               combine method
         sigreject : float
-              rejection threshold for combine type='reject'
+              rejection threshold for combine type='reject', otherwise ignored
         spec : bool, default=False
               if True, creates "spectral" flat by taking out wavelength
               shape
         littrow : bool, default=False
               if True, attempts to fit and remove Littrow ghost from flat,
               LITTROW_GHOST bit must be set in bitmask first to identify 
-              ghost location
-              only relevant if spec==True
+              ghost location. Ignored if spec==False
         width : int, default=101
               window width for removing spectral shape for spec=True
 
@@ -1364,10 +1388,14 @@ class Reducer() :
         for i,f in enumerate(flat) :
             flat[i].header['OBJECT'] = 'Combined flat'
         if spec :
-            return self.mkspecflat(flat,width=width,display=display,
+            flat = self.mkspecflat(flat,width=width,display=display,
                                    littrow=littrow,snmin=snmin)
-        else :
-            return flat
+        if clip is not None :
+            low = np.where(flat.data < clip*flat.uncertainty.array)
+            flat.data[low] = 1.
+            flat.uncertainty.array[low] = 1.
+
+        return flat
 
     def mkspecflat(self,flats,width=101,display=None,littrow=False,snmin=50) :
         """ Spectral flat takes out variation along wavelength direction
