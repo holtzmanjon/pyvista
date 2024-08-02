@@ -1,7 +1,7 @@
 SLITMASK module
 ***************
 
-*slitmask is only in earliest stages of development*
+*slitmask is still in development*
 
 slitmask is the pyvista module that implements routines for dealing with slit
 masks.
@@ -12,7 +12,7 @@ the location of holes on a slitmask flat field image, findstars() finds
 stars on an image, and fit() solves for the translation and rotation to
 put the stars into the holes.
 
-Even more in development, findslits() attempts to find the slitlets in a
+Within a Trace object, findslits() attempts to find the slitlets in a i
 spectroscopic image.
 
 slitmask functions:
