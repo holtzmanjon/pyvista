@@ -73,7 +73,7 @@ class Reducer() :
 
     """
     def __init__(self,inst=None,conf='',dir='./',root='*',formstr='{:04d}.f*',
-                 gain=1,rn=0.,saturation=2**32,verbose=True,nfowler=1) :
+                 gain=1,rn=0.,saturation=2**32,verbose=True,nfowler=1,trim=False) :
         """  Initialize reducer with information about how to reduce
         """
         self.dir=dir
@@ -83,6 +83,7 @@ class Reducer() :
         self.scat=None
         self.bitmask=None
         self.transpose=None
+        self.trim=Trim
         self.scale=1
         self.biastype=-1
         self.biasbox=[]
@@ -469,7 +470,7 @@ class Reducer() :
         """
         im=self.rd(num,dark=dark,channel=channel,utr=utr,ext=ext)
         self.overscan(im,display=display,channel=channel)
-        im=self.trim(im,trimimage=trim)
+        if self.trim : im=self.trimimage(im,trimimage=self.trim)
         im=self.bias(im,superbias=bias)
         im=self.dark(im,superdark=dark)
         im=self.crrej(im,crbox=crbox,crsig=crsig,objlim=objlim,sigfrac=sigfrac,
@@ -478,7 +479,7 @@ class Reducer() :
         im=self.flat(im,superflat=flat,display=display)
         self.badpix_fix(im,val=badpix)
         if trim and display is not None: display.tvclear()
-        #im=self.trim(im,trimimage=trim)
+        im=self.trimimage(im,trimimage=trim)
         if solve : 
             im=self.platesolve(im,display=display,scale=self.scale,seeing=seeing)
         if return_list and type(im) is not list : im=[im]
@@ -673,7 +674,7 @@ class Reducer() :
             else :
               im.uncertainty = StdDevUncertainty(np.sqrt( data/gain + (rn/gain)**2 ))
 
-    def trim(self,inim,trimimage=False) :
+    def trimimage(self,inim,trimimage=False) :
         """ Trim image by masking non-trimmed pixels
             May need to preserve image size to match reference/calibration frames, etc.
         """
