@@ -67,6 +67,14 @@ class Data(CCDData) :
         else :
             self.sky = None
 
+        # Add sky attribute
+        if 'skyerr' in kwd :
+            self.skyerr = kwd['skyerr']
+            kwd.pop('skyerr')
+        else :
+            self.skyerr = None
+
+
         ccddata._config_ccd_requires_unit = False
         super().__init__(*args, **kwd)
 
@@ -110,8 +118,18 @@ class Data(CCDData) :
         """
         self.sky = sky
 
+    def add_skyerr(self,skyerr) :
+        """ Add a skyerr attribute to Data object
+
+        Parameters
+        ----------
+        skyerr : flat, array-like
+               Sky error array to add
+        """
+        self.skyerr = skyerr
+
     def to_hdu(self, hdu_bitmask='BITMASK', hdu_uncertainty='UNCERT',
-               hdu_wave='WAVE', hdu_response='RESPONSE', hdu_sky='SKY', 
+               hdu_wave='WAVE', hdu_response='RESPONSE', hdu_sky='SKY', hdu_skyerr='SKYERR',
                wcs_relax=True, key_uncertainty_type='UTYPE', as_image_hdu=True):
         """Creates an HDUList object from a CCDData object.
 
@@ -250,6 +268,11 @@ class Data(CCDData) :
             print('appending sky')
             hdus.append(fits.ImageHDU(self.sky,name=hdu_sky))
 
+        if hdu_skyerr and self.skyerr is not None :
+            print('appending skyerr')
+            hdus.append(fits.ImageHDU(self.skyerr,name=hdu_skyerr))
+
+
         hdulist = fits.HDUList(hdus)
 
         return hdulist
@@ -311,7 +334,7 @@ class Data(CCDData) :
 
 def fits_data_reader(filename, hdu=0, unit=None, hdu_uncertainty='UNCERT',
                         hdu_bitmask='BITMASK', hdu_wave='WAVE',
-                        hdu_response='RESPONSE',hdu_sky='SKY',
+                        hdu_response='RESPONSE',hdu_sky='SKY', hdu_skyerr='SKYERR',
                         key_uncertainty_type='UTYPE', **kwd):
     """
     Generate a Data object from a FITS file. Modified from astropy fits_ccddata_reader
@@ -398,16 +421,22 @@ def fits_data_reader(filename, hdu=0, unit=None, hdu_uncertainty='UNCERT',
             wave = None
 
         if hdu_response is not None and hdu_response in hdus:
-            # Wavelength is saved as float
+            # float
             response = hdus[hdu_response].data.astype(np.float32)
         else:
             response = None
 
         if hdu_sky is not None and hdu_sky in hdus:
-            # Wavelength is saved as float
+            # float
             sky = hdus[hdu_sky].data.astype(np.float32)
         else:
             sky = None
+
+        if hdu_skyerr is not None and hdu_skyerr in hdus:
+            # float
+            skyerr = hdus[hdu_skyerr].data.astype(np.float32)
+        else:
+            skyerr = None
 
         # search for the first instance with data if
         # the primary header is empty.
@@ -459,7 +488,7 @@ def fits_data_reader(filename, hdu=0, unit=None, hdu_uncertainty='UNCERT',
         hdr, wcs = ccddata._generate_wcs_and_update_header(hdr)
         data = Data(hdus[hdu].data, meta=hdr, unit=use_unit,
                     bitmask=bitmask, uncertainty=uncertainty, wave=wave, wcs=wcs,
-                    response=response, sky=sky)
+                    response=response, sky=sky, skyerr=skyerr)
 
     return data
 
