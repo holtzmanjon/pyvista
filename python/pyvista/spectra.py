@@ -484,7 +484,7 @@ class WaveCal() :
         """
         return self.spectrum 
 
-    def identify(self,spectrum,file=None,wav=None,wref=None,inter=False,
+    def identify(self,spectrum,sky=False,file=None,wav=None,wref=None,inter=False,
                  orders=None,verbose=False,rad=5,thresh=100, fit=True, maxshift=1.e10,
                  disp=None,display=None,plot=None,pixplot=False,domain=False,
                  plotinter=True,
@@ -514,11 +514,18 @@ class WaveCal() :
                guess. With pixplot=True, plot is shown as function of pixel
         """
 
-        sz=spectrum.data.shape
+        if sky :
+            data = spectrum.sky
+            err = spectrum.skyerr
+        else :
+            data = spectrum.data
+            err = spectrum.uncertainty.array
+
+        sz=data.shape
         if len(sz) == 1 : 
-            spectrum.data = np.atleast_2d(spectrum.data)
-            spectrum.uncertainty.array = np.atleast_2d(spectrum.uncertainty.array)
-            sz=spectrum.data.shape
+            data = np.atleast_2d(data)
+            err = np.atleast_2d(err)
+            sz=data.shape
         if xmin is None : xmin=0
         if xmax is None : xmax=sz[-1]
         nrow=sz[0]
@@ -532,7 +539,7 @@ class WaveCal() :
             pix=np.arange(sz[-1])
             if inter :
                 f,a=plots.multi(1,1)
-                a.plot(spectrum.data[0,:])
+                a.plot(data[0,:])
                 for i in range(2) :
                     print('mark location of known line with m key')
                     ret=plots.mark(f)
@@ -547,7 +554,7 @@ class WaveCal() :
             elif self.spectrum is not None :
                 # cross correlate with reference image to get pixel shift
                 print('  cross correlating with reference spectrum using lags between: ', lags[0],lags[-1])
-                fitpeak,shift = image.xcorr(self.spectrum,spectrum.data,lags)
+                fitpeak,shift = image.xcorr(self.spectrum,data,lags)
                 if shift.ndim == 1 :
                     pixshift=(fitpeak+lags[0])[0]
                     print('  Derived pixel shift from input wcal: ',fitpeak+lags[0])
@@ -555,8 +562,8 @@ class WaveCal() :
                         display.plotax1.cla()
                         display.plotax1.text(0.05,0.95,'spectrum and reference',
                                              transform=display.plotax1.transAxes)
-                        for row in range(spectrum.data.shape[0]) :
-                            display.plotax1.plot(spectrum.data[row,:],color='m')
+                        for row in range(data.shape[0]) :
+                            display.plotax1.plot(data[row,:],color='m')
                             display.plotax1.plot(self.spectrum[row,:],color='g')
                         display.plotax1.set_xlabel('Pixel')
                         display.histclick=False
@@ -637,7 +644,7 @@ class WaveCal() :
         if display is not None and  isinstance(display,pyvista.tv.TV) :
             display.ax.cla()
             display.ax.axis('off')
-            display.tv(spectrum.data)
+            display.tv(data)
         if plot is None or plot == False:
             self.ax = None
         else :
@@ -665,8 +672,8 @@ class WaveCal() :
             if verbose :print('  identifying lines in row: ', row,end='\r')
             if self.ax is not None :
                 # next line for pixel plot
-                if pixplot : ax[0].plot(spectrum.data[row,:])
-                else : ax[0].plot(wav[row,:],spectrum.data[row,:])
+                if pixplot : ax[0].plot(data[row,:])
+                else : ax[0].plot(wav[row,:],data[row,:])
                 #ax[0].set_yscale('log')
                 ax[0].set_ylim(1.,ax[0].get_ylim()[1])
                 ax[0].text(0.1,0.9,'row: {:d}'.format(row),transform=ax[0].transAxes)
@@ -676,24 +683,24 @@ class WaveCal() :
                 # initial guess from input wavelengths
                 peak0=np.nanargmin(abs(line-wav[row,:]))
                 peak=np.nanargmin(abs(line-wav[row,:]))
-                if ( (spectrum.data[row,peak] > 1) and (peak > xmin+rad) and (peak < xmax-rad)) :
+                if ( (data[row,peak] > 1) and (peak > xmin+rad) and (peak < xmax-rad)) :
                   # set peak to highest nearby pixel
-                  peak=(spectrum.data[row,peak-rad:peak+rad+1]).argmax()+peak-rad
+                  peak=(data[row,peak-rad:peak+rad+1]).argmax()+peak-rad
                   if ( (peak < xmin+rad) or (peak > xmax-rad)) : continue
                   if isinstance(display,pyvista.tv.TV) :
                       peaks.append(peak)
                       rows.append(row)
                   # S/N threshold
-                  if (spectrum.data[row,peak-rad:peak+rad+1]/
-                      spectrum.uncertainty.array[row,peak-rad:peak+rad+1]).max() > thresh:
+                  if (data[row,peak-rad:peak+rad+1]/
+                      err[row,peak-rad:peak+rad+1]).max() > thresh:
 
                     oldpeak = 0
                     niter=0
                     xx = np.arange(peak-rad,peak+rad+1)
-                    yy = spectrum.data[row,peak-rad:peak+rad+1]
+                    yy = data[row,peak-rad:peak+rad+1]
                     try :  
                       while peak != oldpeak and  niter<10:
-                        p0 = [spectrum.data[row,peak],peak,rad/sig2fwhm,0.]
+                        p0 = [data[row,peak],peak,rad/sig2fwhm,0.]
                         coeff, var_matrix = curve_fit(gauss, xx, yy, p0=p0)
                         cent = coeff[1]
                         oldpeak = peak
@@ -737,7 +744,7 @@ class WaveCal() :
         self.waves=np.array(waves)
         self.waves_order=np.array(waves_order)
         self.weights=np.array(weight)
-        self.spectrum = spectrum.data
+        self.spectrum = data
 
         redo = False
         if fit: 
@@ -775,8 +782,10 @@ class WaveCal() :
             if not linear or i>0 :
                 self.model.fixed['c{:d}'.format(i+1)] = True
 
+        if hd.sky is not None and hd.skyerr is not None : sky=True
+        else : sky=False
         self.identify(hd,wav=hd.wave,file=file,plot=plot,thresh=thresh,
-                      plotinter=inter)
+                      plotinter=inter,sky=sky)
 
     def scomb(self,hd,wav,average=True,usemask=True) :
         """ Resample onto input wavelength grid
@@ -1511,11 +1520,13 @@ class Trace() :
             sig = np.zeros([nout,hd.data.shape[1]])
             bitmask = np.zeros([nout,hd.data.shape[1]],dtype=np.uintc)
             background_spec = np.zeros([nout,hd.data.shape[1]])
+            background_spec_err = np.zeros([nout,hd.data.shape[1]])
         else :
             spec = np.zeros([len(self.model),hd.data.shape[1]])
             sig = np.zeros([len(self.model),hd.data.shape[1]])
             bitmask = np.zeros([len(self.model),hd.data.shape[1]],dtype=np.uintc)
             background_spec = np.zeros([len(self.model),hd.data.shape[1]])
+            background_spec_err = np.zeros([len(self.model),hd.data.shape[1]])
 
         pars=[]
         if threads == 0 : 
@@ -1551,6 +1562,7 @@ class Trace() :
                 sig[self.index,col:col+nc] = out[1]
                 bitmask[self.index,col:col+nc] = out[2]
                 background_spec[self.index,col:col+nc] = out[3]
+                background_spec_err[self.index,col:col+nc] = out[4]
                 col+=skip
         else :
             col=0
@@ -1564,6 +1576,7 @@ class Trace() :
                 sig[self.index,col:col+skip] = out[1]
                 bitmask[self.index,col:col+skip] = out[2]
                 background_spec[self.index,col:col+skip] = out[3]
+                background_spec_err[self.index,col:col+skip] = out[4]
                 col+=skip
 
         if plot is not None:
@@ -1600,10 +1613,10 @@ class Trace() :
                 pass
         print("")
         return Data(spec,uncertainty=StdDevUncertainty(sig),
-                    bitmask=bitmask,header=hd.header,sky=background_spec)
+                    bitmask=bitmask,header=hd.header,sky=background_spec,skyerr=background_spec_err)
 
   
-    def extract2d(self,im,rows=None,plot=None,display=None) :
+    def extract2d(self,im,rows=None,plot=None,display=None,buffer=0) :
         """  Extract 2D spectrum given trace(s)
 
              Assumes all requested rows uses same trace, just offset, 
@@ -1631,8 +1644,8 @@ class Trace() :
 
         print('extracting: ')
         for rows,model in zip(rows,self.model) :
-            outrows=np.arange(rows[0],rows[1])
-            noutrows=len(range(rows[0],rows[1]))
+            outrows=np.arange(rows[0]+buffer,rows[1]-buffer)
+            noutrows=len(range(rows[0]+buffer,rows[1]-buffer))
             spec=np.zeros([noutrows,ncols])
             sig=np.zeros([noutrows,ncols])
             bitmask=np.zeros([noutrows,ncols],dtype=np.uintc)
@@ -1776,6 +1789,7 @@ class Trace() :
                 xx = np.arange(data.shape[1])
                 display.ax.plot(xx,poly(xx),color='b')
             all_bottom_fit.append(poly)
+            # just uses bottom fit for saved model
             self.model.append(poly)
     
         for ipeak in range(len(top_edges)) :
@@ -2334,6 +2348,7 @@ def extract_col(pars) :
     sig2 = np.zeros([len(models),len(cols)])
     mask = np.zeros([len(models),len(cols)],dtype=np.uintc)
     background_spec = np.zeros([len(models),len(cols)])
+    background_spec_err = np.zeros([len(models),len(cols)])
     ny=data.shape[0]
     ncol=data.shape[1]
     y,x = np.mgrid[0:data.shape[0],0:data.shape[1]]
@@ -2382,8 +2397,10 @@ def extract_col(pars) :
             spec[i,:] -= np.nanmedian(background,axis=0)*2*rad
             sig2[i,:] += np.nansum(background_err,axis=0)/nback*(2*rad)
             background_spec[i,:] = np.nanmedian(background,axis=0)*2*rad
+            # rough estimate of error in background
+            background_spec_err[i,:] = np.sqrt(np.nanmedian(background_err,axis=0)/nback)*2*rad
 
-    return spec, np.sqrt(sig2), mask, background_spec
+    return spec, np.sqrt(sig2), mask, background_spec, background_spec_err
 
 class Model() :
     def __init__(self,func=None,apers=None,coeff=None,xdegree=1,ydegree=0,xdomain=[-1,1],ydomain=[-1,1]) :
