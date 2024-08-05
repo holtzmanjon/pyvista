@@ -16,6 +16,7 @@ centroid.py : new module, move centering routines from stars here
           add radial asymmetry centering
 
 dataclass.py : include minmax() here
+           add option for skyerr attribute
 
 image.py : more precise sig2fwhm
            use integer dividsion in box
@@ -33,6 +34,9 @@ imred.py : change default for filename template to include '.f*'
            add min=, max= in movie()
            add utr option for APOGEE
            modifications to noise()
+           add clip= for mkflat()
+           add trim attribute to trim calibration products
+           rename trim() to trimimage()
 
 mmm.py : add return of nsky
          np.int --> intA
@@ -47,6 +51,8 @@ spectra.py : more precise sig2fwhm
              np.int --> int
              add keywords to extract() : back_percentile= and method=
              extract returns background spectrum, which is stored in sky attribute
+             extract returns background_err spectrum, which is stored in skyerr attribute
+             allow for using sky attribute in WaveCal.identify(), and implement in skyline()
 
 stars.py : move centering routines to centroid module
            add brightest= to DAOFind
