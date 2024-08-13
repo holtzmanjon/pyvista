@@ -488,7 +488,7 @@ class WaveCal() :
                  orders=None,verbose=False,rad=5,thresh=100, fit=True, maxshift=1.e10,
                  disp=None,display=None,plot=None,pixplot=False,domain=False,
                  plotinter=True,
-                 xmin=None,xmax=None,lags=range(-300,300), nskip=None) :
+                 xmin=None,xmax=None,lags=range(-300,300), nskip=None, rows=None) :
         """ Given some estimate of wavelength solution and file with lines,
             identify peaks and centroid, via methods:
 
@@ -530,9 +530,13 @@ class WaveCal() :
         if xmax is None : xmax=sz[-1]
         nrow=sz[0]
         if orders is not None : self.orders = orders
-        if nskip is None :
-            if len(set(self.orders)) == 1 : nskip=25
-            else : nskip=1
+
+        # specify rows to find lines in (e.g., for 2D)
+        if rows is None :
+            if  nskip is None :
+                if len(set(self.orders)) == 1 : nskip=25
+                else : nskip=1
+            rows = range(0,nrow,nskip)
 
         # get initial reference wavelengths if not given
         if wav is None :
@@ -587,7 +591,7 @@ class WaveCal() :
                     for row in range(wav.shape[0]) : 
                         print('  Derived pixel shift from input wcal for row: {:d} {:d}'.format
                                (row,shift[row,:].argmax()+lags[0]),end='\r')
-                        rows=np.zeros(len(cols))+row
+                        #rows=np.zeros(len(cols))+row
                         try : order = self.orders[row]
                         except : order=self.orders[0]
                         orders.append(order)
@@ -665,10 +669,10 @@ class WaveCal() :
 
         if self.ax is not None : ax[0].cla()
         peaks=[]
-        rows=[]
+        allrows=[]
         gdpeaks=[]
         gdrows=[]
-        for row in range(0,nrow,nskip) :
+        for row in rows :
             if verbose :print('  identifying lines in row: ', row,end='\r')
             if self.ax is not None :
                 # next line for pixel plot
@@ -689,7 +693,7 @@ class WaveCal() :
                   if ( (peak < xmin+rad) or (peak > xmax-rad)) : continue
                   if isinstance(display,pyvista.tv.TV) :
                       peaks.append(peak)
-                      rows.append(row)
+                      allrows.append(row)
                   # S/N threshold
                   if (data[row,peak-rad:peak+rad+1]/
                       err[row,peak-rad:peak+rad+1]).max() > thresh:
@@ -733,7 +737,7 @@ class WaveCal() :
                         wt=0.
                     weight.append(wt)
         if isinstance(display,pyvista.tv.TV) :
-            display.ax.scatter(peaks,rows,marker='o',color='r',s=2)
+            display.ax.scatter(peaks,allrows,marker='o',color='r',s=2)
             display.ax.scatter(gdpeaks,gdrows,marker='o',color='g',s=2)
         if self.ax is not None : 
             self.fig.tight_layout()
@@ -754,7 +758,7 @@ class WaveCal() :
 
         return redo
 
-    def skyline(self,hd,plot=True,thresh=50,inter=True,linear=False,file='skyline.dat') :
+    def skyline(self,hd,plot=True,thresh=50,inter=True,linear=False,file='skyline.dat',rows=None) :
         """ Adjust wavelength solution based on sky lines
 
             Parameters
@@ -778,14 +782,21 @@ class WaveCal() :
             raise ValueError('input object must contain wave attribute')
 
         # set higher order terms to fixed
-        for i in range(self.degree) :
-            if not linear or i>0 :
-                self.model.fixed['c{:d}'.format(i+1)] = True
+        if self.type == 'chebyshev2D' :
+            for i in range(self.degree) :
+                self.model.fixed['c{:d}_1'.format(i+1)] = True
+                self.model.fixed['c{:d}_2'.format(i+1)] = True
+                if not linear or i>0 :
+                    self.model.fixed['c{:d}_0'.format(i+1)] = True
+        else :
+            for i in range(self.degree) :
+                if not linear or i>0 :
+                    self.model.fixed['c{:d}'.format(i+1)] = True
 
         if hd.sky is not None and hd.skyerr is not None : sky=True
         else : sky=False
         self.identify(hd,wav=hd.wave,file=file,plot=plot,thresh=thresh,
-                      plotinter=inter,sky=sky)
+                      plotinter=inter,sky=sky,rows=rows)
 
     def scomb(self,hd,wav,average=True,usemask=True) :
         """ Resample onto input wavelength grid
@@ -859,6 +870,7 @@ class WaveCal() :
 
         out=np.zeros([hd.data.shape[0],len(wav)])
         sig=np.zeros_like(out)
+        wave=np.zeros([hd.data.shape[0],len(wav)])
         bitmask=np.zeros_like(out,dtype=hd.bitmask.dtype)
         w=self.wave(image=hd.data.shape)
         for i in range(len(out)) :
@@ -870,6 +882,7 @@ class WaveCal() :
             out[i,:] += np.interp(wav,w[i,sort],hd.data[i,sort])
             sig[i,:] += np.sqrt(
                             np.interp(wav,w[i,sort],hd.uncertainty.array[i,sort]**2))
+            wave[i,:] = wav
             for bit in range(0,32) :
                 mask = (hd.bitmask[i,sort] & 2**bit)
                 if mask.max() > 0 :
@@ -877,7 +890,7 @@ class WaveCal() :
                     bitset = np.where(maskint>0)[0] 
                     bitmask[i,bitset] |= 2**bit
 
-        return Data(out,uncertainty=StdDevUncertainty(sig),bitmask=bitmask,wave=wav)
+        return Data(out,header=hd.header,uncertainty=StdDevUncertainty(sig),bitmask=bitmask,wave=wave)
 
 class Trace() :
     """ Class for spectral traces
