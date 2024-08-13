@@ -13,7 +13,7 @@ conflicts.  If you are using Anaconda, you can create a new virtual environment 
 
 .. code-block:: csh
 
-   conda env create -f pyvista.yml python=3.12
+   conda env create --name pyvista python=3.12
    conda activate pyvista
 
 Alternatively, you can use Python venv:
@@ -30,8 +30,7 @@ Once you have activated your virtual environment:
    pip install astro-pyvista
 
 If you are using Anaconda Navigator, you can use the Environments section on 
-the left, then use Import at the bottom and specify the location of the 
-pyvista.yml file
+the left.
 
 
 Editable installation into Python distribution
