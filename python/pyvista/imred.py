@@ -83,7 +83,7 @@ class Reducer() :
         self.scat=None
         self.bitmask=None
         self.transpose=None
-        self.trim=Trim
+        self.trim=trim
         self.scale=1
         self.biastype=-1
         self.biasbox=[]
@@ -963,6 +963,7 @@ class Reducer() :
         else : nsigs = crsig
         out=[]
         for i,(im,gain,rn,sat) in enumerate(zip(ims,self.gain,self.rn,self.saturation)) :
+          print('  starting CR rejection, may take some time ....')
           for iter,nsig in enumerate(nsigs) : 
             if display is not None : 
                 display.clear()
