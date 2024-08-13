@@ -174,7 +174,7 @@ def fit(holes, locstars, ordered=False, fitscale=False) :
     src=np.array(src)
     dest=np.array(dest)
 
-    if scale :
+    if fitscale :
         sim=SimilarityTransform()
         sim.estimate(src,dest)
         print('Similarity Transform: ')
