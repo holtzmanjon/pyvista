@@ -1,4 +1,4 @@
-0.3.1 --> 0.4.0, July 2024
+0.3.1 --> 0.4.0, August 2024
 
 apogee.py : include reference array in unzip
             add utr() 
@@ -39,7 +39,7 @@ imred.py : change default for filename template to include '.f*'
            rename trim() to trimimage()
 
 mmm.py : add return of nsky
-         np.int --> intA
+         np.int --> int
 
 skycalc.py : add plot option for airmass()
              significant mods to airmas()
@@ -50,9 +50,13 @@ skycalc.py : add plot option for airmass()
 spectra.py : more precise sig2fwhm
              np.int --> int
              add keywords to extract() : back_percentile= and method=
-             extract returns background spectrum, which is stored in sky attribute
-             extract returns background_err spectrum, which is stored in skyerr attribute
-             allow for using sky attribute in WaveCal.identify(), and implement in skyline()
+             extract returns background spectrum, which is stored in 
+               sky attribute
+             extract returns background_err spectrum, which is stored in 
+               skyerr attribute
+             allow for using sky attribute in WaveCal.identify(), and 
+               implement in skyline()
+             implement skyline for 2D images
 
 stars.py : move centering routines to centroid module
            add brightest= to DAOFind
