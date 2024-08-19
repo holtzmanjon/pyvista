@@ -73,8 +73,33 @@ class Reducer() :
 
     """
     def __init__(self,inst=None,conf='',dir='./',root='*',formstr='{:04d}.f*',
-                 gain=1,rn=0.,saturation=2**32,verbose=True,nfowler=1,trim=False) :
+                 gain=1,rn=0.,saturation=2**32,verbose=True,nfowler=1,
+                 trim=False) :
         """  Initialize reducer with information about how to reduce
+
+        Parameters
+        ----------
+        inst : str, default=None
+               configuration file name to read for instrument
+        conf : str, default=''
+               configuration suffix to add to configuration file name
+        dir : str,default='./'
+              default directory to get images from
+        trim : bool, default=False
+               if True, trim calibration products
+        formstr : str, default='{04d}.f*'
+              sets format string to find images given integer ID, 
+              if not reading from configuration file
+        gain : float, default=1
+              gain if not reading from configuration file
+        rn : float, default=0
+              rn if not reading from configuration file
+        saturation : int, default=2**32
+              saturation value if not reading from configuration file
+        verbose : bool, default=False
+              turn on verbose output
+        nfowler : integer, default=1
+              nfowler value if not reading from configuration file
         """
         self.dir=dir
         self.root=root
@@ -433,7 +458,8 @@ class Reducer() :
                bias=None,dark=None,flat=None,
                scat=None,badpix=None,solve=False,return_list=False,display=None,
                trim=True,seeing=2,utr=False) :
-        """ Reads data from disk, and performs reduction steps as determined from command line parameters
+        """ Reads data from disk, and performs reduction steps 
+            as determined from command line parameters
 
         Parameters
         ----------
@@ -461,11 +487,18 @@ class Reducer() :
              if specified, parameter to pass to CR rejection routine, 
              either 2-element list giving shape of box for median 
              filter, or 'lacosmic'
-        scat :
-        badpix :
-        trim :
-        solve :
-        seeing :
+        scat : integer, default=None
+             if specified, do scattered light correction, getting
+             estimate every scat pixels
+        badpix : int, default=None
+             if specified, set masked pixels to specified value
+        trim : bool, default=True
+             trim image after calibration, irrelevant if red.trimg=True
+        solve : bool, default=False
+             attempt to plate-solve image after reduction, requires 
+             local astrometry.net
+        seeing : float, default=2
+             seeing used to find stars if solve=True
 
         """
         im=self.rd(num,dark=dark,channel=channel,utr=utr,ext=ext)
@@ -479,7 +512,7 @@ class Reducer() :
         im=self.flat(im,superflat=flat,display=display)
         self.badpix_fix(im,val=badpix)
         if trim and display is not None: display.tvclear()
-        im=self.trimimage(im,trimimage=trim)
+        if trim and not self.trim : im=self.trimimage(im,trimimage=trim)
         if solve : 
             im=self.platesolve(im,display=display,scale=self.scale,seeing=seeing)
         if return_list and type(im) is not list : im=[im]
@@ -1461,7 +1494,8 @@ class DET() :
     """ 
     Defines detector class 
     """
-    def __init__(self,inst=None,gain=0.,rn=0.,biastype=0,biasbox=None,normbox=None,trimbox=None,formstr='{:04d}') :
+    def __init__(self,inst=None,gain=0.,rn=0.,biastype=0,biasbox=None,
+                 normbox=None,trimbox=None,formstr='{:04d}') :
         self.gain = gain
         self.rn = rn
         self.biastype = biastype
