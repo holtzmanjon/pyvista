@@ -595,14 +595,20 @@ def mkyaml(mjd,obs='apo') :
     if obs == 'apo' :
         red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_N']+'/'+str(mjd))
         if mjd < 59600 :
-            files = red.log(cols=['DATE-OBS','PLATEID','FLAVOR','EXPTIME','HARTMANN','MAPID','NAME'],channel='-b1')
+            files = red.log(cols=['DATE-OBS','PLATEID','FLAVOR','EXPTIME','HARTMANN','MAPID','NAME','PLATETYP'],
+                            channel='-b1',hexdump=True)
             files['CONFID'] = files['NAME']
             files['FIELDID'] = files['PLATEID']
+            if mjd < 59150 :
+                gd=np.where(np.char.find(files['PLATETYP'],b'BOSS') >=0)[0]
+                files=files[gd]
         else :
-            files = red.log(cols=['DATE-OBS','FIELDID','FLAVOR','EXPTIME','HARTMANN','CONFID'],channel='-b')
+            files = red.log(cols=['DATE-OBS','FIELDID','FLAVOR','EXPTIME','HARTMANN','CONFID'],
+                            channel='-b',hexdump=True)
     else :
         red=imred.Reducer('BOSS',dir=os.environ['BOSS_SPECTRO_DATA_S']+'/'+str(mjd))
-        files = red.log(cols=['DATE-OBS','FIELDID','FLAVOR','EXPTIME','HARTMANN','CONFID'],channel='-b')
+        files = red.log(cols=['DATE-OBS','FIELDID','FLAVOR','EXPTIME','HARTMANN','CONFID'],
+                        channel='-b',hexdump=True)
 
     files['FILE'] = np.char.replace(files['FILE'].astype(str),'.gz','')
 
