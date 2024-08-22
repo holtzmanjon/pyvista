@@ -22,7 +22,8 @@ def get(ra,dec,posn_match=30,vers='dr3',verbose=True,cols=None) :
     tab.write(xmlfilename,format='votable',overwrite=True)
     if vers == 'dr3' :
         job= Gaia.launch_job_async(
-            """SELECT p.source_id, g.ra, g.dec, g.pmra, g.pmdec, g.phot_rp_mean_mag,
+            """SELECT p.source_id, g.ra, g.dec, g.pmra, g.pmdec, 
+                      g.phot_bp_mean_mag, g.phot_rp_mean_mag, g.phot_g_mean_mag,
                       g.azero_gspphot,g.ebpminrp_gspphot,
                       p.teff_gspspec, p.logg_gspspec, p.mh_gspspec,
                       p.alphafe_gspspec,p.fem_gspspec,p.sife_gspspec,p.cafe_gspspec,p.mgfe_gspspec,p.ndfe_gspspec,
