@@ -11,12 +11,15 @@ boss.py : change default crbox to None
           allow to specify backend rather than forcing 'Agg'
           mkyaml() use -b1 to construct par files for older 2 spectrograph data (doesn't include b2/r2!)
           add arc_transform() routine
+          fix mkyaml for plates, use hexdump
 
 centroid.py : new module, move centering routines from stars here
           add radial asymmetry centering
 
 dataclass.py : include minmax() here
            add option for skyerr attribute
+
+gaia.py : add some more magnitudes to get()
 
 image.py : more precise sig2fwhm
            use integer dividsion in box
@@ -37,6 +40,7 @@ imred.py : change default for filename template to include '.f*'
            add clip= for mkflat()
            add trim attribute to trim calibration products
            rename trim() to trimimage()
+           add hexdump option for log()
 
 mmm.py : add return of nsky
          np.int --> int
