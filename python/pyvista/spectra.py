@@ -507,7 +507,6 @@ class WaveCal() :
             Lines are identified by looking for peaks within rad pixels of
                initial guess
 
-                         
             After line identification, fit() is called, unless fit=False
 
             With plot=True, plot of spectrum is shown, with initial wavelength
@@ -769,6 +768,9 @@ class WaveCal() :
                    display plot results
             thresh : float, default=50
                    minimum S/N for line detection
+            rows : array-like, default=None
+                   if specified, only use specified rows for sky spectrum, relevant for 2D correction
+                   to ignore object rows
             inter : bool, default=True
                    allow for interactive removal of lines
             linear : bool, default=False
