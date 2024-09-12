@@ -363,7 +363,7 @@ def pa(h,dec,site='APO') :
     parallactic angle in degrees
     """
     phi=EarthLocation.of_site(site).lat.value*np.pi/180.
-    pa = np.arcsin(np.cos(phi)*np.sin(h*15*np.pi/180)/np.sin(zd(h,dec,site)*np.pi/180))
+    pa = np.arctan2(np.sin(h*15*np.pi/180),np.cos(dec*np.pi/180.)*np.tan(phi)-np.sin(dec*np.pi/180)*np.cos(h*15*np.pi/180.))
     return pa*180/np.pi
 
 def refraction(obs=None,wav=0.5,h=2000,temp=20,rh=0.25) :
