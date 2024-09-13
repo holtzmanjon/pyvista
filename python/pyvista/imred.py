@@ -442,11 +442,15 @@ class Reducer() :
         for im in ims :
             display.clear()
             a=self.rd(im,channel=channel)
-            display.tv(a,min=min,max=max)
+            display.tv(a,min=min,max=max,draw=False)
             y,x=a.data.shape
-            display.tvtext(x//2,y*3//4,'{:d} {:f}'.format(im,a.header['EXPTIME']),color='r')
-            display.savefig('tmpimage{:d}.png'.format(im))
-            files.append('tmpimage{:d}.png'.format(im))
+            try: 
+                display.tvtext(x//2,y*3//4,'{:d} {:f}'.format(im,a.header['EXPTIME']),color='r')
+                display.savefig('tmpimage{:d}.png'.format(im))
+                files.append('tmpimage{:d}.png'.format(im))
+            except:
+                print('error at file: ', im,' stopping there')
+                continue
 
         import imageio
         with imageio.get_writer(out,mode='I') as writer :
