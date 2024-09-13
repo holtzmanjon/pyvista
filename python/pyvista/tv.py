@@ -484,7 +484,7 @@ class TV:
         else : self.ax.set_ylim(np.min(ylim),np.max(ylim))
         plt.draw()
 
-    def tv(self,img,min=None,max=None,same=False,cmap=None,sn=False,object=None) :
+    def tv(self,img,min=None,max=None,same=False,cmap=None,sn=False,object=None, draw=True) :
         """
         main display routine: displays image with optional scaling
 
@@ -605,7 +605,7 @@ class TV:
         self.plotax1.set_ylim(ylim)
         self.histclick = True
 
-        plt.draw()
+        if draw: plt.draw()
         try :
           x,y=pyautogui.position()
         except:
