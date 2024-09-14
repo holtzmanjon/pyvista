@@ -87,10 +87,10 @@ def peak(data,x,y,rad) :
     """
 
     sky,skysig,skyskew,nsky = mmm.mmm(data.flatten())
-    ys=int(y-r)
-    ye=int(y+r)+1
-    xs=int(x-r)
-    xe=int(x+r)+1
+    ys=int(y-rad)
+    ye=int(y+rad)+1
+    xs=int(x-rad)
+    xe=int(x+rad)+1
     yp,xp=np.unravel_index(np.argmax(data[ys:ye,xs:xe]-sky),data.shape)
     center=Center(xp+xs,yp+ys,np.max(data-sky),None,None)
     return center
