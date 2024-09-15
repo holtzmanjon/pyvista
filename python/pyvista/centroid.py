@@ -91,7 +91,7 @@ def peak(data,x,y,rad) :
     ye=int(y+rad)+1
     xs=int(x-rad)
     xe=int(x+rad)+1
-    yp,xp=np.unravel_index(np.argmax(data[ys:ye,xs:xe]-sky),data.shape)
+    yp,xp=np.unravel_index(np.argmax(data[ys:ye,xs:xe]-sky),data[ys:ye,xs:xe].shape)
     center=Center(xp+xs,yp+ys,np.max(data-sky),None,None)
     return center
 
