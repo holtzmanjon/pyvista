@@ -322,15 +322,32 @@ def airmass(header,obs=None) :
         raise ValueError('no AIRMASS/AIRMAS/SECZ card in header and no obs specified')
 
 
-def parang(hd,obs='apo',tz='US/Mountain') :
+def parang_header(hd,obs='apo',tz='US/Mountain') :
     """ Calculates parallactic angle given header information DATE-OBS, RA, DEC, plus observatory
     """
     site=Observer.at_site(obs,timezone=tz)
     time=Time(hd.header['DATE-OBS'])
     obj=FixedTarget(coord=SkyCoord(hd.header['RA']+'h',hd.header['DEC']+'d'))
-    print(time)
-    print(obj)
+    print('Time: ',time)
+    print('Object: ',obj)
     return site.parallactic_angle(time,obj).deg
+
+def parang(h,dec,site='APO') :
+    """ Calculate parallactic angle from HA, DEC, site
+
+    Parameters
+    ----------
+    ha : hour angle, hrs
+    dec : declination, degrees
+    site : str, site name, default='APO'
+
+    Returns
+    -------
+    parallactic angle in degrees
+    """
+    phi=EarthLocation.of_site(site).lat.value*np.pi/180.
+    pa = np.arctan2(np.sin(h*15*np.pi/180),np.cos(dec*np.pi/180.)*np.tan(phi)-np.sin(dec*np.pi/180)*np.cos(h*15*np.pi/180.))
+    return pa*180/np.pi
 
 def zd(h,dec,site='APO') :
     """ Calculate zenith distance from HA, DEC, site
@@ -348,23 +365,6 @@ def zd(h,dec,site='APO') :
     phi = EarthLocation.of_site(site).lat.value*np.pi/180.
     z = (np.sin(phi)*np.sin(dec*np.pi/180.)+np.cos(phi)*np.cos(dec*np.pi/180)*np.cos(h*15*np.pi/180))
     return np.arccos(z)*180/np.pi
-
-def pa(h,dec,site='APO') :
-    """ Calculate parallactic angle from HA, DEC, site
-
-    Parameters
-    ----------
-    ha : hour angle, hrs
-    dec : declination, degrees
-    site : str, site name, default='APO'
-
-    Returns
-    -------
-    parallactic angle in degrees
-    """
-    phi=EarthLocation.of_site(site).lat.value*np.pi/180.
-    pa = np.arctan2(np.sin(h*15*np.pi/180),np.cos(dec*np.pi/180.)*np.tan(phi)-np.sin(dec*np.pi/180)*np.cos(h*15*np.pi/180.))
-    return pa*180/np.pi
 
 def refraction(obs=None,wav=0.5,h=2000,temp=20,rh=0.25) :
     """ Calculate coefficient of refraction
