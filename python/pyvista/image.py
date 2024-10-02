@@ -212,10 +212,10 @@ def abx(data,box) :
             'max': box.max(data),
             'min': box.min(data),
             'peakx': np.unravel_index(
-                        data[box.ymin:box.ymax,box.xmin:box.xmax].argmax(),
+                        data[box.ymin:box.ymax+1,box.xmin:box.xmax+1].argmax(),
                         (box.nrow(),box.ncol()) )[1]+box.xmin,
             'peaky': np.unravel_index(
-                        data[box.ymin:box.ymax,box.xmin:box.xmax].argmax(),
+                        data[box.ymin:box.ymax+1,box.xmin:box.xmax+1].argmax(),
                         (box.nrow(),box.ncol()) )[0]+box.ymin}
 
 def gauss2d_binned(X, amp, x0, y0, a, b, c, back) :
