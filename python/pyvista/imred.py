@@ -445,7 +445,7 @@ class Reducer() :
             display.tv(a,min=min,max=max,draw=False)
             y,x=a.data.shape
             try: 
-                display.tvtext(x//2,y*3//4,'{:d} {:f}'.format(im,a.header['EXPTIME']),color='r')
+                display.tvtext(x//2,y*3//4,'{:d} {:s} {:f}'.format(im,a.header['DATE-OBS'],a.header['EXPTIME']),color='r')
                 display.savefig('tmpimage{:d}.png'.format(im))
                 files.append('tmpimage{:d}.png'.format(im))
             except:
