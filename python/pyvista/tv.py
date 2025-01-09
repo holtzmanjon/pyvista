@@ -524,7 +524,6 @@ class TV:
         self.current = current
         self.objlist.pop(current)
         self.objlist.insert(current,self.object)
-        print(current,self.object)
         self.imglist.pop(current)
         self.imglist.insert(current,data)
         self.img = data
