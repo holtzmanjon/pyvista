@@ -11,7 +11,7 @@ from astroplan.plots import plot_airmass
 from astroplan.plots import plot_parallactic
 from astropy.coordinates import SkyCoord, EarthLocation
 from astropy.time import Time
-from astropy.coordinates import get_moon, get_sun
+from astropy.coordinates import get_body, get_sun
 from astropy import coordinates as coord
 from astropy import units
 from astropy.table import Table
@@ -67,7 +67,7 @@ def calendar(obs='apo',tz='US/Mountain',year=2023,plot=False,sun_dt=10.) :
     # get LSTs and Moon information
     lsts=times.sidereal_time('mean',longitude=site.location.lon).hms
     illums=astroplan.moon_illumination(times)
-    moons = get_moon(times)
+    moons = get_body('moon',times)
 
     # store output in table
     pdb.set_trace()
