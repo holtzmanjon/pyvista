@@ -43,6 +43,8 @@ dependencies =[
     "scikit-learn",
     "scikit-image",
     "esutil",
+    "imageio",
+    "imageio-ffmpeg",
 ]
 
 [project.urls]

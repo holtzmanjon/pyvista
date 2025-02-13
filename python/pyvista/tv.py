@@ -29,7 +29,8 @@ class TV:
            tv=TV()  to set up a new TV object (display window)
     """
  
-    def __init__(self, figsize=(12,8.5), aspect='equal', clickzoom=True, nroll=4):
+    def __init__(self, figsize=(12,8.5), aspect='equal', clickzoom=True, 
+                 flipx=False, flipy=False, nroll=4):
         """
         Initialize TV object
         """
@@ -46,7 +47,8 @@ class TV:
         self.ax = ax
         self.axis = False
         self.aspect = aspect
-        self.doflip = False
+        self.doflipx = flipx
+        self.doflipy = flipy
         self.usezoom = clickzoom
         self.histclick = True
         self.object = None
@@ -216,7 +218,9 @@ class TV:
                 dim=np.shape(self.img)
                 size=np.max([dim[0],dim[1]])
                 self.ax.set_xlim(dim[1]/2.-size/2.,dim[1]/2.+size/2.)
-                if self.doflip :self.ax.set_ylim(dim[0]/2.+size/2.,dim[0]/2.-size/2.)
+                if self.doflipx :self.ax.set_xlim(dim[1]/2.+size/2.,dim[1]/2.-size/2.)
+                else :self.ax.set_xlim(dim[1]/2.-size/2.,dim[1]/2.+size/2.)
+                if self.doflipy :self.ax.set_ylim(dim[0]/2.+size/2.,dim[0]/2.-size/2.)
                 else :self.ax.set_ylim(dim[0]/2.-size/2.,dim[0]/2.+size/2.)
                 #self.ax.set_xlim(-0.5,dim[1]-0.5)
                 #self.ax.set_ylim(-0.5,dim[0]-0.5)
@@ -371,7 +375,9 @@ class TV:
                     ysize = ylim[1]-ylim[0]
                 size=max([xsize,ysize])
                 self.ax.set_xlim(event.xdata-size/2.,event.xdata+size/2.)
-                if self.doflip:self.ax.set_ylim(event.ydata+size/2.,event.ydata-size/2.)
+                if self.doflipx :self.ax.set_xlim(event.xdata+size/2.,event.xdata-size/2.)
+                else :self.ax.set_xlim(event.xdata-size/2.,event.xdata+size/2.)
+                if self.doflipy:self.ax.set_ylim(event.ydata+size/2.,event.ydata-size/2.)
                 else : self.ax.set_ylim(event.ydata-size/2.,event.ydata+size/2.)
                 plt.draw()
             elif subPlotNr == 1 :
@@ -472,12 +478,26 @@ class TV:
         self.fig.canvas.start_event_loop(1000)
 
     def flip(self) :
-        """ toggle display flip
+        """ for backwards compatibility
         """
-        self.doflip = not self.doflip
+        self.flipy()
+
+    def flipy(self) :
+        """ toggle display y flip
+        """
+        self.doflipy = not self.doflipy
         ylim = self.ax.get_ylim()
-        if self.doflip : self.ax.set_ylim(np.max(ylim),np.min(ylim))
+        if self.doflipy : self.ax.set_ylim(np.max(ylim),np.min(ylim))
         else : self.ax.set_ylim(np.min(ylim),np.max(ylim))
+        plt.draw()
+
+    def flip(self) :
+        """ toggle display x flip
+        """
+        self.doflipx = not self.doflipx
+        xlim = self.ax.get_xlim()
+        if self.doflipx : self.ax.set_xlim(np.max(xlim),np.min(xlim))
+        else : self.ax.set_xlim(np.min(xlim),np.max(xlim))
         plt.draw()
 
     def tv(self,img,min=None,max=None,same=False,cmap=None,sn=False,object=None, draw=True) :
@@ -553,7 +573,9 @@ class TV:
         dim=np.shape(self.img)
         size=np.max([dim[0],dim[1]])
         self.ax.set_xlim(dim[1]/2.-size/2.,dim[1]/2.+size/2.)
-        if self.doflip : self.ax.set_ylim(dim[0]/2.+size/2.,dim[0]/2.-size/2.)
+        if self.doflipx : self.ax.set_xlim(dim[1]/2.+size/2.,dim[1]/2.-size/2.)
+        else : self.ax.set_xlim(dim[1]/2.-size/2.,dim[1]/2.+size/2.)
+        if self.doflipy : self.ax.set_ylim(dim[0]/2.+size/2.,dim[0]/2.-size/2.)
         else : self.ax.set_ylim(dim[0]/2.-size/2.,dim[0]/2.+size/2.)
 
         self.aximage = self.ax.imshow(data,vmin=min,vmax=max,cmap=self.cmap, 

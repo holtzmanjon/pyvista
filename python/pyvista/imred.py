@@ -426,7 +426,8 @@ class Reducer() :
 
         return tab
 
-    def movie(self,ims,display=None,out='movie.gif',channel=0,min=None, max=None) :
+    def movie(self,ims,display=None,out='movie.gif',channel=0,
+              min=None, max=None,box=None,text=True,fps=None) :
         """
         Create animated gif of images
 
@@ -443,10 +444,15 @@ class Reducer() :
         for im in ims :
             display.clear()
             a=self.rd(im,channel=channel)
+            if box is not None : 
+                a=image.window(a,box)
+                text=False
+            print(a.shape)
             display.tv(a,min=min,max=max,draw=False)
             y,x=a.data.shape
             try: 
-                display.tvtext(x//2,y*3//4,'{:d} {:s} {:f}'.format(im,a.header['DATE-OBS'],a.header['EXPTIME']),color='r')
+                if text: display.tvtext(x//2,y*3//4,'{:d} {:s} {:f}'.format(
+                            im,a.header['DATE-OBS'],a.header['EXPTIME']),color='r')
                 display.savefig('tmpimage{:d}.png'.format(im))
                 files.append('tmpimage{:d}.png'.format(im))
             except:
@@ -454,11 +460,11 @@ class Reducer() :
                 continue
 
         import imageio
-        with imageio.get_writer(out,mode='I') as writer :
+        with imageio.get_writer(out,mode='I',format='FFMPEG',fps=fps) as writer :
             for filename in files :
-                image = imageio.imread(filename)
+                tmpimage = imageio.imread(filename)
                 os.remove(filename)
-                writer.append_data(image)
+                writer.append_data(tmpimage)
 
     def reduce(self,num,channel=None,ext=0,
                crbox=None,crsig=5,objlim=5,sigfrac=0.3,
