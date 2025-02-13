@@ -66,16 +66,17 @@ class TV:
         self.objlist = []
         self.scalelist = []
         self.axlist = []
+        self.cblist = []
         for i in range(self.nroll) :
             self.imglist.append(None)
             self.hdrlist.append(None)
             self.objlist.append(None)
             self.scalelist.append(self.scale)
             self.axlist.append(None)
+            self.cblist.append(None)
 
         # set up colorbar
         self.cb = None
-        self.cblist = [None, None, None, None, None, None]
         rect = 0.00, 0.03, 0.7, 0.06
         self.cb_ax = tv.add_axes(rect)
         #tv.subplots_adjust(left=-0.15,right=1.15,bottom=-0.10,top=1.00)
