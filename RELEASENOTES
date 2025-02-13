@@ -4,6 +4,10 @@ spectra.py add trap for no lines found in identify
 
 utils.py   add new routines
 
+tv.py   modify movie
+        add nroll keyword
+        add flipx, flipy
+
 0.4.1  January 2025
 
   stars.py, imred.py  : photutils import to photutils.aperture
