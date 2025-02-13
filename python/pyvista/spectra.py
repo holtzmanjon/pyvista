@@ -749,6 +749,9 @@ class WaveCal() :
         self.weights=np.array(weight)
         self.spectrum = data
 
+        if len(self.pix) == 0 :
+            raise RuntimeError('No lines found!')
+
         redo = False
         if fit: 
             redo = self.fit(inter=plotinter)
@@ -795,8 +798,11 @@ class WaveCal() :
                 if not linear or i>0 :
                     self.model.fixed['c{:d}'.format(i+1)] = True
 
-        if hd.sky is not None and hd.skyerr is not None : sky=True
-        else : sky=False
+        if hd.sky is not None and hd.skyerr is not None : 
+            sky=True
+        else : 
+            sky=False
+            print('Trying to identify sky lines from object spectrum!')
         self.identify(hd,wav=hd.wave,file=file,plot=plot,thresh=thresh,
                       plotinter=inter,sky=sky,rows=rows)
 
@@ -1627,8 +1633,11 @@ class Trace() :
             while getinput('  See extraction window(s). Hit space bar to continue....',plot.fig)[2] != ' ' :
                 pass
         print("")
-        return Data(spec,uncertainty=StdDevUncertainty(sig),
-                    bitmask=bitmask,header=hd.header,sky=background_spec,skyerr=background_spec_err)
+        if len(back) == 0 :
+            return Data(spec,uncertainty=StdDevUncertainty(sig), bitmask=bitmask,header=hd.header)
+        else :
+            return Data(spec,uncertainty=StdDevUncertainty(sig),
+                        bitmask=bitmask,header=hd.header,sky=background_spec,skyerr=background_spec_err)
 
   
     def extract2d(self,im,rows=None,plot=None,display=None,buffer=0) :
