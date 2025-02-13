@@ -15,8 +15,8 @@ from astropy.nddata import support_nddata
 from astropy.time import Time
 from pyvista import mmm, tv, spectra
 from astropy.stats import sigma_clipped_stats
-from photutils import CircularAperture, CircularAnnulus,aperture_photometry
-from photutils.aperture import ApertureStats
+#from photutils import CircularAperture, CircularAnnulus,aperture_photometry
+from photutils.aperture import ApertureStats, CircularAperture, CircularAnnulus,aperture_photometry
 from photutils.detection import DAOStarFinder
 from holtztools import plots,html
 from pyvista import bitmask, centroid

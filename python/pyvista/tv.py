@@ -12,7 +12,6 @@ from . import cmap
 from . import mmm
 from . import image
 try:
-#   import autopy
     import pyautogui
 except:
    print('pyautogui does not seem to be available, disabling arrow key cursor moves')
@@ -31,7 +30,7 @@ class TV:
     """
  
     def __init__(self, figsize=(12,8.5), aspect='equal', clickzoom=True, 
-                 flipx=False, flipy=False):
+                 flipx=False, flipy=False, nroll=4):
         """
         Initialize TV object
         """
@@ -59,18 +58,26 @@ class TV:
         self.images = 0
  
         # initialize rolling buffers
+        self.nroll = nroll
         self.img = None
-        self.imglist = [None, None, None, None]
         self.hdr = None
-        self.hdrlist = [None, None, None, None]
         self.scale = np.array([0.,1.])
-        self.scalelist = [self.scale,self.scale,self.scale,self.scale]
         self.cmap = 'Greys_r'
-        self.axlist = [None, None, None, None]
+        self.imglist = []
+        self.hdrlist = []
+        self.objlist = []
+        self.scalelist = []
+        self.axlist = []
+        for i in range(self.nroll) :
+            self.imglist.append(None)
+            self.hdrlist.append(None)
+            self.objlist.append(None)
+            self.scalelist.append(self.scale)
+            self.axlist.append(None)
 
         # set up colorbar
         self.cb = None
-        self.cblist = [None, None, None, None]
+        self.cblist = [None, None, None, None, None, None]
         rect = 0.00, 0.03, 0.7, 0.06
         self.cb_ax = tv.add_axes(rect)
         #tv.subplots_adjust(left=-0.15,right=1.15,bottom=-0.10,top=1.00)
@@ -163,6 +170,7 @@ class TV:
                     self.current = (self.current+1) % self.images
                 self.img = self.imglist[self.current]
                 self.hdr = self.hdrlist[self.current]
+                self.object = self.objlist[self.current]
                 self.scale = self.scalelist[self.current]
                 for i in range(self.images) :
                     if i == self.current :
@@ -178,11 +186,12 @@ class TV:
                 #self.aximage.set_cmap(cm)
                 plt.draw()
                 try:
-                    #x,y= autopy.mouse.location()
-                    #autopy.mouse.move(int(x),int(y))
+                    # bump mouse to get format_coord to update
                     x,y=pyautogui.position()
-                    pyautogui.moveTo(int(x),int(y))
+                    if event.key == '-' : pyautogui.moveTo(int(x-1),int(y))
+                    else  : pyautogui.moveTo(int(x+1),int(y))
                 except: pass
+                self.fig.canvas.flush_events()
 
             elif (event.key == 'p' or event.key == 'v') and subPlotNr == 0 :
                 # find peak or valley near cursor position and move mouse there
@@ -199,8 +208,6 @@ class TV:
                 py-=n
                 try:
                     xs,ys = scale()
-                    #x,y= autopy.mouse.location()
-                    #autopy.mouse.move(int(x+px*xs),int(y-py*ys))
                     x,y= pyautogui.position()
                     pyautogui.moveTo(int(x+px*xs),int(y-py*ys))
                 except: pass
@@ -249,28 +256,22 @@ class TV:
                 # move cursor
                 xs,ys = scale()
                 try:
-                    #x,y= autopy.mouse.location()
                     x,y= pyautogui.position()
                     if xs < 1. :
-                        #autopy.mouse.move(int(x-1),int(y))
                         pyautogui.moveTo(int(x-1),int(y))
                     else :
-                        #autopy.mouse.move(int(x-xs),int(y))
                         pyautogui.moveTo(int(x-xs),int(y))
                 except:
-                    print('autopy error')
+                    print('pyautogui error')
 
             elif event.key == 'right' and subPlotNr == 0 :
                 # move cursor
                 xs,ys = scale()
                 try:
-                    #x,y= autopy.mouse.location()
                     x,y= pyautogui.position()
                     if xs < 1. :
-                        #autopy.mouse.move(int(x+1),int(y))
                         pyautogui.moveTo(int(x+1),int(y))
                     else :
-                        #autopy.mouse.move(int(x+xs),int(y))
                         pyautogui.moveTo(int(x+xs),int(y))
                 except: pass
 
@@ -278,13 +279,10 @@ class TV:
                 # move cursor
                 xs,ys = scale()
                 try:
-                    #x,y= autopy.mouse.location()
                     x,y= pyautogui.position()
                     if ys < 1. :
-                        #autopy.mouse.move(int(x),int(y-1))
                         pyautogui.moveTo(int(x),int(y-1))
                     else :
-                        #autopy.mouse.move(int(x),int(y-ys))
                         pyautogui.moveTo(int(x),int(y-ys))
                 except: pass
 
@@ -292,13 +290,10 @@ class TV:
                 # move cursor
                 xs,ys = scale()
                 try:
-                    #x,y= autopy.mouse.location()
                     x,y= pyautogui.position()
                     if ys < 1. :
-                        #autopy.mouse.move(int(x),int(y+1))
                         pyautogui.moveTo(int(x),int(y+1))
                     else :
-                        #autopy.mouse.move(int(x),int(y+ys))
                         pyautogui.moveTo(int(x),int(y+ys))
                 except: pass
 
@@ -543,10 +538,12 @@ class TV:
             max = self.scale[1]
 
         # load new image data onto rolling stack
-        current= (self.current+1) % 4
+        current= (self.current+1) % self.nroll
         self.images += 1
-        if self.images > 4 : self.images = 4
+        if self.images > self.nroll : self.images = self.nroll
         self.current = current
+        self.objlist.pop(current)
+        self.objlist.insert(current,self.object)
         self.imglist.pop(current)
         self.imglist.insert(current,data)
         self.img = data

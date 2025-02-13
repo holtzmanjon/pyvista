@@ -1,7 +1,7 @@
 import numpy as np
 import shutil
 import astropy
-from photutils import DAOStarFinder
+from photutils.detection import DAOStarFinder
 import code
 import copy
 from astropy import units as u
@@ -13,7 +13,8 @@ from astropy.wcs import WCS
 from astropy.modeling import models, fitting
 from astropy.convolution import convolve, Box1DKernel, Box2DKernel, Box2DKernel
 from holtztools import html, plots
-import astroscrappy
+try : import astroscrappy
+except : print('no astroscrappy')
 import scipy.signal
 from scipy.optimize import curve_fit
 import yaml
