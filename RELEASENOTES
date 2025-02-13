@@ -1,6 +1,12 @@
+spectra.py add trap for no lines found in identify
+           don't populate sky extension in extract if no background windows
+           for skyline, check for sky extension
+
+utils.py   add new routines
+
 0.4.1  January 2025
 
-  stars.py, imred.py  : photutils import to photutils.aperature
+  stars.py, imred.py  : photutils import to photutils.aperture
   skycalc.py : getmoon() -> getbody('moon')
 
   imred.py : include dateobs on image in movie()
