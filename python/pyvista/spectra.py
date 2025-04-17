@@ -338,8 +338,8 @@ class WaveCal() :
 
                 diff=self.waves-self.wave(pixels=[self.pix,self.y])
                 gd = np.where(self.weights > 0)[0]
-                print('  rms: {:8.3f}'.format(diff[gd].std()))
-                bd = np.where(np.isnan(diff) | (abs(diff) > reject*diff.std()))[0]
+                print('  rms[gd]: {:8.3f}'.format(diff[gd].std()))
+                bd = np.where(np.isnan(diff) | (abs(diff) > reject*diff[gd].std()))[0]
                 nbd = len(bd)
                 print('rejecting {:d} points from {:d} total: '.format(
                       nbd,len(self.waves)))
