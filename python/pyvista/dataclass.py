@@ -128,7 +128,7 @@ class Data(CCDData) :
         """
         self.skyerr = skyerr
 
-    def to_hdu(self, hdu_bitmask='BITMASK', hdu_uncertainty='UNCERT',
+    def to_hdu(self, hdu_data='FLUX', hdu_bitmask='BITMASK', hdu_uncertainty='UNCERT',
                hdu_wave='WAVE', hdu_response='RESPONSE', hdu_sky='SKY', hdu_skyerr='SKYERR',
                wcs_relax=True, key_uncertainty_type='UTYPE', as_image_hdu=True):
         """Creates an HDUList object from a CCDData object.
@@ -209,7 +209,7 @@ class Data(CCDData) :
          
         if as_image_hdu:
             hdus = [fits.PrimaryHDU(header=header)]
-            hdus.append(fits.ImageHDU(self.data))
+            hdus.append(fits.ImageHDU(self.data,name=hdu_data))
         else:
             hdus = [fits.PrimaryHDU(self.data, header)]
 
