@@ -192,7 +192,7 @@ class TV:
                     if event.key == '-' : pyautogui.moveTo(int(x-1),int(y))
                     else  : pyautogui.moveTo(int(x+1),int(y))
                 except: pass
-                self.fig.canvas.flush_events()
+                #self.fig.canvas.flush_events()
 
             elif (event.key == 'p' or event.key == 'v') and subPlotNr == 0 :
                 # find peak or valley near cursor position and move mouse there

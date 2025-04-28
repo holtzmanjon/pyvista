@@ -338,8 +338,8 @@ class WaveCal() :
 
                 diff=self.waves-self.wave(pixels=[self.pix,self.y])
                 gd = np.where(self.weights > 0)[0]
-                print('  rms: {:8.3f}'.format(diff[gd].std()))
-                bd = np.where(np.isnan(diff) | (abs(diff) > reject*diff.std()))[0]
+                print('  rms[gd]: {:8.3f}'.format(diff[gd].std()))
+                bd = np.where(np.isnan(diff) | (abs(diff) > reject*diff[gd].std()))[0]
                 nbd = len(bd)
                 print('rejecting {:d} points from {:d} total: '.format(
                       nbd,len(self.waves)))
@@ -2384,8 +2384,8 @@ def extract_col(pars) :
         ymid=model(cols)+pix0
 
         # calculate distance of each pixel from trace center
-        ylo = int(np.min(np.floor(ymid-rad)))
-        yhi = int(np.max(np.ceil(ymid+rad)))
+        ylo = np.max([0,int(np.min(np.floor(ymid-rad)))])
+        yhi = np.min([ny-1,int(np.max(np.ceil(ymid+rad)))])
         dist=y[ylo:yhi+1,:]-ymid
 
         # determine contribution of each pixel to boxcar
