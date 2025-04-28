@@ -60,7 +60,7 @@ def find(data,fwhm=4,thresh=4000,sharp=[0.,1.],round=[-2.,2.],brightest=None) :
     return sources
 
 @support_nddata
-def automark(data,stars,rad=3,func='centroid',plot=None,dx=0,dy=0,verbose=False,background=True) :
+def automark(data,stars,header=None,rad=3,func='centroid',plot=None,dx=0,dy=0,verbose=False,background=True) :
     """ Recentroid existing star list on input data array
     """
     if func == 'centroid' : 
@@ -69,10 +69,21 @@ def automark(data,stars,rad=3,func='centroid',plot=None,dx=0,dy=0,verbose=False,
         center = centroid.marginal_gfit
     elif func == 'gfit2' :
         center = centroid.gfit2
+
     new=copy.deepcopy(stars)
+    if header is not None :
+        try: 
+            dateobs=Time(header['DATE-OBS'],format='fits')
+            mjds=np.zeros(len(new))+dateobs.mjd
+            new.replace_column('MJD',Column(mjds,name='MJD',dtype=('f8')))
+            new['MJD'].info.format = '.6f'
+        except: dateobs=None
+    else : dateobs=None
+
     for i,star in enumerate(new) :
         try :
-            cent = center(data,star['x']+dx,star['y']+dy,rad,plot=plot,verbose=verbose,background=background)
+            cent = center(data,star['x']+dx,star['y']+dy,rad,
+                          plot=plot,verbose=verbose,background=background)
             new[i]['x'] = cent.x
             new[i]['y'] = cent.y
         except :
