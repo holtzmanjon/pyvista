@@ -755,17 +755,20 @@ class TV:
         self.tv(x+y)
         self.tv(x-y)
 
-    def imexam(self,size=11,fwhm=5,scale=1,pafixed=False) :
+    def imexam(self,x=None,y=None,size=11,fwhm=5,scale=1,pafixed=False,ret=False) :
         """ Fit gaussian and show radial profile of stars marked interactively
         """
         key=''
         rect = 0.74, 0.15, 0.25, 0.4
         plotax = self.fig.add_axes(rect,projection='3d')
         print('Hit key near star center, "q" to quit')
-        while key != 'q' :
-            key,x,y=self.tvmark()
+        while key != 'q' and key != 'e':
+
+            if x == None or y == None : key,x,y=self.tvmark()
             if key == 'q' : 
                 self.plotax2 = self.fig.add_axes(rect)
+                return
+            elif key == 'e' : 
                 return
             self.plotax1.cla()
             amp,xcen,ycen,xfwhm,yfwhm,theta,back= \
@@ -781,6 +784,8 @@ class TV:
             plotax.cla()
             plotax.plot_surface(xg, yg, self.img[y-size:y+size,x-size:x+size],cmap='jet')
             self.fig.canvas.flush_events()
+            if ret: return amp,xcen,ycen,xfwhm,yfwhm,theta,back
+            x = None
 
     def savefig(self,name) :
         """ hardcopy of only display Axes
