@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import glob
 import bz2
 import os
+import imageio.v3 as iio
 import pdb
 
 sig2fwhm = 2*np.sqrt(2*np.log(2))
@@ -1005,3 +1006,41 @@ def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),
         plt.close()
 
     return lin,rot
+
+def seq(globstr,box=None,size=None,red=None) :
+    """ Create montage image from a sequence
+
+    Parameters
+    ----------
+        globstr : str
+                  glob string to find images
+        box     : box, default=None
+                  image.BOX to use to extract subregion
+        size    : int, default=None
+                  if specified, extract region of given size around maximum pixel
+        red     : Reducer, default=None
+                  imred.Reducer used to extract images, else use iio.imread
+    """
+    files=sorted(glob.glob(globstr))
+    ims=[]
+    for i,file in enumerate(files) :
+        if red is not None :
+            im=red.rd(file)
+        else :
+            im=iio.imread(file)
+        ims.append(im)
+        if box is None :
+            if size is None :
+                out=im
+            else :
+                cr,cc=np.unravel_index(im.argmax(),im.shape)
+                out=image.window(im,box=image.BOX(cr=cr,cc=cc,n=size))
+        else :
+            out=image.window(im,box=box)
+        if i == 0 :
+            nr,nc=out.shape
+            seq=np.zeros([nr,nc*len(files)])
+        seq[:,i*nc:(i+1)*nc] += out
+
+    return files, ims,seq
+
