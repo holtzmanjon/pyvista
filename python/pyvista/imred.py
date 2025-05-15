@@ -426,7 +426,7 @@ class Reducer() :
 
         return tab
 
-    def movie(self,ims,display=None,out='movie.gif',channel=0,
+    def movie(self,ims,display=None,out='movie.mp4',channel=0,
               min=None, max=None,box=None,text=True,fps=None) :
         """
         Create animated gif of images
