@@ -441,7 +441,7 @@ class Reducer() :
             raise ValueError('you must specify a pyvista TV object with display=')
 
         files = []
-        for im in ims :
+        for i,im in enumerate(ims) :
             display.clear()
             a=self.rd(im,channel=channel)
             if box is not None : 
@@ -453,8 +453,8 @@ class Reducer() :
             try: 
                 if text: display.tvtext(x//2,y*3//4,'{:d} {:s} {:f}'.format(
                             im,a.header['DATE-OBS'],a.header['EXPTIME']),color='r')
-                display.savefig('tmpimage{:d}.png'.format(im))
-                files.append('tmpimage{:d}.png'.format(im))
+                display.savefig('tmpimage{:d}.png'.format(i))
+                files.append('tmpimage{:d}.png'.format(i))
             except:
                 print('error at file: ', im,' stopping there')
                 continue
