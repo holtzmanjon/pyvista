@@ -13,6 +13,9 @@ from __future__ import unicode_literals
 
 import numpy as np
 import copy
+from astropy.coordinates import SkyCoord, EarthLocation, Angle
+import astropy.units as u
+from astropy.time import Time
 
 # utility routines for working with spectra
 
@@ -43,15 +46,15 @@ def vactoair(wave_vac) :
     else :
         vac = wave_vac
 
-    air = copy.copy(vac)
-    g = np.where(vac >= 2000)[0]     #Only modify above 2000 A
+    air = copy.copy(vac).flatten()
+    g = np.where(vac >= 2000)     #Only modify above 2000 A
     sigma2 = (1.e4/vac[g] )**2.       #Convert to wavenumber squared
 
     # Compute conversion factor
     fact = 1. +  5.792105E-2/(238.0185E0 - sigma2) + 1.67917E-3/( 57.362E0 - sigma2)
     
-    air[g] = vac[g]/fact
-    return air 
+    air[g] = vac.flatten()[g]/fact
+    return np.reshape(air,vac.shape)
 
 def airtovac(wave_air) :
     """ Convert air wavelengths to vacuum wavelengths
@@ -66,13 +69,26 @@ def airtovac(wave_air) :
     else :
         air = wave_air
 
-    vac = copy.copy(air)
-    g = np.where(vac >= 2000)[0]     #Only modify above 2000 A
+    vac = copy.copy(air).flatten()
+    g = np.where(vac >= 2000)     #Only modify above 2000 A
 
     for iter in range(2) :
         sigma2 = (1e4/vac[g])**2.     # Convert to wavenumber squared
         # Compute conversion factor
         fact = 1. +  5.792105E-2/(238.0185E0 - sigma2) + 1.67917E-3/( 57.362E0 - sigma2)
 
-        vac[g] = air[g]*fact              #Convert Wavelength
-    return vac
+        vac[g] = air.flatten()[g]*fact              #Convert Wavelength
+    return np.reshape(vac,air.shape)
+
+def getbc(dateobs,ra,dec,obs='APO') :
+    """ Get barycentric correction given DATE-OBS, RA, and DEC as char strings (sexages), OBS
+    """
+
+    print('using observatory: ', obs)
+    ra = Angle(ra+' hours')
+    dec = Angle(dec+' degrees')
+    t = Time(dateobs)
+    sc = SkyCoord(ra,dec)
+    barycorr = sc.radial_velocity_correction(kind='barycentric',obstime=t, location=EarthLocation.of_site(obs))
+    return barycorr.to(u.km/u.s)
+
