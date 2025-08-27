@@ -41,8 +41,8 @@ def vactoair(wave,type='ciddor',t=0, x_CO2=450, p=101325, rh=50) :
         ==========
         wave : float or array-like
         type : str, default='ciddor'
-               'ciddor" for NIST+Ciddor formulae, 'greisen' for Greisen 2006, 
-                or 'idl' for IDL Users library implementation of Ciddor(?)
+               'ciddor" for NIST+Ciddor formulae (https://emtoolbox.nist.gov/Wavelength/Documentation.asp), 'greisen' for Greisen 2006, 
+                or 'idl' for IDL Users library (incomplete?) implementation of Ciddor
         t : float, default=0
             temperature, only used for Ciddor
         x_CO2 : float, default=450
@@ -69,8 +69,8 @@ def airtovac(wave,type='ciddor',t=0, x_CO2=450, p=101325, rh=50) :
         ==========
         wave : float or array-like
         type : str, default='ciddor'
-               'ciddor" for NIST+Ciddor formulae, 'greisen' for Greisen 2006, 
-                or 'idl' for IDL Users library implementation of Ciddor(?)
+               'ciddor" for NIST+Ciddor formulae (https://emtoolbox.nist.gov/Wavelength/Documentation.asp), 'greisen' for Greisen 2006, 
+                or 'idl' for IDL Users library (incomplete?) implementation of Ciddor
         t : float, default=0
             temperature, only used for Ciddor
         x_CO2 : float, default=450
