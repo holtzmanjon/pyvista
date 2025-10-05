@@ -295,7 +295,7 @@ asymm     measure of asymmetry:
 """
 
 @support_nddata
-def rasym_centroid(data,x0,y0,rad=25,weight=False,mask=None,verbose=False,skyrad=None,maxiter=10,plot=None) :
+def rasym_centroid(data,x0,y0,rad=25,weight=False,mask=None,verbose=False,skyrad=None,maxiter=10,plot=None,sat=None) :
     """ Get centroid via calculation of minimum asymmetry
 
     Parameters
@@ -322,6 +322,7 @@ def rasym_centroid(data,x0,y0,rad=25,weight=False,mask=None,verbose=False,skyrad
 
     # we will iterate 3x3 calculation of minimum asymmetry until minimum is at central point
     iter = 0
+    if sat is not None : sat-=sky
     while True :
         if verbose : print('iter: ', iter)
         minasym=1.e100
@@ -331,7 +332,7 @@ def rasym_centroid(data,x0,y0,rad=25,weight=False,mask=None,verbose=False,skyrad
             plot.plotax2.text(0.05,0.9,'Iter {:d}'.format(iter),transform=plot.plotax2.transAxes)
         for dy in range(-1,2) :
             for dx in range(-1,2) :
-                prof=rprof(data-sky,round(x0)+dx,round(y0)+dy,rad=rad,weight=weight,inmask=mask,verbose=verbose)
+                prof=rprof(data-sky,round(x0)+dx,round(y0)+dy,rad=rad,weight=weight,inmask=mask,verbose=verbose,sat=sat)
                 if plot is not None: plot.plotax2.plot(prof[3],label='{:d} {:d}'.format(dx,dy))
                 asym[dy+1,dx+1]=prof[0]
                 if verbose : print(round(x0)+dx,round(y0)+dy,asym)
@@ -378,7 +379,7 @@ def rasym_centroid(data,x0,y0,rad=25,weight=False,mask=None,verbose=False,skyrad
     return center
 
 
-def rprof(indata,x0,y0,rad=25,weight=False,inmask=None,gain=1,rn=0,bias=0,verbose=False) :
+def rprof(indata,x0,y0,rad=25,weight=False,inmask=None,gain=1,rn=0,bias=0,verbose=False,sat=None) :
     """ Calculate asymmetry profile and total asymmetry
 
     Parameters
@@ -420,6 +421,10 @@ def rprof(indata,x0,y0,rad=25,weight=False,inmask=None,gain=1,rn=0,bias=0,verbos
 
     if inmask is not None :
         j=np.where(mask)
+        rind[j] = -1
+
+    if sat is not None :
+        j=np.where(data>sat)
         rind[j] = -1
 
     # Now loop over all radial indices, and determine mean and variance 
