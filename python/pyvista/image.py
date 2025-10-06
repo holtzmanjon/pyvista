@@ -959,7 +959,7 @@ def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),
                      dest[gd,0]-src[gd,0],dest[gd,1]-src[gd,1],
                      scale=scale,width=0.005)
         ax[0].quiver(src[bd,0]+nc//2,src[bd,1]+nr//2,
-                     dest[bd,0]-src[bd,0]-dx,dest[bd,1]-src[bd,1]-dy,
+                     dest[bd,0]-src[bd,0],dest[bd,1]-src[bd,1],
                      scale=scale,width=0.005,color='r')
         ax[1].quiver(src[gd,0]+nc//2,src[gd,1]+nr//2,
                      dest[gd,0]-src[gd,0]-dx,dest[gd,1]-src[gd,1]-dy,
