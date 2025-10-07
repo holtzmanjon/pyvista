@@ -1172,9 +1172,9 @@ class Reducer() :
             mean=np.array(mean)
             std=np.array(std)
             n=np.array(n)
-            plots.plotp(ax[0],mean,std**2,yt='$\sigma^2$',size=30,color=colors[icolor])
-            plots.plotp(ax[1],mean,2*mean/std**2,yt='G = 2 C / $\sigma^2$',size=20,color=colors[icolor])
-            plots.plotp(ax[2],mean,np.log10(n),xt='counts (C)',yt='log(Npix)',size=20,color=colors[icolor])
+            plots.plotp(ax[0],mean,std**2,yt='$\sigma^2$',size=30,color=colors[icolor%7])
+            plots.plotp(ax[1],mean,2*mean/std**2,yt='G = 2 C / $\sigma^2$',size=20,color=colors[icolor%7])
+            plots.plotp(ax[2],mean,np.log10(n),xt='counts (C)',yt='log(Npix)',size=20,color=colors[icolor%7])
         fig.suptitle(title+' channel: {:d}'.format(channel))
 
         pdb.set_trace()
