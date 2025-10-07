@@ -6,7 +6,7 @@ cols : ['DATE-OBS','OBJECT', 'RA', 'DEC','FILTER','EXPTIME']
 gain      : [0.75]
 rn        : [10]
 biastype  : 0
-crbox     : 'lacosmic'
+crbox     : [1,11]
 scat      : 100
 scale     : 0.44
 flip     : False
@@ -16,7 +16,7 @@ biasregion :
 biasbox   : 
     - [[0,10],[5,3205]]
 trimbox   : 
-    - [[0,4799],[0,3210]]
+    - [[12,4799],[0,3210]]
 normbox   : 
     - [[1200,2000],[2000,2800]]
 
