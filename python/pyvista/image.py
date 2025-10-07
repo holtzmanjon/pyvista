@@ -1034,13 +1034,13 @@ def seq(globstr,box=None,size=None,red=None) :
                 out=im
             else :
                 cr,cc=np.unravel_index(im.argmax(),im.shape)
-                out=image.window(im,box=image.BOX(cr=cr,cc=cc,n=size))
+                out=window(im,box=image.BOX(cr=cr,cc=cc,n=size))
         else :
-            out=image.window(im,box=box)
+            out=window(im,box=box)
         if i == 0 :
             nr,nc=out.shape
-            seq=np.zeros([nr,nc*len(files)])
-        seq[:,i*nc:(i+1)*nc] += out
+            montage=np.zeros([nr,nc*len(files)])
+        montage[:,i*nc:(i+1)*nc] += out
 
-    return files, ims,seq
+    return files, ims, montage
 
