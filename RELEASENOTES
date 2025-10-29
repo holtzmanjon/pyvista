@@ -1,12 +1,37 @@
+version    change version
+
+image.py   fix bug in quiver plots in transform()
+           add seq() to create montage image from sequence
+
+dataclass.py  label uncertainty extension as UNCERT
+
+data       modify SONG.yml and add more SONG calibration files
+
+centroid.py  add option to mask saturated pixels with sat= keyword in rasym_centroid/rprof
+
+imred.py   modify movie() for mp4 and other improvements
+           include imageio and imageio-ffmpeg as dependencies
+
 spectra.py add trap for no lines found in identify
            don't populate sky extension in extract if no background windows
            for skyline, check for sky extension
+           in wavecal(), print rms of non-rejected points
+                         fix bug for rejecting points 
+           add error trap for no lines found
+           in skyline(), check for existence of sky extension
+               return data w/ or without background extension
+           in extract2d(), don't let window extend beyond edge of array
 
-utils.py   add new routines
+stars.py   in automark(), modify DATE-OBS in header if we have one
+
+utils.py   add new routines for air-vacuum conversions, etc.
 
 tv.py   modify movie
         add nroll keyword
         add flipx, flipy
+        remove canvas.flush_events()
+        in imexam(), add exit with 'e' that preserves 3D plot
+                     add ret= keyword to return values
 
 0.4.1  January 2025
 
