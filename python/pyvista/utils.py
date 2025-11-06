@@ -59,6 +59,8 @@ def vactoair(wave,type='ciddor',t=0, x_CO2=450, p=101325, rh=50) :
         return greisen_vac_to_air(wave)
     elif type == 'idl' :
         return idl_vac_to_air(wave)
+    elif type == 'bd' :
+        return bd_vac_to_air(wave)
     else :
         raise ValueError('No such conversion type!')
 
@@ -86,6 +88,8 @@ def airtovac(wave,type='ciddor',t=0, x_CO2=450, p=101325, rh=50) :
         return greisen_air_to_vac(wave)
     elif type == 'idl' :
         return idl_air_to_vac(wave)
+    elif type == 'bd' :
+        return bd_air_to_vac(wave)
     else :
         raise ValueError('No such conversion type!')
 
@@ -238,6 +242,16 @@ def ciddor_air_to_vac(wave,t=0,x_CO2=450, p=101325,rh=50) :
     for iter in range(3) :
         out = wave*ciddor_index(out,t=t,x_CO2=x_CO2,p=p,rh=rh)
     return out
+
+def bd_air_to_vac(wave) :
+    s = 1e4 / wave
+    n = 1 + 0.00008336624212083 + 0.02408926869968 / (130.1065924522 - s**2) + 0.0001599740894897 / (38.92568793293 - s**2)
+    return wave*n
+
+def bd_vac_to_air(wave) :
+    s = 1e4 / wave
+    n = 1 + 0.0000834254 + 0.02406147 / (130 - s**2) + 0.00015998 / (38.9 - s**2)
+    return wave/n
 
 def getbc(header=None,dateobs=None,ra=None,dec=None,exptime=None,obs='APO') :
     """ Get barycentric correction given DATE-OBS, RA, and DEC as char strings (sexagesimal), observatory location
