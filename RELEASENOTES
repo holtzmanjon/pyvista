@@ -8,6 +8,7 @@ dataclass.py  label uncertainty extension as UNCERT
 data       modify SONG.yml and add more SONG calibration files
 
 centroid.py  add option to mask saturated pixels with sat= keyword in rasym_centroid/rprof
+           add maxtot() routine
 
 imred.py   modify movie() for mp4 and other improvements
            include imageio and imageio-ffmpeg as dependencies
@@ -24,7 +25,7 @@ spectra.py add trap for no lines found in identify
 
 stars.py   in automark(), modify DATE-OBS in header if we have one
 
-utils.py   add new routines for air-vacuum conversions, etc.
+utils.py   add new routines for air-vacuum conversions, barycentric correction, etc.
 
 tv.py   modify movie
         add nroll keyword
