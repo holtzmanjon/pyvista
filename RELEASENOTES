@@ -1,3 +1,5 @@
+0.4.2    November 2025
+
 version    change version
 
 image.py   fix bug in quiver plots in transform()
