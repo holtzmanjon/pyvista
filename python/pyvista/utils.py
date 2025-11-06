@@ -15,7 +15,7 @@ import numpy as np
 import copy
 from astropy.coordinates import SkyCoord, EarthLocation, Angle
 import astropy.units as u
-from astropy.time import Time
+from astropy.time import Time, TimeDelta
 
 # utility routines for working with spectra
 
@@ -253,15 +253,30 @@ def bd_vac_to_air(wave) :
     n = 1 + 0.0000834254 + 0.02406147 / (130 - s**2) + 0.00015998 / (38.9 - s**2)
     return wave/n
 
-def getbc(dateobs,ra,dec,obs='APO') :
+def getbc(header=None,dateobs=None,ra=None,dec=None,exptime=None,obs='APO') :
     """ Get barycentric correction given DATE-OBS, RA, and DEC as char strings (sexagesimal), observatory location
     """
 
+    if header is not None :
+        ra = header['RA']
+        dec = header['DEC']
+        dateobs = header['DATE-OBS']
+        exptime = header['EXPTIME']
+
     print('using observatory: ', obs)
-    ra = Angle(ra+' hours')
-    dec = Angle(dec+' degrees')
+    if isinstance(ra,str) :
+        ra = Angle(ra+' hours')
+    else :
+        ra = ra*u.degree
+    if isinstance(dec,str) :
+        dec = Angle(dec+' degrees')
+    else :
+        dec = dec*u.degree
     t = Time(dateobs)
     sc = SkyCoord(ra,dec)
     barycorr = sc.radial_velocity_correction(kind='barycentric',obstime=t, location=EarthLocation.of_site(obs))
-    return barycorr.to(u.km/u.s)
+    ltt = t.light_travel_time(sc,location=EarthLocation.of_site(obs))
+    exphalf = TimeDelta(exptime/2.*u.second)
+    barytime = t.tdb + ltt + exphalf
+    return barycorr.to(u.km/u.s), barytime
 

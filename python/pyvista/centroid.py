@@ -4,7 +4,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pdb
 from astropy.nddata import support_nddata
-from pyvista import spectra, mmm
+from pyvista import spectra, mmm, stars
+from astropy.table import Table
 
 from collections import namedtuple
 
@@ -453,3 +454,47 @@ def rprof(indata,x0,y0,rad=25,weight=False,inmask=None,gain=1,rn=0,bias=0,verbos
 
     # Return total asymmetry, and mean and variance profiles
     return asym, tot, mean, var
+
+@support_nddata
+def maxtot(data,x0,y0,rad=25,verbose=False,skyrad=None,maxiter=10,plot=None) :
+
+    iter = 0
+    y,x=np.mgrid[-2:3,-2:3]
+    while True :
+        tab=Table()
+        tab['x'] = int(x0)+x.flatten()
+        tab['y'] = int(y0)+y.flatten()
+        ap=stars.photom(data,tab,rad=rad,skyrad=skyrad,mag=False)
+        best=np.argmax(ap['aper{:d}'.format(rad)])
+        if best == 12 :
+            break
+        else :
+            x0 = ap['x'][best]
+            y0 = ap['y'][best]
+            iter += 1
+        if iter > maxiter :
+            print('exceed maxiterm')
+            x0 = -1
+            y0 = -1
+            break
+
+    i=0
+    tot=np.zeros([5,5])
+    for iy in range(-2,3) :
+        for ix in range(-2,3) :
+            tot[iy+2,ix+2] = ap['aper{:d}'.format(rad)][i]
+            i+=1
+
+    # now do parabolic fit to get fractional centroid
+    ai = 0.5 * (tot[3,2] - 2*tot[2,2] + tot[1,2])
+    bi = 0.5 * (tot[3,2] - tot[1,2])
+    aj = 0.5 * (tot[2,3] - 2*tot[2,2] + tot[2,1])
+    bj = 0.5 * (tot[2,3] - tot[2,1])
+    di = -0.5*bi/ai
+    dj = -0.5*bj/aj
+    print(dj,di)
+    center = Center(x0+dj,y0+di,ap['aper{:d}'.format(rad)][best],None,None)
+    return center
+
+
+
