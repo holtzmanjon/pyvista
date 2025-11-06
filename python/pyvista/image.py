@@ -1007,13 +1007,13 @@ def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),
 
     return lin,rot
 
-def seq(globstr,box=None,size=None,red=None) :
+def seq(files,box=None,size=None,red=None) :
     """ Create montage image from a sequence
 
     Parameters
     ----------
-        globstr : str
-                  glob string to find images
+        files   : array-like
+                  list of files to montage
         box     : box, default=None
                   image.BOX to use to extract subregion
         size    : int, default=None
@@ -1021,7 +1021,6 @@ def seq(globstr,box=None,size=None,red=None) :
         red     : Reducer, default=None
                   imred.Reducer used to extract images, else use iio.imread
     """
-    files=sorted(glob.glob(globstr))
     ims=[]
     for i,file in enumerate(files) :
         if red is not None :
