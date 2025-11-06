@@ -226,7 +226,7 @@ def add_coord(data,stars,wcs=None) :
 
 @support_nddata
 def photom(data,stars,uncertainty=None,mask=None,rad=[3],skyrad=None,display=None,
-           gain=1,rn=0,mag=True,utils=True) :
+           gain=1,rn=0,mag=True,utils=True,cum=False) :
     """ Aperture photometry of input image with current star list
     """
 
@@ -359,8 +359,17 @@ def photom(data,stars,uncertainty=None,mask=None,rad=[3],skyrad=None,display=Non
         stars[istar]['sky'] = sky
         stars[istar]['skysig'] = skysig
         stars[istar]['peak'] = apstats.max
-           
-    return stars
+
+    if cum :
+        cumulative=[]
+        for irad,r in enumerate(rad) :
+            if type(r) is int : fmt='{:d}'
+            else : fmt='{:.1f}'
+            name=('aper'+fmt).format(r)
+            cumulative.append(stars[name])
+        return stars, np.array(cumulative)
+    else :
+        return stars
 
 def get(file) :
     """ Read FITS table into internal photometry list """
