@@ -457,6 +457,8 @@ def rprof(indata,x0,y0,rad=25,weight=False,inmask=None,gain=1,rn=0,bias=0,verbos
 
 @support_nddata
 def maxtot(data,x0,y0,rad=25,verbose=False,skyrad=None,maxiter=10,plot=None) :
+    """ Determine center that maximizes total counts in specified radius
+    """
 
     iter = 0
     y,x=np.mgrid[-2:3,-2:3]
