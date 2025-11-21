@@ -1148,7 +1148,6 @@ class Reducer() :
                 display.tv(avg)
                 display.tv(diff)
             if levels is not None :
-                plt.figure()
                 for i,level in enumerate(levels[0:-1]) :
                     j=np.where((avg.flatten() > level) & (avg.flatten() <= levels[i+1]))[0]
                     if len(j) > 100 :
@@ -1160,11 +1159,7 @@ class Reducer() :
                         q1 = np.percentile(diff.flatten()[j], 25)
                         q3 = np.percentile(diff.flatten()[j], 75)
                         iqr.append((q3 - q1)/1.35)
-                        plt.hist(diff.flatten()[j],bins=np.arange(-2000,2000,10),histtype='step')
                         print((level+levels[i+1])/2.,diff.flatten()[j].std(),(q3-q1)/1.35,len(j))
-                        plt.draw()
-                        pdb.set_trace()
-                        plt.clf()
             else :
               if rows is None : rows=np.arange(0,a.shape[0],nbox)
               if cols is None : cols=np.arange(0,a.shape[1],nbox)
