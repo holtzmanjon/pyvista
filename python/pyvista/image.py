@@ -134,6 +134,20 @@ class BOX() :
         """
         if self.nrow() == 0 or self.ncol() == 0 : return 0.
         return data[self.ymin:self.ymax+1,self.xmin:self.xmax+1].std() 
+    
+    def iqr(self,data):
+        """ Returns IQR data in box
+
+            Args :
+                data : input data (Data or np.array)
+
+            Returns:
+                IQR of data in box
+        """
+        if self.nrow() == 0 or self.ncol() == 0 : return 0.
+        q1 = np.percentile(data[self.ymin:self.ymax+1,self.xmin:self.xmax+1],25)
+        q3 = np.percentile(data[self.ymin:self.ymax+1,self.xmin:self.xmax+1],75)
+        return q3-q1
 
     def max(self,data):
         """ Returns maximum of data in box
