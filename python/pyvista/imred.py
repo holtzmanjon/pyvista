@@ -1137,6 +1137,7 @@ class Reducer() :
         for icolor,pair in enumerate(pairs) :
             mean=[]
             std=[]
+            iqr=[]
             n=[]
             title+='[{:s},{:s}]'.format(str(pair[0]),str(pair[1]))
             a=self.reduce(pair[0],channel=channel)
@@ -1147,6 +1148,7 @@ class Reducer() :
                 display.tv(avg)
                 display.tv(diff)
             if levels is not None :
+                plt.figure()
                 for i,level in enumerate(levels[0:-1]) :
                     j=np.where((avg.flatten() > level) & (avg.flatten() <= levels[i+1]))[0]
                     if len(j) > 100 :
@@ -1155,7 +1157,14 @@ class Reducer() :
                         gd = np.where(np.abs(diff.flatten()[j]) < 5*std0)[0]
                         std.append(diff.flatten()[j[gd]].std())
                         n.append(len(j))
-                        print((level+levels[i+1])/2.,diff.flatten()[j].std(),len(j))
+                        q1 = np.percentile(diff.flatten()[j], 25)
+                        q3 = np.percentile(diff.flatten()[j], 75)
+                        iqr.append((q3 - q1)/1.35)
+                        plt.hist(diff.flatten()[j],bins=np.arange(-2000,2000,10),histtype='step')
+                        print((level+levels[i+1])/2.,diff.flatten()[j].std(),(q3-q1)/1.35,len(j))
+                        plt.draw()
+                        pdb.set_trace()
+                        plt.clf()
             else :
               if rows is None : rows=np.arange(0,a.shape[0],nbox)
               if cols is None : cols=np.arange(0,a.shape[1],nbox)
@@ -1168,12 +1177,16 @@ class Reducer() :
                     print(r0,c0,box.median(avg),box.stdev(diff))
                     mean.append(box.median(avg))
                     std.append(box.stdev(diff))
+                    iqr.append(box.iqr(diff))
                     n.append((cols[icol+1]-cols[icol])*(rows[irow+1]-rows[irow]))
             mean=np.array(mean)
             std=np.array(std)
+            iqr=np.array(iqr)
             n=np.array(n)
             plots.plotp(ax[0],mean,std**2,yt='$\sigma^2$',size=30,color=colors[icolor%7])
+            plots.plotp(ax[0],mean,iqr**2,yt='$\sigma^2$',size=30,color=colors[icolor%7])
             plots.plotp(ax[1],mean,2*mean/std**2,yt='G = 2 C / $\sigma^2$',size=20,color=colors[icolor%7])
+            plots.plotp(ax[1],mean,2*mean/iqr**2,yt='G = 2 C / $\sigma^2$',size=20,color=colors[icolor%7])
             plots.plotp(ax[2],mean,np.log10(n),xt='counts (C)',yt='log(Npix)',size=20,color=colors[icolor%7])
         fig.suptitle(title+' channel: {:d}'.format(channel))
 
