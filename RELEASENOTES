@@ -1,3 +1,22 @@
+0.4.3    November 2025
+
+version   change version in pyprooject.toml and python/pyvista/__init__.py
+
+skycalc.py  fix obsolete get_moon() --> get_body()
+
+centroid.py add maxtot() method to get center that maximized total in input radius
+
+image.py  add iqr() for box
+          modify seq() to accept file list rather than globstr
+
+imred.py  include iqr in noise() along with std()
+
+spectra.py  change RMS output of wavecal to 4 decimal places
+
+stars.py  add cum= option for photom to return cumulative profile
+
+utils.py  improve barycentric getbc() module
+
 0.4.2    November 2025
 
 version    change version
