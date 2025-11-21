@@ -265,7 +265,7 @@ class WaveCal() :
         xlim=self.ax[1].get_xlim()
         self.ax[1].set_ylim(diff.min()-0.5,diff.max()+0.5)
         self.ax[1].plot(xlim,[0,0],linestyle=':')
-        self.ax[1].text(0.1,0.9,'rms: {:8.3f} Angstroms'.format(
+        self.ax[1].text(0.1,0.9,'rms: {:8.4f} Angstroms'.format(
                                 diff[gd].std()),transform=self.ax[1].transAxes)
         self.ax[1].set_xlabel('Wavelength')
         self.ax[1].set_ylabel('obs wave - fit wave')
@@ -338,7 +338,7 @@ class WaveCal() :
 
                 diff=self.waves-self.wave(pixels=[self.pix,self.y])
                 gd = np.where(self.weights > 0)[0]
-                print('  rms[gd]: {:8.3f}'.format(diff[gd].std()))
+                print('  rms[gd]: {:8.4f}'.format(diff[gd].std()))
                 bd = np.where(np.isnan(diff) | (abs(diff) > reject*diff[gd].std()))[0]
                 nbd = len(bd)
                 print('rejecting {:d} points from {:d} total: '.format(
@@ -356,7 +356,7 @@ class WaveCal() :
                 xlim=self.ax[1].get_xlim()
                 self.ax[1].set_ylim(np.nanmin(diff)-0.5,np.nanmax(diff)+0.5)
                 self.ax[1].plot(xlim,[0,0],linestyle=':')
-                self.ax[1].text(0.1,0.9,'rms: {:8.3f}'.format(
+                self.ax[1].text(0.1,0.9,'rms: {:8.4f}'.format(
                                 diff[gd].std()),transform=self.ax[1].transAxes)
                 cb_ax = self.fig.add_axes([0.94,0.05,0.02,0.4])
                 cb = self.fig.colorbar(scat,cax=cb_ax)
@@ -381,7 +381,7 @@ class WaveCal() :
 
             gd=np.where(self.weights[irow]>0.)[0]
             diff=self.waves-self.wave(pixels=[self.pix,self.y])
-            print('  rms: {:8.3f} Angstroms ({:d} lines)'.format(
+            print('  rms: {:8.4f} Angstroms ({:d} lines)'.format(
                   diff[irow[gd]].std(),len(irow)))
             if self.ax is not None :
                 # iterate allowing for interactive removal of points
@@ -403,7 +403,7 @@ class WaveCal() :
                                       self.waves[gd]*self.waves_order[gd],
                                       weights=self.weights[gd])
                     diff=self.waves-self.wave(pixels=[self.pix,self.y])
-                    print('  rms: {:8.3f} Anstroms'.format(diff[gd].std()))
+                    print('  rms: {:8.4f} Anstroms'.format(diff[gd].std()))
 
                     # replot spectrum with new fit wavelength scale
                     self.ax[0].cla()
@@ -412,7 +412,7 @@ class WaveCal() :
                     # plot residuals
                     self.ax[1].cla()
                     self.ax[1].plot(self.waves[gd],diff[gd],'go')
-                    self.ax[1].text(0.1,0.9,'rms: {:8.3f} Angstroms'.format(
+                    self.ax[1].text(0.1,0.9,'rms: {:8.4f} Angstroms'.format(
                                diff[gd].std()),transform=self.ax[1].transAxes)
                     self.ax[1].set_xlabel('Wavelength')
                     self.ax[1].set_ylabel('obs wave - fit wave')
