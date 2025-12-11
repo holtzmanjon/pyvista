@@ -855,7 +855,8 @@ def xcorr2d(a,b,lags=None,xlags=None,ylags=None) :
         p=fit(mod,x[yp-1:yp+2,xp-1:xp+2],y[yp-1:yp+2,xp-1:xp+2],shift[yp-1:yp+2,xp-1:xp+2])
         a = np.array([ [2*p.parameters[2], p.parameters[5]], [p.parameters[5],2*p.parameters[4]] ])
         b = np.array([-p.parameters[1],-p.parameters[3]])
-        peak=np.linalg.solve(a,b)+(xp,yp)+(xlags[0],ylags[0])
+        peak=np.linalg.solve(a,b)
+
 
     return peak,shift
 
