@@ -11,7 +11,7 @@ from pyvista.dataclass import Data
 from astropy.io import fits, ascii
 from astropy.wcs import WCS
 from astropy.modeling import models, fitting
-from astropy.convolution import convolve, Box1DKernel, Box2DKernel, Box2DKernel
+from astropy.convolution import convolve, Box1DKernel, Box2DKernel, Box2DKernel, Gaussian1DKernel
 from holtztools import html, plots
 try : import astroscrappy
 except : print('no astroscrappy')
@@ -467,7 +467,7 @@ class Reducer() :
     def reduce(self,num,channel=None,ext=0,
                crbox=None,crsig=5,objlim=5,sigfrac=0.3,
                bias=None,dark=None,flat=None,
-               scat=None,badpix=None,solve=False,return_list=False,display=None,
+               scat=None,scat_smooth=None,badpix=None,solve=False,return_list=False,display=None,
                trim=True,seeing=2,utr=False) :
         """ Reads data from disk, and performs reduction steps 
             as determined from command line parameters
@@ -519,7 +519,7 @@ class Reducer() :
         im=self.dark(im,superdark=dark)
         im=self.crrej(im,crbox=crbox,crsig=crsig,objlim=objlim,sigfrac=sigfrac,
                       display=display)
-        self.scatter(im,scat=scat,display=display)
+        self.scatter(im,scat=scat,display=display,smooth=scat_smooth)
         im=self.flat(im,superflat=flat,display=display)
         self.badpix_fix(im,val=badpix)
         if trim and display is not None: display.tvclear()
@@ -910,43 +910,75 @@ class Reducer() :
         else :
             im = inim
 
-        print('  estimating scattered light ...')
-        boxcar = Box1DKernel(smooth)
+        print('  estimating scattered light ...',smooth,smooth2d)
+        kernel = Box1DKernel(smooth)
+        kernel = Gaussian1DKernel(smooth)
+        ipoints=[]
         points=[]
         values=[]
         nrows = im.data.shape[0]
         ncols = im.data.shape[-1]
 
-        # find minima in each column, and save location and value
-        for col in range(0,ncols,scat) :
+        # find minima in each group of columns, and save location and value
+        for icol,col in enumerate(range(scat//2,ncols,scat)) :
             print('    column: {:d}'.format(col),end='\r')
-            yscat = scipy.signal.find_peaks(-convolve(im.data[:,col],boxcar))[0]
+            # take mean of surrounding columns, and smooth
+            tmp=convolve(im.data[:,col-scat//2:col+scat//2].mean(axis=1),kernel)
+            yscat = scipy.signal.find_peaks(-tmp)[0]
             for y in yscat :
                 if im.mask is None or not im.mask[y,col] :
+                    ipoints.append([y,icol])
                     points.append([y,col])
-                    values.append(im.data[y,col])
+                    #values.append(im.data[y,col])
+                    values.append(tmp[y])
 
-        # fit surface to the minimum values
-        print('    fitting surface ...')
-        grid_x, grid_y = np.mgrid[0:nrows,0:ncols]
-
-        # smooth and reject outlying points
-        boxcar = Box2DKernel(smooth2d)
-        grid_z=convolve(scipy.interpolate.griddata(points,values,(grid_x,grid_y),
-                        method='cubic',fill_value=0.),boxcar)
-        # go back and try to reject outliers
-        print('    rejecting points ...')
+        # fit [nrow:ncols/scat] surface to these values
+        grid_x, grid_y = np.mgrid[0:nrows,0:icol+1]
+        grid_z=scipy.interpolate.griddata(ipoints,values,(grid_x,grid_y), method='linear',
+                                          fill_value=0.)
+        # smooth along columns and reject outliers
+        kernel= Box1DKernel(scat)
+        for icol in range(grid_z.shape[1]) :
+            grid_z[:,icol] = convolve(grid_z[:,icol],kernel)
         points_gd=[]
         values_gd=[]
-        for point,value in zip(points,values) :
-            if value < 1.1*grid_z[point[0],point[1]] :
+        for ipoint,point,value in zip(ipoints,points,values) :
+            if (value < 1.05*grid_z[ipoint[0],ipoint[1]] and 
+                value > 0.95*grid_z[ipoint[0],ipoint[1]]) :
                 points_gd.append(point)
                 values_gd.append(value)
 
-        # refit surface
+        # fit surface to the minimum values
+        #print('    fitting surface ...')
+        #grid_x, grid_y = np.mgrid[0:nrows,0:ncols]
+        #grid_z=scipy.interpolate.griddata(points,values,(grid_x,grid_y), method='cubic',
+        #                                  fill_value=0.)
+
+        ## smooth and reject outlying points
+        #boxcar = Box2DKernel(smooth2d)
+        #grid_z=convolve(scipy.interpolate.griddata(points,values,(grid_x,grid_y),
+        #                method='cubic',fill_value=0.),boxcar)
+        ## go back and try to reject outliers
+        #print('    rejecting points ...')
+        #points_gd=[]
+        #values_gd=[]
+        #for point,value in zip(points,values) :
+        #    if value < 1.1*grid_z[point[0],point[1]] :
+        #        points_gd.append(point)
+        #        values_gd.append(value)
+#
+        # refit surface, this time to full-sized image. Do it once with linear, and then
+        #   again with nearest to use to fill in edges outside of the hull of points
         print('    refitting surface ...')
-        grid_z=convolve(scipy.interpolate.griddata(points_gd,values_gd,(grid_x,grid_y),
-                        method='cubic',fill_value=0.),boxcar)
+        grid_x, grid_y = np.mgrid[0:nrows,0:ncols]
+        #grid_z=convolve(scipy.interpolate.griddata(points_gd,values_gd,(grid_x,grid_y),
+        #                method='cubic',fill_value=0.),boxcar)
+        grid_z=scipy.interpolate.griddata(points_gd,values_gd,(grid_x,grid_y),
+                        method='linear')
+        nearest_grid_z=scipy.interpolate.griddata(points_gd,values_gd,(grid_x,grid_y),
+                        method='nearest')
+        bd = np.where(np.isnan(grid_z))
+        grid_z[bd] = nearest_grid_z[bd]
 
         if display is not None :
             display.clear()
