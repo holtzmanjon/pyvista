@@ -446,7 +446,6 @@ class Reducer() :
             a=self.rd(im,channel=channel)
             if box is not None : 
                 a=image.window(a,box,header=a.header)
-            print(a.shape)
             display.tv(a,min=min,max=max,draw=False)
             y,x=a.data.shape
             try: 
