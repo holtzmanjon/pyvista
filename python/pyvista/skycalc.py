@@ -231,7 +231,7 @@ def object(ras=[], decs=[], names=[], file=None, obs='apo', date=None,plot=False
         # get LSTs and Moon information
         lsts=times.sidereal_time('mean',longitude=site.location.lon).hms
         illums=astroplan.moon_illumination(times)
-        moons = get_moon(times)
+        moons = get_body('moon',times)
         airmass=site.altaz(times,obj).secz
         moonalt=site.moon_altaz(times).alt.value 
         local=site.astropy_time_to_datetime(times)
