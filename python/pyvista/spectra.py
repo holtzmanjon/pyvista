@@ -92,7 +92,7 @@ class WaveCal() :
                 tab=Table.read(files(pyvista.data).joinpath(file),hdu=hdu)
             for tag in ['type','degree','ydegree','waves',
                         'waves_order','orders','index',
-                        'pix0','pix','y','spectrum','weights','apers','coeff'] :
+                        'pix0','pix','y','spectrum','weights','apers','coeff','dateobs','rms'] :
                 if tag in tab.keys() :
                     setattr(self,tag,tab[tag][0])
                 else :
@@ -114,6 +114,8 @@ class WaveCal() :
             self.model = None
             self.ax = None
             self.spectrum = None
+            self.dateobs = None
+            slef.rms = -1
             if orders is not None :
                 self.orders = orders
             else :
@@ -130,7 +132,7 @@ class WaveCal() :
         """
         tab=Table()
         for tag in ['type','degree','ydegree','waves','waves_order',
-                    'orders','index','pix0','pix','y','weights','spectrum','apers','coeff'] :
+                    'orders','index','pix0','pix','y','weights','spectrum','apers','coeff','dateobs','rms'] :
             try: 
                 if getattr(self,tag) is not None : tab[tag] = [getattr(self,tag)]
             except: pass
@@ -338,8 +340,9 @@ class WaveCal() :
 
                 diff=self.waves-self.wave(pixels=[self.pix,self.y])
                 gd = np.where(self.weights > 0)[0]
-                print('  rms[gd]: {:8.4f}'.format(diff[gd].std()))
-                bd = np.where(np.isnan(diff) | (abs(diff) > reject*diff[gd].std()))[0]
+                self.rms = diff[gd].std()
+                print('  rms[gd]: {:8.4f}'.format(self.rms))
+                bd = np.where(np.isnan(diff) | (abs(diff) > reject*self.rms))[0]
                 nbd = len(bd)
                 print('rejecting {:d} points from {:d} total: '.format(
                       nbd,len(self.waves)))
@@ -357,7 +360,7 @@ class WaveCal() :
                 self.ax[1].set_ylim(np.nanmin(diff)-0.5,np.nanmax(diff)+0.5)
                 self.ax[1].plot(xlim,[0,0],linestyle=':')
                 self.ax[1].text(0.1,0.9,'rms: {:8.4f}'.format(
-                                diff[gd].std()),transform=self.ax[1].transAxes)
+                                self.rms),transform=self.ax[1].transAxes)
                 cb_ax = self.fig.add_axes([0.94,0.05,0.02,0.4])
                 cb = self.fig.colorbar(scat,cax=cb_ax)
                 cb.ax.set_ylabel('Row')
@@ -373,6 +376,7 @@ class WaveCal() :
           # 1D fit, loop over all rows in which lines have been identified
           nmod = len(set(self.y))
           models = []
+          rmss = []
           for row in set(self.y) :
             irow = np.where(self.y == row)[0]
             self.model=fitter(mod,self.pix[irow]-self.pix0,
@@ -383,6 +387,7 @@ class WaveCal() :
             diff=self.waves-self.wave(pixels=[self.pix,self.y])
             print('  rms: {:8.4f} Angstroms ({:d} lines)'.format(
                   diff[irow[gd]].std(),len(irow)))
+            rms=diff[irow[gd]].std()
             if self.ax is not None :
                 # iterate allowing for interactive removal of points
                 done = False
@@ -404,6 +409,7 @@ class WaveCal() :
                                       weights=self.weights[gd])
                     diff=self.waves-self.wave(pixels=[self.pix,self.y])
                     print('  rms: {:8.4f} Anstroms'.format(diff[gd].std()))
+                    rms=diff[gd].std()
 
                     # replot spectrum with new fit wavelength scale
                     self.ax[0].cla()
@@ -469,8 +475,12 @@ class WaveCal() :
                         mod = self.getmod()
                     else : done = True
             models.append(self.model)
-          if nmod == 1 : self.model = models[0]
-          else : self.model = models       
+            rmss.append(rms)
+          if nmod == 1 : 
+              self.model = models[0]
+              self.rms = rmss[0]
+          else : 
+              self.rms = rmss       
      
           return redo
 
@@ -748,6 +758,8 @@ class WaveCal() :
         self.waves_order=np.array(waves_order)
         self.weights=np.array(weight)
         self.spectrum = data
+        try :self.dateobs= spectrum.header['DATE-OBS']
+        except : pass
 
         if len(self.pix) == 0 :
             raise RuntimeError('No lines found!')
