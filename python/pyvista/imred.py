@@ -107,6 +107,7 @@ class Reducer() :
         self.verbose=verbose
         self.badpix=None
         self.scat=None
+        self.scat_smooth=None
         self.bitmask=None
         self.transpose=None
         self.trim=trim
@@ -205,6 +206,8 @@ class Reducer() :
             for box in config['normbox'] :
                 self.normbox.append(image.BOX(xr=box[0],yr=box[1]) )
             try: self.scat=config['scat']
+            except : pass
+            try: self.scat_smooth=config['scat_smooth']
             except : pass
            
             # Add bad pixel mask if it exists
@@ -879,7 +882,7 @@ class Reducer() :
          else : return out
 
 
-    def scatter(self,inim,scat=None,display=None,smooth=3,smooth2d=31,transpose=False) :
+    def scatter(self,inim,scat=None,display=None,smooth=None,smooth2d=31,transpose=False) :
         """ Removal of scattered light (for multi-order/object spectrograph)
 
         Remove scattered light by looking for valleys in cross-sections across traces
@@ -896,23 +899,24 @@ class Reducer() :
              set to true if spectra run along columns
         scat : integer, default=None
              get scattered light measurements every scat pixels. If None, no correction
-        display : TV object, default=None
-             if set, show the scattered light measurements
         smooth : integer, default=3
              boxcar width for smoothing profile perpendicular to traces before looking
              for valleys
-        smooth2d : integer, default=31
-             boxcar width for smoothing interpolated scattered light surface
+        display : TV object, default=None
+             if set, show the scattered light measurements
         """
         if scat is None : return
+        if smooth is None :
+            if self.scat_smooth is None : smooth=1
+            else : smooth=self.scat_smooth
+
         if transpose :
             im = Data(data=inim.data.T)
         else :
             im = inim
 
-        print('  estimating scattered light ...',smooth,smooth2d)
+        print('  estimating scattered light ...',smooth)
         kernel = Box1DKernel(smooth)
-        kernel = Gaussian1DKernel(smooth)
         ipoints=[]
         points=[]
         values=[]
@@ -923,18 +927,17 @@ class Reducer() :
         for icol,col in enumerate(range(scat//2,ncols,scat)) :
             print('    column: {:d}'.format(col),end='\r')
             # take mean of surrounding columns, and smooth
-            tmp=convolve(im.data[:,col-scat//2:col+scat//2].mean(axis=1),kernel)
+            tmp=convolve(np.median(im.data[:,col-scat//2:col+scat//2],axis=1),kernel)
             yscat = scipy.signal.find_peaks(-tmp)[0]
             for y in yscat :
                 if im.mask is None or not im.mask[y,col] :
                     ipoints.append([y,icol])
                     points.append([y,col])
-                    #values.append(im.data[y,col])
                     values.append(tmp[y])
 
         # fit [nrow:ncols/scat] surface to these values
         grid_x, grid_y = np.mgrid[0:nrows,0:icol+1]
-        grid_z=scipy.interpolate.griddata(ipoints,values,(grid_x,grid_y), method='linear',
+        grid_z=scipy.interpolate.griddata(ipoints,values,(grid_x,grid_y), method='nearest',
                                           fill_value=0.)
         # smooth along columns and reject outliers
         kernel= Box1DKernel(scat)

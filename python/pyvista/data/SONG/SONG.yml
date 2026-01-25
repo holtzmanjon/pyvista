@@ -8,6 +8,7 @@ rn        : [10]
 biastype  : 0
 crbox     : [1,11]
 scat      : 100
+scat_smooth : 11
 scale     : 0.44
 flip     : False
 #biasbox   : [[[2052,2090],[20,2028]]]
