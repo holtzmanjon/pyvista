@@ -92,7 +92,7 @@ class WaveCal() :
                 tab=Table.read(files(pyvista.data).joinpath(file),hdu=hdu)
             for tag in ['type','degree','ydegree','waves',
                         'waves_order','orders','index',
-                        'pix0','pix','y','spectrum','weights','apers','coeff','dateobs','rms'] :
+                        'pix0','pix','y','spectrum','weights','fwhm','apers','coeff','dateobs','rms'] :
                 if tag in tab.keys() :
                     setattr(self,tag,tab[tag][0])
                 else :
@@ -111,11 +111,12 @@ class WaveCal() :
             self.x = None
             self.y = None
             self.weights = None
+            self.fwhm = None
             self.model = None
             self.ax = None
             self.spectrum = None
             self.dateobs = None
-            slef.rms = -1
+            self.rms = -1
             if orders is not None :
                 self.orders = orders
             else :
@@ -132,7 +133,7 @@ class WaveCal() :
         """
         tab=Table()
         for tag in ['type','degree','ydegree','waves','waves_order',
-                    'orders','index','pix0','pix','y','weights','spectrum','apers','coeff','dateobs','rms'] :
+                    'orders','index','pix0','pix','y','weights','fwhm','spectrum','apers','coeff','dateobs','rms'] :
             try: 
                 if getattr(self,tag) is not None : tab[tag] = [getattr(self,tag)]
             except: pass
@@ -207,6 +208,8 @@ class WaveCal() :
         """
 
         hd.add_wave(self.wave(image=np.array(np.atleast_2d(hd.data).shape)))
+        try : hd.header['WAV_DATE'] = self.dateobs
+        except : pass
 
     def getmod(self) :
         """ Return model for current attributes
@@ -496,6 +499,7 @@ class WaveCal() :
 
     def identify(self,spectrum,sky=False,file=None,wav=None,wref=None,inter=False,
                  orders=None,verbose=False,rad=5,thresh=100, fit=True, maxshift=1.e10,
+                 gdfwhm=[0,1000],
                  disp=None,display=None,plot=None,pixplot=False,domain=False,
                  plotinter=True,
                  xmin=None,xmax=None,lags=range(-300,300), nskip=None, rows=None) :
@@ -685,8 +689,9 @@ class WaveCal() :
             if verbose :print('  identifying lines in row: ', row,end='\r')
             if self.ax is not None :
                 # next line for pixel plot
-                if pixplot : ax[0].plot(data[row,:])
-                else : ax[0].plot(wav[row,:],data[row,:])
+                gd=np.where(data[row,:] != 0.)[0]
+                if pixplot : ax[0].plot(data[row,gd])
+                else : ax[0].plot(wav[row,gd],data[row,gd])
                 #ax[0].set_yscale('log')
                 ax[0].set_ylim(1.,ax[0].get_ylim()[1])
                 ax[0].text(0.1,0.9,'row: {:d}'.format(row),transform=ax[0].transAxes)
@@ -723,10 +728,18 @@ class WaveCal() :
                     except : 
                         continue
                     if verbose : print(line,peak,*coeff)
-                    if display is not None and  isinstance(display,pyvista.tv.TV) :
+                    fw=np.abs(coeff[2]*sig2fwhm)
+                    wt=1.
+                    if np.abs(cent-peak0) > maxshift : 
+                        print('bad cent: ',row,cent,peak0,fw)
+                        wt=0.
+                    elif fw<gdfwhm[0] or fw>gdfwhm[1] :
+                        print('bad fwhm: ',row,cent,peak0,fw)
+                        wt=0.
+                    if display is not None and  isinstance(display,pyvista.tv.TV) and wt>0 :
                         gdpeaks.append(cent)
                         gdrows.append(row)
-                    if plot is not None and plot != False :
+                    if plot is not None and plot != False and wt>0 :
                         if pixplot :
                             ax[0].plot([cent,cent],ax[0].get_ylim(),color='r')
                         else : 
@@ -734,16 +747,12 @@ class WaveCal() :
                                        rotation='vertical',va='top',ha='center')
                     x.append(cent)
                     y.append(row)
-                    fwhm.append(np.abs(coeff[2]*sig2fwhm))
+                    fwhm.append(fw)
                     # we will fit for wavelength*order
                     waves.append(line)
                     try: order = self.orders[row]
                     except: order=self.orders[0]
                     waves_order.append(order)
-                    if np.abs(cent-peak0) < maxshift : wt=1.
-                    else : 
-                        print('bad: ',row,cent,peak0)
-                        wt=0.
                     weight.append(wt)
         if isinstance(display,pyvista.tv.TV) :
             display.ax.scatter(peaks,allrows,marker='o',color='r',s=2)
@@ -1287,7 +1296,7 @@ class Trace() :
         else : self.index=np.arange(len(self.model))
         print("")
         if plot : 
-            while getinput('  See trace. Hit space bar to continue....',plot.fig)[2] != ' ' :
+            while getinput('  See trace. Hit space bar in display window to continue....',plot)[2] != ' ' :
                 pass
 
     def plot(self) :
@@ -1455,7 +1464,7 @@ class Trace() :
             plot.plotax2.set_xlabel('lag')
             plt.draw()
             getinput('  See spectra and cross-correlation.\n'+
-                     '  Hit any key in display window to continue....',plot.fig)
+                     '  Hit any key in display window to continue....',plot)
         self.pix0=fitpeak+lags[0]
         self.pix0=pixshift
         return fitpeak+lags[0]
@@ -1642,7 +1651,7 @@ class Trace() :
                        transform=plot.plotax2.transAxes)
                 plt.draw()
         if plot is not None : 
-            while getinput('  See extraction window(s). Hit space bar to continue....',plot.fig)[2] != ' ' :
+            while getinput('  See extraction window(s). Hit space bar in display window to continue....',plot)[2] != ' ' :
                 pass
         print("")
         if len(back) == 0 :
@@ -1711,7 +1720,7 @@ class Trace() :
                             bitmask=bitmask,header=header))
 
         if plot is not None: 
-           while getinput('  See extraction window(s). Hit space bar to continue....',plot.fig)[2] != ' ' :
+           while getinput('  See extraction window(s). Hit space bar in display window to continue....',plot)[2] != ' ' :
                pass
         if len(out) == 1 : return out[0]
         else : return out
@@ -2264,8 +2273,15 @@ def getinput(prompt,fig=None,index=False) :
     """
     if fig == None : return '','',input(prompt)
     print(prompt)
-    get = plots.mark(fig,index=index)
-    return get
+
+    if isinstance(fig,pyvista.tv.TV) :
+        get=fig.tvmark()
+        return (get[1],get[2],get[0])
+    else :
+        plt.show()
+        plt.draw()
+        get = plots.mark(fig,index=index)
+        return get
 
 def model_col(pars) :
     """ Extract a single column, using boxcar extraction for multiple traces
