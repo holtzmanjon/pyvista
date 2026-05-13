@@ -1022,7 +1022,7 @@ def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),
 
     return lin,rot
 
-def seq(files,box=None,size=None,red=None) :
+def seq(files,box=None,size=None,red=None,maxcol=12,label=None) :
     """ Create montage image from a sequence
 
     Parameters
@@ -1035,7 +1035,17 @@ def seq(files,box=None,size=None,red=None) :
                   if specified, extract region of given size around maximum pixel
         red     : Reducer, default=None
                   imred.Reducer used to extract images, else use iio.imread
+        maxcol  : int, default=12
+                  number of images to stack horizontally before starting a new row
     """
+    if len(files) > maxcol :
+        ncol=maxcol
+        nrow=len(files)//maxcol
+        if len(files)%maxcol > 0 : nrow+=1
+    else :
+        ncol=len(files)
+        nrow=1
+        
     ims=[]
     for i,file in enumerate(files) :
         if red is not None :
@@ -1053,8 +1063,10 @@ def seq(files,box=None,size=None,red=None) :
             out=window(im,box=box)
         if i == 0 :
             nr,nc=out.shape
-            montage=np.zeros([nr,nc*len(files)])
-        montage[:,i*nc:(i+1)*nc] += out
+            montage=np.zeros([nr*nrow,nc*ncol])
+        ix = i%ncol
+        iy = i//ncol
+        montage[iy*nr:(iy+1)*nr,ix*nc:(ix+1)*nc] += out
 
     return files, ims, montage
 
