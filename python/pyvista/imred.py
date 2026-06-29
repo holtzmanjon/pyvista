@@ -452,8 +452,10 @@ class Reducer() :
             display.tv(a,min=min,max=max,draw=False)
             y,x=a.data.shape
             try: 
+                try : date = a.header['DATE-OBS']
+                except : date = a.header['DATE']
                 if text: display.tvtext(x//2,y*3//4,'{:d} {:s} {:f}'.format(
-                            im,a.header['DATE-OBS'],a.header['EXPTIME']),color='r')
+                            im,date,a.header['EXPTIME']),color='r')
                 display.savefig('tmpimage{:d}.png'.format(i))
                 files.append('tmpimage{:d}.png'.format(i))
             except:
@@ -1206,16 +1208,16 @@ class Reducer() :
                     print(r0,c0,box.median(avg),box.stdev(diff))
                     mean.append(box.median(avg))
                     std.append(box.stdev(diff))
-                    iqr.append(box.iqr(diff))
+                    iqr.append(box.iqr(diff)/1.35)
                     n.append((cols[icol+1]-cols[icol])*(rows[irow+1]-rows[irow]))
             mean=np.array(mean)
             std=np.array(std)
             iqr=np.array(iqr)
             n=np.array(n)
             plots.plotp(ax[0],mean,std**2,yt=r'$\sigma^2$',size=30,color=colors[icolor%7])
-            plots.plotp(ax[0],mean,iqr**2,yt=r'$\sigma^2$',size=30,color=colors[icolor%7])
+            plots.plotp(ax[0],mean,iqr**2,yt=r'$\sigma^2$',size=15,color=colors[icolor%7],marker='s')
             plots.plotp(ax[1],mean,2*mean/std**2,yt=r'G = 2 C / $\sigma^2$',size=20,color=colors[icolor%7])
-            plots.plotp(ax[1],mean,2*mean/iqr**2,yt=r'G = 2 C / $\sigma^2$',size=20,color=colors[icolor%7])
+            plots.plotp(ax[1],mean,2*mean/iqr**2,yt=r'G = 2 C / $\sigma^2$',size=10,color=colors[icolor%7],marker='s')
             plots.plotp(ax[2],mean,np.log10(n),xt='counts (C)',yt='log(Npix)',size=20,color=colors[icolor%7])
         fig.suptitle(title+' channel: {:d}'.format(channel))
 
