@@ -1047,6 +1047,8 @@ def seq(files,box=None,size=None,red=None,maxcol=12,label=None) :
         nrow=1
         
     ims=[]
+    ix=0
+    iy=0
     for i,file in enumerate(files) :
         if red is not None :
             im=red.rd(file)
