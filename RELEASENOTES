@@ -6,6 +6,8 @@ data/SONG  add scat_smooth
 
 image.py   fix xcorr2d() for origin
            add maxcol= for seq()
+           modify skimage transformation routines to avoid deprecated usage
+             require scikit-learn >= 0.26.0
 
 imred.py   add scat_smooth
            allow for DATE if can't find DATE-OBS in movie()
