@@ -957,16 +957,14 @@ def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),
     gd = np.where((np.isfinite(lines0['x']))&(np.isfinite(lines['x'])))[0]
     src=np.array([lines0['x'][gd]-nc//2,lines0['y'][gd]-nr//2]).T
     dest=np.array([lines['x'][gd]-nc//2,lines['y'][gd]-nr//2]).T
-    lin.estimate(src,dest)
+    lin=AffineTransform.from_estimate(src,dest)
     res=lin(src)-dest
-    #rot.estimate(src,dest)
-    #res=rot(src)-dest
-    # reject points with >1 pixel residual
+    # reject points with >1 pixel residual and refit
     gd=np.where((np.abs(res[:,0])<reject)&(np.abs(res[:,1])<reject))[0]
     bd=np.where((np.abs(res[:,0])>reject)|(np.abs(res[:,1])>reject))[0]
     print(len(gd),len(res))
-    rot.estimate(src[gd],dest[gd])
-    lin.estimate(src[gd],dest[gd])
+    rot=SimilarityTransform.from_estimate(src[gd],dest[gd])
+    lin=AffineTransform.from_estimate(src[gd],dest[gd])
 
     if hard is not None :
         fig,ax=plots.multi(4,1,figsize=(24,6),wspace=0.001)

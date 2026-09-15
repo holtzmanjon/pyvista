@@ -14,7 +14,7 @@ authors=[
 ]
 description="Astronomical image processing"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 classifiers=[
     "Development Status :: 1 - Planning",
     "Intended Audience :: Science/Research",
@@ -41,7 +41,7 @@ dependencies =[
     "matplotlib",
     "scipy",
     "scikit-learn",
-    "scikit-image",
+    "scikit-image >= 0.26.0",
     "esutil",
     "imageio",
     "imageio-ffmpeg",
