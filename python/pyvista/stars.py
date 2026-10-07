@@ -330,8 +330,8 @@ def photom(data,stars,uncertainty=None,mask=None,rad=[3],skyrad=None,display=Non
             area = np.pi*r**2
 
             if utils :
-                tot = aptab['aperture_sum_{:d}'.format(irad)]
-                unc = aptab['aperture_sum_err_{:d}'.format(irad)]
+                tot = aptab['aperture_sum_{:d}'.format(irad)][0]
+                unc = aptab['aperture_sum_err_{:d}'.format(irad)][0]
 
             else :
                 # here include pixel only if center is within aperture (not so good)
