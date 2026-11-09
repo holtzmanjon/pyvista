@@ -454,8 +454,10 @@ class Reducer() :
             try: 
                 try : date = a.header['DATE-OBS']
                 except : date = a.header['DATE']
-                if text: display.tvtext(x//2,y*3//4,'{:d} {:s} {:f}'.format(
-                            im,date,a.header['EXPTIME']),color='r')
+                try : exptime = '{:.1}'.format(a.header['EXPTIME'])
+                except : exptime = ''
+                if text: display.tvtext(x//2,y*3//4,'{:d} {:s} {:s}'.format(
+                            im,date,exptime),color='r')
                 display.savefig('tmpimage{:d}.png'.format(i))
                 files.append('tmpimage{:d}.png'.format(i))
             except:
