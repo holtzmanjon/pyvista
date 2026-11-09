@@ -180,11 +180,8 @@ class TV:
                         self.axlist[i].set_visible(False)
                 self.aximage=self.axlist[self.current]
                 self.cb=self.cblist[self.current]
-                #self.cb.ax.clear()
-                #self.cb = self.fig.colorbar(self.aximage,cax=self.cb.ax,orientation='horizontal')
-                #self.cb = self.ax.get_figure().colorbar(self.aximage,cax=self.cb_ax,orientation='horizontal')
-                #cm=cmap.remap(self.cmap,self.bottom,self.top)
-                #self.aximage.set_cmap(cm)
+                self.aximage.changed()
+                self.cb.update_normal(self.aximage)
                 plt.draw()
                 try:
                     # bump mouse to get format_coord to update
@@ -222,8 +219,6 @@ class TV:
                 else :self.ax.set_xlim(dim[1]/2.-size/2.,dim[1]/2.+size/2.)
                 if self.doflipy :self.ax.set_ylim(dim[0]/2.+size/2.,dim[0]/2.-size/2.)
                 else :self.ax.set_ylim(dim[0]/2.-size/2.,dim[0]/2.+size/2.)
-                #self.ax.set_xlim(-0.5,dim[1]-0.5)
-                #self.ax.set_ylim(-0.5,dim[0]-0.5)
                 plt.draw()
 
             elif event.key == 'r' and subPlotNr == 1 :
@@ -380,6 +375,7 @@ class TV:
                 if self.doflipy:self.ax.set_ylim(event.ydata+size/2.,event.ydata-size/2.)
                 else : self.ax.set_ylim(event.ydata-size/2.,event.ydata+size/2.)
                 plt.draw()
+
             elif subPlotNr == 1 :
                 # flag button press in colorbar
                 self.button = True
@@ -441,7 +437,6 @@ class TV:
                 self.aximage.set_cmap(cm)
                 plt.draw()
 
-        
     def __getSubPlotNr(self, event):
     
         """
@@ -580,24 +575,26 @@ class TV:
 
         self.aximage = self.ax.imshow(data,vmin=min,vmax=max,cmap=self.cmap, 
                                       interpolation='nearest',aspect=self.aspect)
-        old=self.axlist.pop(current)
-        #self.tvclear()
+
+        # new or update colorbar
+        self.cb = self.cblist[current]
+        if self.cb is None :
+            self.cb = self.fig.colorbar(self.aximage,cax=self.cb_ax,orientation='horizontal')
+        else :
+            self.aximage.set_data(data)
+            self.aximage.set_clim(vmin=min,vmax=max)
+            self.aximage.changed()
+            self.cb.update_normal(self.aximage)
+        self.cblist.pop(current)
+        self.cblist.insert(current,self.cb)
 
         # if we had a previous image, reload the data with a single value
         # so we don't continually accumulate memory (matplotlib doesn't
         # describe how memory can be released
+        old=self.axlist.pop(current)
         z=np.zeros([1,1])
         if old is not None : old.set_data(z)
         self.axlist.insert(current,self.aximage)
-        if self.cb is None :
-            #self.cb = self.fig.colorbar(self.aximage,orientation='horizontal',shrink=0.7,pad=0)
-            self.cb = self.fig.colorbar(self.aximage,cax=self.cb_ax,orientation='horizontal')
-            #plt.subplots_adjust(left=-0.15,right=1.15,bottom=-0.10,top=1.00)
-        else :
-            self.cb.ax.clear()
-            self.cb = self.fig.colorbar(self.aximage,cax=self.cb.ax,orientation='horizontal')
-        self.cblist.pop(current)
-        self.cblist.insert(current,self.cb)
 
         # instead of redraw color, could replace data, but not if sizes change?
         # img.set_data()
