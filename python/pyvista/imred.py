@@ -220,7 +220,7 @@ class Reducer() :
 
 
     def log(self,files=None,htmlfile=None,ext=None,hdu=0,channel='', 
-            cols=None, display=None) :
+            cols=None, display=None, hexdump=False) :
         """ Create chronological image log from file headers in default
             directory.
 
@@ -273,7 +273,8 @@ class Reducer() :
         objs=[]
         for file in files :
           try :
-              header=fits.open(file)[hdu].header
+              if hexdump : header=_get_meta(file,keys=cols)
+              else : header=fits.open(file)[hdu].header
           except FileNotFound :
               print('error opening file: {:s}, hdu: {:d}'.format(file,hdu))
               return
@@ -327,7 +328,8 @@ class Reducer() :
         oldfilt = ''
         style = ''
         for i in sort :
-          header=fits.open(files[i])[hdu].header
+          if hexdump : header=_get_meta(files[i],keys=cols)
+          else : header=fits.open(files[i])[hdu].header
           # fix for RA/DEC for MaximDL headers
           if 'RA' not in header  :
               try: header['RA'] = header['OBJCTRA'].replace(' ',':')
@@ -376,6 +378,7 @@ class Reducer() :
                       format(os.path.basename(files[i]),
                       os.path.basename(files[i]+'.png'),
                       os.path.basename(files[i]+'.png')))
+        
         if htmlfile is not None :
             fp.write('</TABLE>\n')
             if display is not None : fd.write('</TABLE>')
@@ -1587,3 +1590,35 @@ def getinput(text,display) :
         pdb.set_trace()
     return get
 
+
+def _parse_hexdump_headers(output, keys, default=""):
+    meta = [default] * len(keys)
+    for line in output:
+        try:
+            key, value = line.split("=", 2)
+        except ValueError: # grep'd something in the data
+            continue
+
+        key = key.strip()
+        if key in keys:
+            index = keys.index(key)
+            if "/" in value:
+                # could be comment
+                *parts, comment = value.split("/")
+                value = "/".join(parts)
+            value = value.strip("' ")
+            meta[index] = value.strip()
+    return meta
+
+def _get_meta(path, keys=['DATE-OBS'], head=20_000):
+    keys_str = "|".join(keys)
+    commands = " | ".join([
+        'zcat {path}','hexdump -n {head} -e \'80/1 "%_p" "\\n"\'' ,
+        'egrep "{keys_str}"'
+    ]).format(head=head, path=path, keys_str=keys_str)
+    outputs = subprocess.check_output(commands, shell=True, text=True)
+    outputs = outputs.strip().split("\n")
+    values = _parse_hexdump_headers(outputs, keys)
+    headers = dict()
+    headers.update(dict(zip(keys, values)))
+    return headers
