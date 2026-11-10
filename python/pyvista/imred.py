@@ -1,7 +1,7 @@
 import numpy as np
 import shutil
 import astropy
-from photutils.detection import DAOStarFinder
+from photutils import DAOStarFinder
 import code
 import copy
 from astropy import units as u
@@ -11,10 +11,9 @@ from pyvista.dataclass import Data
 from astropy.io import fits, ascii
 from astropy.wcs import WCS
 from astropy.modeling import models, fitting
-from astropy.convolution import convolve, Box1DKernel, Box2DKernel, Box2DKernel, Gaussian1DKernel
+from astropy.convolution import convolve, Box1DKernel, Box2DKernel, Box2DKernel
 from holtztools import html, plots
-try : import astroscrappy
-except : print('no astroscrappy')
+import astroscrappy
 import scipy.signal
 from scipy.optimize import curve_fit
 import yaml
@@ -74,43 +73,16 @@ class Reducer() :
 
     """
     def __init__(self,inst=None,conf='',dir='./',root='*',formstr='{:04d}.f*',
-                 gain=1,rn=0.,saturation=2**32,verbose=True,nfowler=1,
-                 trim=False) :
+                 gain=1,rn=0.,saturation=2**32,verbose=True,nfowler=1) :
         """  Initialize reducer with information about how to reduce
-
-        Parameters
-        ----------
-        inst : str, default=None
-               configuration file name to read for instrument
-        conf : str, default=''
-               configuration suffix to add to configuration file name
-        dir : str,default='./'
-              default directory to get images from
-        trim : bool, default=False
-               if True, trim calibration products
-        formstr : str, default='{04d}.f*'
-              sets format string to find images given integer ID, 
-              if not reading from configuration file
-        gain : float, default=1
-              gain if not reading from configuration file
-        rn : float, default=0
-              rn if not reading from configuration file
-        saturation : int, default=2**32
-              saturation value if not reading from configuration file
-        verbose : bool, default=False
-              turn on verbose output
-        nfowler : integer, default=1
-              nfowler value if not reading from configuration file
         """
         self.dir=dir
         self.root=root
         self.verbose=verbose
         self.badpix=None
         self.scat=None
-        self.scat_smooth=None
         self.bitmask=None
         self.transpose=None
-        self.trim=trim
         self.scale=1
         self.biastype=-1
         self.biasbox=[]
@@ -207,8 +179,6 @@ class Reducer() :
                 self.normbox.append(image.BOX(xr=box[0],yr=box[1]) )
             try: self.scat=config['scat']
             except : pass
-            try: self.scat_smooth=config['scat_smooth']
-            except : pass
            
             # Add bad pixel mask if it exists
             try: self.bitmask=fits.open(importlib_resources.files(DATA).joinpath(inst+'/'+
@@ -250,7 +220,7 @@ class Reducer() :
 
 
     def log(self,files=None,htmlfile=None,ext=None,hdu=0,channel='', 
-            cols=None, display=None,hexdump=False) :
+            cols=None, display=None, hexdump=False) :
         """ Create chronological image log from file headers in default
             directory.
 
@@ -358,7 +328,7 @@ class Reducer() :
         oldfilt = ''
         style = ''
         for i in sort :
-          if hexdump : header=_get_meta(file,keys=cols)
+          if hexdump : header=_get_meta(files[i],keys=cols)
           else : header=fits.open(files[i])[hdu].header
           # fix for RA/DEC for MaximDL headers
           if 'RA' not in header  :
@@ -408,6 +378,7 @@ class Reducer() :
                       format(os.path.basename(files[i]),
                       os.path.basename(files[i]+'.png'),
                       os.path.basename(files[i]+'.png')))
+        
         if htmlfile is not None :
             fp.write('</TABLE>\n')
             if display is not None : fd.write('</TABLE>')
@@ -429,8 +400,7 @@ class Reducer() :
 
         return tab
 
-    def movie(self,ims,display=None,out='movie.mp4',channel=0,
-              min=None, max=None,box=None,text=True,fps=None) :
+    def movie(self,ims,display=None,out='movie.gif',channel=0,min=None, max=None) :
         """
         Create animated gif of images
 
@@ -444,40 +414,28 @@ class Reducer() :
             raise ValueError('you must specify a pyvista TV object with display=')
 
         files = []
-        for i,im in enumerate(ims) :
+        for im in ims :
             display.clear()
             a=self.rd(im,channel=channel)
-            if box is not None : 
-                a=image.window(a,box,header=a.header)
-            display.tv(a,min=min,max=max,draw=False)
+            display.tv(a,min=min,max=max)
             y,x=a.data.shape
-            try: 
-                try : date = a.header['DATE-OBS']
-                except : date = a.header['DATE']
-                try : exptime = '{:.1}'.format(a.header['EXPTIME'])
-                except : exptime = ''
-                if text: display.tvtext(x//2,y*3//4,'{:d} {:s} {:s}'.format(
-                            im,date,exptime),color='r')
-                display.savefig('tmpimage{:d}.png'.format(i))
-                files.append('tmpimage{:d}.png'.format(i))
-            except:
-                print('error at file: ', im,' stopping there')
-                continue
+            display.tvtext(x//2,y*3//4,'{:d} {:f}'.format(im,a.header['EXPTIME']),color='r')
+            display.savefig('tmpimage{:d}.png'.format(im))
+            files.append('tmpimage{:d}.png'.format(im))
 
         import imageio
-        with imageio.get_writer(out,mode='I',format='FFMPEG',fps=fps) as writer :
+        with imageio.get_writer(out,mode='I') as writer :
             for filename in files :
-                tmpimage = imageio.imread(filename)
+                image = imageio.imread(filename)
                 os.remove(filename)
-                writer.append_data(tmpimage)
+                writer.append_data(image)
 
     def reduce(self,num,channel=None,ext=0,
                crbox=None,crsig=5,objlim=5,sigfrac=0.3,
                bias=None,dark=None,flat=None,
-               scat=None,scat_smooth=None,badpix=None,solve=False,return_list=False,display=None,
+               scat=None,badpix=None,solve=False,return_list=False,display=None,
                trim=True,seeing=2,utr=False) :
-        """ Reads data from disk, and performs reduction steps 
-            as determined from command line parameters
+        """ Reads data from disk, and performs reduction steps as determined from command line parameters
 
         Parameters
         ----------
@@ -505,32 +463,24 @@ class Reducer() :
              if specified, parameter to pass to CR rejection routine, 
              either 2-element list giving shape of box for median 
              filter, or 'lacosmic'
-        scat : integer, default=None
-             if specified, do scattered light correction, getting
-             estimate every scat pixels
-        badpix : int, default=None
-             if specified, set masked pixels to specified value
-        trim : bool, default=True
-             trim image after calibration, irrelevant if red.trimg=True
-        solve : bool, default=False
-             attempt to plate-solve image after reduction, requires 
-             local astrometry.net
-        seeing : float, default=2
-             seeing used to find stars if solve=True
+        scat :
+        badpix :
+        trim :
+        solve :
+        seeing :
 
         """
         im=self.rd(num,dark=dark,channel=channel,utr=utr,ext=ext)
         self.overscan(im,display=display,channel=channel)
-        if self.trim : im=self.trimimage(im,trimimage=self.trim)
         im=self.bias(im,superbias=bias)
         im=self.dark(im,superdark=dark)
         im=self.crrej(im,crbox=crbox,crsig=crsig,objlim=objlim,sigfrac=sigfrac,
                       display=display)
-        self.scatter(im,scat=scat,display=display,smooth=scat_smooth)
+        self.scatter(im,scat=scat,display=display)
         im=self.flat(im,superflat=flat,display=display)
         self.badpix_fix(im,val=badpix)
         if trim and display is not None: display.tvclear()
-        if trim and not self.trim : im=self.trimimage(im,trimimage=trim)
+        im=self.trim(im,trimimage=trim)
         if solve : 
             im=self.platesolve(im,display=display,scale=self.scale,seeing=seeing)
         if return_list and type(im) is not list : im=[im]
@@ -696,12 +646,12 @@ class Reducer() :
                     ax.plot(np.arange(databox.ymin,databox.ymax+1),
                             over,color='k')
                     ax.set_xlabel('Row')
-                over2d=image.stretch(over,ncol=databox.ncol())
+                over=image.stretch(over,ncol=databox.ncol())
                 if self.verbose: print('  subtracting overscan vector ')
                 im.data[databox.ymin:databox.ymax+1,
                         databox.xmin:databox.xmax+1] = \
                     im.data[databox.ymin:databox.ymax+1,
-                            databox.xmin:databox.xmax+1].astype(np.float32) - over2d
+                            databox.xmin:databox.xmax+1].astype(np.float32) - over
               # if we have separate gains, multiply by them here
               if isinstance(gain,list) :
                 print('  multiplying by gain: ', gain[ibias])
@@ -725,7 +675,7 @@ class Reducer() :
             else :
               im.uncertainty = StdDevUncertainty(np.sqrt( data/gain + (rn/gain)**2 ))
 
-    def trimimage(self,inim,trimimage=False) :
+    def trim(self,inim,trimimage=False) :
         """ Trim image by masking non-trimmed pixels
             May need to preserve image size to match reference/calibration frames, etc.
         """
@@ -886,7 +836,7 @@ class Reducer() :
          else : return out
 
 
-    def scatter(self,inim,scat=None,display=None,smooth=None,smooth2d=31,transpose=False) :
+    def scatter(self,inim,scat=None,display=None,smooth=3,smooth2d=31,transpose=False) :
         """ Removal of scattered light (for multi-order/object spectrograph)
 
         Remove scattered light by looking for valleys in cross-sections across traces
@@ -903,89 +853,57 @@ class Reducer() :
              set to true if spectra run along columns
         scat : integer, default=None
              get scattered light measurements every scat pixels. If None, no correction
+        display : TV object, default=None
+             if set, show the scattered light measurements
         smooth : integer, default=3
              boxcar width for smoothing profile perpendicular to traces before looking
              for valleys
-        display : TV object, default=None
-             if set, show the scattered light measurements
+        smooth2d : integer, default=31
+             boxcar width for smoothing interpolated scattered light surface
         """
         if scat is None : return
-        if smooth is None :
-            if self.scat_smooth is None : smooth=1
-            else : smooth=self.scat_smooth
-
         if transpose :
             im = Data(data=inim.data.T)
         else :
             im = inim
 
-        print('  estimating scattered light ...',smooth)
-        kernel = Box1DKernel(smooth)
-        ipoints=[]
+        print('  estimating scattered light ...')
+        boxcar = Box1DKernel(smooth)
         points=[]
         values=[]
         nrows = im.data.shape[0]
         ncols = im.data.shape[-1]
 
-        # find minima in each group of columns, and save location and value
-        for icol,col in enumerate(range(scat//2,ncols,scat)) :
+        # find minima in each column, and save location and value
+        for col in range(0,ncols,scat) :
             print('    column: {:d}'.format(col),end='\r')
-            # take mean of surrounding columns, and smooth
-            tmp=convolve(np.median(im.data[:,col-scat//2:col+scat//2],axis=1),kernel)
-            yscat = scipy.signal.find_peaks(-tmp)[0]
+            yscat = scipy.signal.find_peaks(-convolve(im.data[:,col],boxcar))[0]
             for y in yscat :
                 if im.mask is None or not im.mask[y,col] :
-                    ipoints.append([y,icol])
                     points.append([y,col])
-                    values.append(tmp[y])
+                    values.append(im.data[y,col])
 
-        # fit [nrow:ncols/scat] surface to these values
-        grid_x, grid_y = np.mgrid[0:nrows,0:icol+1]
-        grid_z=scipy.interpolate.griddata(ipoints,values,(grid_x,grid_y), method='nearest',
-                                          fill_value=0.)
-        # smooth along columns and reject outliers
-        kernel= Box1DKernel(scat)
-        for icol in range(grid_z.shape[1]) :
-            grid_z[:,icol] = convolve(grid_z[:,icol],kernel)
+        # fit surface to the minimum values
+        print('    fitting surface ...')
+        grid_x, grid_y = np.mgrid[0:nrows,0:ncols]
+
+        # smooth and reject outlying points
+        boxcar = Box2DKernel(smooth2d)
+        grid_z=convolve(scipy.interpolate.griddata(points,values,(grid_x,grid_y),
+                        method='cubic',fill_value=0.),boxcar)
+        # go back and try to reject outliers
+        print('    rejecting points ...')
         points_gd=[]
         values_gd=[]
-        for ipoint,point,value in zip(ipoints,points,values) :
-            if (value < 1.05*grid_z[ipoint[0],ipoint[1]] and 
-                value > 0.95*grid_z[ipoint[0],ipoint[1]]) :
+        for point,value in zip(points,values) :
+            if value < 1.1*grid_z[point[0],point[1]] :
                 points_gd.append(point)
                 values_gd.append(value)
 
-        # fit surface to the minimum values
-        #print('    fitting surface ...')
-        #grid_x, grid_y = np.mgrid[0:nrows,0:ncols]
-        #grid_z=scipy.interpolate.griddata(points,values,(grid_x,grid_y), method='cubic',
-        #                                  fill_value=0.)
-
-        ## smooth and reject outlying points
-        #boxcar = Box2DKernel(smooth2d)
-        #grid_z=convolve(scipy.interpolate.griddata(points,values,(grid_x,grid_y),
-        #                method='cubic',fill_value=0.),boxcar)
-        ## go back and try to reject outliers
-        #print('    rejecting points ...')
-        #points_gd=[]
-        #values_gd=[]
-        #for point,value in zip(points,values) :
-        #    if value < 1.1*grid_z[point[0],point[1]] :
-        #        points_gd.append(point)
-        #        values_gd.append(value)
-#
-        # refit surface, this time to full-sized image. Do it once with linear, and then
-        #   again with nearest to use to fill in edges outside of the hull of points
+        # refit surface
         print('    refitting surface ...')
-        grid_x, grid_y = np.mgrid[0:nrows,0:ncols]
-        #grid_z=convolve(scipy.interpolate.griddata(points_gd,values_gd,(grid_x,grid_y),
-        #                method='cubic',fill_value=0.),boxcar)
-        grid_z=scipy.interpolate.griddata(points_gd,values_gd,(grid_x,grid_y),
-                        method='linear')
-        nearest_grid_z=scipy.interpolate.griddata(points_gd,values_gd,(grid_x,grid_y),
-                        method='nearest')
-        bd = np.where(np.isnan(grid_z))
-        grid_z[bd] = nearest_grid_z[bd]
+        grid_z=convolve(scipy.interpolate.griddata(points_gd,values_gd,(grid_x,grid_y),
+                        method='cubic',fill_value=0.),boxcar)
 
         if display is not None :
             display.clear()
@@ -1046,7 +964,6 @@ class Reducer() :
         else : nsigs = crsig
         out=[]
         for i,(im,gain,rn,sat) in enumerate(zip(ims,self.gain,self.rn,self.saturation)) :
-          print('  starting CR rejection, may take some time ....')
           for iter,nsig in enumerate(nsigs) : 
             if display is not None : 
                 display.clear()
@@ -1175,7 +1092,6 @@ class Reducer() :
         for icolor,pair in enumerate(pairs) :
             mean=[]
             std=[]
-            iqr=[]
             n=[]
             title+='[{:s},{:s}]'.format(str(pair[0]),str(pair[1]))
             a=self.reduce(pair[0],channel=channel)
@@ -1194,10 +1110,7 @@ class Reducer() :
                         gd = np.where(np.abs(diff.flatten()[j]) < 5*std0)[0]
                         std.append(diff.flatten()[j[gd]].std())
                         n.append(len(j))
-                        q1 = np.percentile(diff.flatten()[j], 25)
-                        q3 = np.percentile(diff.flatten()[j], 75)
-                        iqr.append((q3 - q1)/1.35)
-                        print((level+levels[i+1])/2.,diff.flatten()[j].std(),(q3-q1)/1.35,len(j))
+                        print((level+levels[i+1])/2.,diff.flatten()[j].std(),len(j))
             else :
               if rows is None : rows=np.arange(0,a.shape[0],nbox)
               if cols is None : cols=np.arange(0,a.shape[1],nbox)
@@ -1210,17 +1123,13 @@ class Reducer() :
                     print(r0,c0,box.median(avg),box.stdev(diff))
                     mean.append(box.median(avg))
                     std.append(box.stdev(diff))
-                    iqr.append(box.iqr(diff)/1.35)
                     n.append((cols[icol+1]-cols[icol])*(rows[irow+1]-rows[irow]))
             mean=np.array(mean)
             std=np.array(std)
-            iqr=np.array(iqr)
             n=np.array(n)
-            plots.plotp(ax[0],mean,std**2,yt=r'$\sigma^2$',size=30,color=colors[icolor%7])
-            plots.plotp(ax[0],mean,iqr**2,yt=r'$\sigma^2$',size=15,color=colors[icolor%7],marker='s')
-            plots.plotp(ax[1],mean,2*mean/std**2,yt=r'G = 2 C / $\sigma^2$',size=20,color=colors[icolor%7])
-            plots.plotp(ax[1],mean,2*mean/iqr**2,yt=r'G = 2 C / $\sigma^2$',size=10,color=colors[icolor%7],marker='s')
-            plots.plotp(ax[2],mean,np.log10(n),xt='counts (C)',yt='log(Npix)',size=20,color=colors[icolor%7])
+            plots.plotp(ax[0],mean,std**2,yt='$\sigma^2$',size=30,color=colors[icolor])
+            plots.plotp(ax[1],mean,2*mean/std**2,yt='G = 2 C / $\sigma^2$',size=20,color=colors[icolor])
+            plots.plotp(ax[2],mean,np.log10(n),xt='counts (C)',yt='log(Npix)',size=20,color=colors[icolor])
         fig.suptitle(title+' channel: {:d}'.format(channel))
 
         pdb.set_trace()
@@ -1398,16 +1307,7 @@ class Reducer() :
     def mkbias(self,ims,display=None,scat=None,type='median',sigreject=5,
                trim=False) :
         """ Driver for superbias combination (no superbias subtraction no normalization)
-
-        ims : list of frames to combine
-        display : TV object, default= None
-                  if specified, displays bias and individual frames-bias for inspection
-        type : str, default='median'
-              combine method
-        sigreject : float
-              rejection threshold for combine type='reject', otherwise ignored
         """
-
         bias= self.combine(ims,display=display,div=False,scat=scat,trim=trim,
                             type=type,sigreject=sigreject)
         for i,f in enumerate(bias) :
@@ -1417,22 +1317,7 @@ class Reducer() :
     def mkdark(self,ims,ext=0,bias=None,display=None,scat=None,trim=False,
                type='median',sigreject=5,clip=None) :
         """ Driver for superdark combination (no normalization)
-
-        Parameters
-        ----------
-        ims : list of frames to combine
-        display : TV object, default= None
-                  if specified, displays dark and individual frames-dark for inspection
-        bias : Data object, default=None
-              if specified, superbias to subtract before combining darks
-        type : str, default='median'
-              combine method
-        sigreject : float
-              rejection threshold for combine type='reject', otherwise ignored
-        clip : float, default=None
-              if specified, set all values in output dark < clip*uncertainty to zero in master dark
         """
-
         dark= self.combine(ims,ext=ext,bias=bias,display=display,trim=trim,
                             div=False,scat=scat,type=type,sigreject=sigreject)
         for i,f in enumerate(dark) :
@@ -1440,12 +1325,12 @@ class Reducer() :
         if clip != None:
             low = np.where(dark.data < clip*dark.uncertainty.array)
             dark.data[low] = 0.
-           
+            dark.data[low] = 0.
         return dark
 
     def mkflat(self,ims,bias=None,dark=None,scat=None,display=None,trim=False,ext=0,
                type='median',sigreject=5,spec=False,width=101,littrow=False,normalize=True,
-               snmin=50,clip=None) :
+               snmin=50) :
         """ Driver for superflat combination, with superbias if specified, normalize to normbox
 
         Parameters
@@ -1461,14 +1346,15 @@ class Reducer() :
         type : str, default='median'
               combine method
         sigreject : float
-              rejection threshold for combine type='reject', otherwise ignored
+              rejection threshold for combine type='reject'
         spec : bool, default=False
               if True, creates "spectral" flat by taking out wavelength
               shape
         littrow : bool, default=False
               if True, attempts to fit and remove Littrow ghost from flat,
               LITTROW_GHOST bit must be set in bitmask first to identify 
-              ghost location. Ignored if spec==False
+              ghost location
+              only relevant if spec==True
         width : int, default=101
               window width for removing spectral shape for spec=True
 
@@ -1481,14 +1367,10 @@ class Reducer() :
         for i,f in enumerate(flat) :
             flat[i].header['OBJECT'] = 'Combined flat'
         if spec :
-            flat = self.mkspecflat(flat,width=width,display=display,
+            return self.mkspecflat(flat,width=width,display=display,
                                    littrow=littrow,snmin=snmin)
-        if clip is not None :
-            low = np.where(flat.data < clip*flat.uncertainty.array)
-            flat.data[low] = 1.
-            flat.uncertainty.array[low] = 1.
-
-        return flat
+        else :
+            return flat
 
     def mkspecflat(self,flats,width=101,display=None,littrow=False,snmin=50) :
         """ Spectral flat takes out variation along wavelength direction
@@ -1552,8 +1434,7 @@ class DET() :
     """ 
     Defines detector class 
     """
-    def __init__(self,inst=None,gain=0.,rn=0.,biastype=0,biasbox=None,
-                 normbox=None,trimbox=None,formstr='{:04d}') :
+    def __init__(self,inst=None,gain=0.,rn=0.,biastype=0,biasbox=None,normbox=None,trimbox=None,formstr='{:04d}') :
         self.gain = gain
         self.rn = rn
         self.biastype = biastype
@@ -1711,8 +1592,6 @@ def getinput(text,display) :
 
 
 def _parse_hexdump_headers(output, keys, default=""):
-    """ Parse character string from file into keyword,value pairs
-    """
     meta = [default] * len(keys)
     for line in output:
         try:
@@ -1732,24 +1611,14 @@ def _parse_hexdump_headers(output, keys, default=""):
     return meta
 
 def _get_meta(path, keys=['DATE-OBS'], head=20_000):
-    """ Read fits headers faster!!
-    """
     keys_str = "|".join(keys)
-    if '.gz' in path : 
-        commands = " | ".join([
-            'zcat {path}','hexdump -n {head} -e \'80/1 "%_p" "\\n"\'' ,
-            'egrep "{keys_str}"'
-        ]).format(head=head, path=path, keys_str=keys_str)
-    else : 
-        commands = " | ".join([
-            'hexdump -n {head} -e \'80/1 "%_p" "\\n"\' {path}' ,
-            'egrep "{keys_str}"'
-        ]).format(head=head, path=path, keys_str=keys_str)
-        
+    commands = " | ".join([
+        'zcat {path}','hexdump -n {head} -e \'80/1 "%_p" "\\n"\'' ,
+        'egrep "{keys_str}"'
+    ]).format(head=head, path=path, keys_str=keys_str)
     outputs = subprocess.check_output(commands, shell=True, text=True)
     outputs = outputs.strip().split("\n")
     values = _parse_hexdump_headers(outputs, keys)
     headers = dict()
     headers.update(dict(zip(keys, values)))
     return headers
-
