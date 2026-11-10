@@ -891,7 +891,7 @@ def minmax(data,mask=None, low=3,high=10):
     return min,max
 
 
-def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),
+def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),smooth=3,
               rad=2,scale=20,hard=None,reject=1) :
     """ Get geometric transformation between images based on point sources
 
@@ -921,7 +921,7 @@ def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),
     # smooth cross correlation by by 3x3 kernel in case there are multiple
     # peaks and the wrong one happens to match pixel centering better
     # Just use integer peak
-    kernel=np.ones([3,3])
+    kernel=np.ones([smooth,smooth])
     indices=np.unravel_index(
               scipy.signal.convolve(shift,kernel,mode='same').argmax(),shift.shape)
     dy=indices[0]+ylags[0]
@@ -1004,4 +1004,4 @@ def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),
             pdb.set_trace()
         plt.close()
 
-    return lin,rot
+    return lin,rot, shift, scipy.signal.convolve(shift,kernel,mode='same')
