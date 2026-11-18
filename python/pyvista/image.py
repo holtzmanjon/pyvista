@@ -15,7 +15,6 @@ import matplotlib.pyplot as plt
 import glob
 import bz2
 import os
-import imageio.v3 as iio
 import pdb
 
 sig2fwhm = 2*np.sqrt(2*np.log(2))
@@ -134,20 +133,6 @@ class BOX() :
         """
         if self.nrow() == 0 or self.ncol() == 0 : return 0.
         return data[self.ymin:self.ymax+1,self.xmin:self.xmax+1].std() 
-    
-    def iqr(self,data):
-        """ Returns IQR data in box
-
-            Args :
-                data : input data (Data or np.array)
-
-            Returns:
-                IQR of data in box
-        """
-        if self.nrow() == 0 or self.ncol() == 0 : return 0.
-        q1 = np.percentile(data[self.ymin:self.ymax+1,self.xmin:self.xmax+1],25)
-        q3 = np.percentile(data[self.ymin:self.ymax+1,self.xmin:self.xmax+1],75)
-        return q3-q1
 
     def max(self,data):
         """ Returns maximum of data in box
@@ -227,10 +212,10 @@ def abx(data,box) :
             'max': box.max(data),
             'min': box.min(data),
             'peakx': np.unravel_index(
-                        data[box.ymin:box.ymax+1,box.xmin:box.xmax+1].argmax(),
+                        data[box.ymin:box.ymax,box.xmin:box.xmax].argmax(),
                         (box.nrow(),box.ncol()) )[1]+box.xmin,
             'peaky': np.unravel_index(
-                        data[box.ymin:box.ymax+1,box.xmin:box.xmax+1].argmax(),
+                        data[box.ymin:box.ymax,box.xmin:box.xmax].argmax(),
                         (box.nrow(),box.ncol()) )[0]+box.ymin}
 
 def gauss2d_binned(X, amp, x0, y0, a, b, c, back) :
@@ -855,8 +840,7 @@ def xcorr2d(a,b,lags=None,xlags=None,ylags=None) :
         p=fit(mod,x[yp-1:yp+2,xp-1:xp+2],y[yp-1:yp+2,xp-1:xp+2],shift[yp-1:yp+2,xp-1:xp+2])
         a = np.array([ [2*p.parameters[2], p.parameters[5]], [p.parameters[5],2*p.parameters[4]] ])
         b = np.array([-p.parameters[1],-p.parameters[3]])
-        peak=np.linalg.solve(a,b)
-
+        peak=np.linalg.solve(a,b)+(xp,yp)+(xlags[0],ylags[0])
 
     return peak,shift
 
@@ -907,7 +891,7 @@ def minmax(data,mask=None, low=3,high=10):
     return min,max
 
 
-def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),
+def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),smooth=3,
               rad=2,scale=20,hard=None,reject=1) :
     """ Get geometric transformation between images based on point sources
 
@@ -937,7 +921,7 @@ def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),
     # smooth cross correlation by by 3x3 kernel in case there are multiple
     # peaks and the wrong one happens to match pixel centering better
     # Just use integer peak
-    kernel=np.ones([3,3])
+    kernel=np.ones([smooth,smooth])
     indices=np.unravel_index(
               scipy.signal.convolve(shift,kernel,mode='same').argmax(),shift.shape)
     dy=indices[0]+ylags[0]
@@ -957,14 +941,16 @@ def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),
     gd = np.where((np.isfinite(lines0['x']))&(np.isfinite(lines['x'])))[0]
     src=np.array([lines0['x'][gd]-nc//2,lines0['y'][gd]-nr//2]).T
     dest=np.array([lines['x'][gd]-nc//2,lines['y'][gd]-nr//2]).T
-    lin=AffineTransform.from_estimate(src,dest)
+    lin.estimate(src,dest)
     res=lin(src)-dest
-    # reject points with >1 pixel residual and refit
+    #rot.estimate(src,dest)
+    #res=rot(src)-dest
+    # reject points with >1 pixel residual
     gd=np.where((np.abs(res[:,0])<reject)&(np.abs(res[:,1])<reject))[0]
     bd=np.where((np.abs(res[:,0])>reject)|(np.abs(res[:,1])>reject))[0]
     print(len(gd),len(res))
-    rot=SimilarityTransform.from_estimate(src[gd],dest[gd])
-    lin=AffineTransform.from_estimate(src[gd],dest[gd])
+    rot.estimate(src[gd],dest[gd])
+    lin.estimate(src[gd],dest[gd])
 
     if hard is not None :
         fig,ax=plots.multi(4,1,figsize=(24,6),wspace=0.001)
@@ -972,7 +958,7 @@ def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),
                      dest[gd,0]-src[gd,0],dest[gd,1]-src[gd,1],
                      scale=scale,width=0.005)
         ax[0].quiver(src[bd,0]+nc//2,src[bd,1]+nr//2,
-                     dest[bd,0]-src[bd,0],dest[bd,1]-src[bd,1],
+                     dest[bd,0]-src[bd,0]-dx,dest[bd,1]-src[bd,1]-dy,
                      scale=scale,width=0.005,color='r')
         ax[1].quiver(src[gd,0]+nc//2,src[gd,1]+nr//2,
                      dest[gd,0]-src[gd,0]-dx,dest[gd,1]-src[gd,1]-dy,
@@ -1018,55 +1004,4 @@ def transform(im0,im,lines0,xlags=range(-11,12),ylags=range(-17,18),
             pdb.set_trace()
         plt.close()
 
-    return lin,rot
-
-def seq(files,box=None,size=None,red=None,maxcol=12,label=None) :
-    """ Create montage image from a sequence
-
-    Parameters
-    ----------
-        files   : array-like
-                  list of files to montage
-        box     : box, default=None
-                  image.BOX to use to extract subregion
-        size    : int, default=None
-                  if specified, extract region of given size around maximum pixel
-        red     : Reducer, default=None
-                  imred.Reducer used to extract images, else use iio.imread
-        maxcol  : int, default=12
-                  number of images to stack horizontally before starting a new row
-    """
-    if len(files) > maxcol :
-        ncol=maxcol
-        nrow=len(files)//maxcol
-        if len(files)%maxcol > 0 : nrow+=1
-    else :
-        ncol=len(files)
-        nrow=1
-        
-    ims=[]
-    ix=0
-    iy=0
-    for i,file in enumerate(files) :
-        if red is not None :
-            im=red.rd(file)
-        else :
-            im=iio.imread(file)
-        ims.append(im)
-        if box is None :
-            if size is None :
-                out=im
-            else :
-                cr,cc=np.unravel_index(im.argmax(),im.shape)
-                out=window(im,box=image.BOX(cr=cr,cc=cc,n=size))
-        else :
-            out=window(im,box=box)
-        if i == 0 :
-            nr,nc=out.shape
-            montage=np.zeros([nr*nrow,nc*ncol])
-        ix = i%ncol
-        iy = i//ncol
-        montage[iy*nr:(iy+1)*nr,ix*nc:(ix+1)*nc] += out
-
-    return files, ims, montage
-
+    return lin,rot, shift, scipy.signal.convolve(shift,kernel,mode='same')
