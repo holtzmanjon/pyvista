@@ -1,7 +1,7 @@
 import numpy as np
 import shutil
 import astropy
-from photutils import DAOStarFinder
+from photutils.detection import DAOStarFinder
 import code
 import copy
 from astropy import units as u
