@@ -152,9 +152,9 @@ class WaveCal() :
 
         Parameters
         ----------
-        pix : array_like, optional
+        pixels= : array_like, optional
            input pixel positions [x] or [y,x]
-        image : tuple, optional
+        image= : tuple, optional
            for input image size [nrows,ncols], return wavelengths at all pixels
 
         Returns 
