@@ -700,18 +700,19 @@ def arc_transform(mjd,obs='lco',refarc=None,thresh=400,nskip=40, rad=2,
         pfile = '{:s}/{:s}/trace/{:d}/spPlanTrace-{:d}_{:s}.par'.format( 
                  os.environ['BOSS_SPECTRO_REDUX'],vers,mjd,mjd,obs.upper())
         if not os.path.exists(pfile) :
-            raise FileNotFoundError('no planfile: {:s}'.format(pfile))
-        plan = yanny.yanny('{:s}/{:s}/trace/{:d}/spPlanTrace-{:d}_{:s}.par'.format(
-                    os.environ['BOSS_SPECTRO_REDUX'],vers,mjd,mjd,obs.upper()))
+            #raise FileNotFoundError('no planfile: {:s}'.format(pfile))
+            return
+        plan = yanny.yanny(pfile)
         traceflat=np.where(plan['SPEXP']['flavor'] == b'TRACEFLAT')[0][0]
         tracearc=np.where(plan['SPEXP']['flavor'] == b'TRACEARC')[0][0]
         arcs=np.where(plan['SPEXP']['flavor'] == b'arc')[0]
         flats=np.where(plan['SPEXP']['flavor'] == b'flat')[0]
-        outdir='{:s}/{:s}/trace/'.format(os.environ['BOSS_SPECTRO_REDUX'],vers)
+        if outdir == None : outdir='{:s}/{:s}/trace/'.format(os.environ['BOSS_SPECTRO_REDUX'],vers)
     else :
         if outdir == None : outdir='./'
-        try: os.makedirs('{:s}/{:d}'.format(outdir,mjd))
-        except: pass
+
+    try: os.makedirs('{:s}/{:d}'.format(outdir,mjd))
+    except: pass
 
     boss=imred.Reducer('BOSS',dir=os.environ[data_env]+'/{:d}'.format(mjd))
     xt=[]
@@ -860,7 +861,7 @@ def arc_transform(mjd,obs='lco',refarc=None,thresh=400,nskip=40, rad=2,
 
 def transform_thread(pars) :
     try :
-        return image.transform(pars[0],pars[1],pars[2],hard=pars[3])
+        return image.transform(pars[0],pars[1],pars[2],hard=pars[3],smooth=5)
     except :
         return None
 
