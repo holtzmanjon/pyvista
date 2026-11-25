@@ -4,7 +4,6 @@ import glob
 from astropy.io import fits
 from pyraf import iraf
 from pyraf.iraf import noao,imred,twodspec,apextract,onedspec,echelle
-from pyvista import imred
 import pdb
 import os
 
